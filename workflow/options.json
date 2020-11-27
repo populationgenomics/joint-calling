@@ -1,0 +1,4 @@
+{
+    "workflow_failure_mode": "ContinueWhilePossible",
+    "final_workflow_outputs_dir": "/Users/vsaveliev/CPG/cpg_qc/test/output"
+}
