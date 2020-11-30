@@ -20,11 +20,13 @@ workflow CpgQC {
   call SampleQC {
     input:
       combined_mt_file = CombineGVCFs.combined_mt_file,
+      combined_mt_dir = CombineGVCFs.combined_mt_dir,
       work_bucket = work_bucket,
       logs_dir_path = logs_dir_path
   }
 
   output {
+    String final_mt_dir = SampleQC.qced_mt_dir
     File final_mt_file = SampleQC.qced_mt_file
   }
 }
@@ -37,11 +39,12 @@ task CombineGVCFs {
     String logs_dir_path
   }
   output {
-    File combined_mt_file = "${combined_mt_file}"
+    String combined_mt_dir = "${combined_mt_file}"
+    File combined_mt_file = "${combined_mt_file}" + "/_SUCCESS"
   }
   command <<<
-    python /Users/vsaveliev/CPG/cpg_qc/scripts/cpg_qc.py \
-       --mt-file ~{combined_mt_file} \
+    python /Users/vlad/CPG/cpg_qc/scripts/cpg_qc.py \
+       --mt ~{combined_mt_file} \
        --bucket ~{work_bucket} \
        --log-dir ~{logs_dir_path} \
        combine-gvcfs \
@@ -51,17 +54,19 @@ task CombineGVCFs {
 
 task SampleQC {
   input {
+    String combined_mt_dir
     File combined_mt_file
     String work_bucket
     String logs_dir_path
   }
 
   output {
-    File qced_mt_file = basename(combined_mt_file, ".mt") + ".qc.mt"
+    String qced_mt_dir = basename(combined_mt_dir, ".mt") + ".qc.mt"
+    File qced_mt_file = basename(combined_mt_dir, ".mt") + ".qc.mt/_SUCCESS"
   }
   command <<<
-    python /Users/vsaveliev/CPG/cpg_qc/scripts/cpg_qc.py \
-       --mt-file ~{combined_mt_file} \
+    python /Users/vlad/CPG/cpg_qc/scripts/cpg_qc.py \
+       --mt ~{combined_mt_dir} \
        --bucket ~{work_bucket} \
        --log-dir ~{logs_dir_path} \
        sample-qc \
