@@ -1,6 +1,6 @@
 {
-  "CpgQC.sample_map":       "/Users/vsaveliev/CPG/cpg_qc/data/inputs.tsv",
-  "CpgQC.work_bucket":      "/Users/vsaveliev/CPG/cpg_qc/test/qc",
-  "CpgQC.logs_dir_path":    "/Users/vsaveliev/CPG/cpg_qc/test/logs",
-  "CpgQC.combined_mt_file": "/Users/vsaveliev/CPG/cpg_qc/data/genomes.mt"
+  "CpgQC.sample_map":       "/Users/vlad/CPG/cpg_qc/data/inputs.tsv",
+  "CpgQC.work_bucket":      "/Users/vlad/CPG/cpg_qc/test/qc",
+  "CpgQC.logs_dir_path":    "/Users/vlad/CPG/cpg_qc/test/logs",
+  "CpgQC.combined_mt_file": "/Users/vlad/CPG/cpg_qc/data/genomes.mt"
 }

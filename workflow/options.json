@@ -1,4 +1,9 @@
 {
     "workflow_failure_mode": "ContinueWhilePossible",
-    "final_workflow_outputs_dir": "/Users/vsaveliev/CPG/cpg_qc/test/output"
+    "write_to_cache": true,
+    "read_from_cache": true,
+    "use_relative_output_paths": true,
+    "final_workflow_outputs_dir": "/Users/vlad/CPG/cpg_qc/test/output",
+    "final_workflow_log_dir": "/Users/vlad/CPG/cpg_qc/test/wf_logs",
+    "final_call_logs_dir": "/Users/vlad/CPG/cpg_qc/test/call_logs"
 }
