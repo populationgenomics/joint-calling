@@ -132,3 +132,5 @@ hail-*.log
 test
 cromwell-executions/
 data/
+
+.idea
