@@ -1,0 +1,3 @@
+RELEASES = ["0.1"]
+CURRENT_RELEASE = "0.1"
+

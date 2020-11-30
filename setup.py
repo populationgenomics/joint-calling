@@ -4,7 +4,7 @@ import os
 from os.path import join
 from setuptools import setup
 
-pkg = 'cpg_qc'
+pkg = 'qc'
 
 try:
     import versionpy
@@ -34,7 +34,7 @@ setup(
     description='Variant and sample QC, based on Broad\'s gnomad_qc',
     long_description=open('README.md').read(),
     long_description_content_type="text/markdown",
-    url=f'https://github.com/populationgenomics/variant-qc',
+    url=f'https://github.com/populationgenomics/cpg_qc',
     license='MIT',
     packages=[pkg],
     package_data=package_data,
