@@ -1,5 +1,5 @@
 pip
-git+https://github.com/vladsaveliev/gnomad_methods@master
+git+git://github.com/vladsaveliev/gnomad_methods.git@master#egg=gnomad
 google-cloud-secret-manager
 google-api-python-client
 versionpy

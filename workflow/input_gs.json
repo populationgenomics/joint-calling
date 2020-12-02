@@ -1,0 +1,5 @@
+{
+  "CpgQC.sample_map":    "gs://playground-us/cpg_qc/gvcfs_gs.csv",
+  "CpgQC.work_bucket":   "gs://playground-us/cpg_qc/test/qc",
+  "CpgQC.logs_dir_path": "gs://playground-us/cpg_qc/test/logs"
+}

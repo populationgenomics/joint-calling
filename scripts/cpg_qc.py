@@ -1,19 +1,24 @@
+import csv
 import os
 import time
 from typing import List, Optional
 import click
 import logging
+import pandas as pd
 import hail as hl
 from gnomad.utils.file_utils import file_exists
 
 from qc import resources, sample_qc as qc
 
-
 logger = logging.getLogger("cpg_qc")
-
 
 DEFAULT_REF = 'GRCh38'
 TIMESTAMP = time.strftime('%Y%m%d-%H%M')
+
+
+def init_hail(name, log_dirpath):
+    hl_log = os.path.join(log_dirpath, f'{name}-{TIMESTAMP}.log')
+    hl.init(default_reference=DEFAULT_REF, log=hl_log)
 
 
 @click.group()
@@ -23,41 +28,48 @@ TIMESTAMP = time.strftime('%Y%m%d-%H%M')
               help='path to folder for intermediate output (can be on gs://)')
 @click.option('--log-dir', 'log_dirpath', required=True,
               help='local directory store Hail logs (must be local)')
-@click.option('--overwrite', 'overwrite', is_flag=True)
+@click.option('--reuse', 'reuse', is_flag=True)
 @click.pass_context
-def cli(ctx, mt_path: str, work_bucket: str, log_dirpath: str, overwrite: bool):
+def cli(ctx: click.core.Context,
+        mt_path: str,
+        work_bucket: str,
+        log_dirpath: str,
+        reuse: bool):
     ctx.ensure_object(dict)
     ctx.obj['mt_path'] = mt_path
     ctx.obj['work_bucket'] = work_bucket
     ctx.obj['log_dirpath'] = log_dirpath
-    ctx.obj['overwrite'] = overwrite
+    ctx.obj['reuse'] = reuse
+    resources.BUCKET = work_bucket
 
 
 @cli.command()
 @click.pass_context
-@click.option('--sample-map', 'sample_map_fpath',
+@click.option('--sample-map', 'sample_map_csv',
 help=\
 'sample_map: path to the sample map (must be filesystem local).'
-'The sample map should be tab separated with two columns.'
-'The first column is the sample ID, and the second column'
-'is the gVCF path. WARNING: the sample names in the gVCFs will be'
-'overwritten')
-def combine_gvcfs(ctx, sample_map_fpath: str):
+'The sample map should be comma-separated with the following columns:\n'
+'sample,gvcfs,contamination,alignment_summary_metrics,duplicate_metrics,insert_size_metrics,wgs_metrics\n'
+'The first column is the sample ID.')
+def combine_gvcfs(ctx: click.core.Context, sample_map_csv: str):
     mt_path = ctx.obj['mt_path']
     work_bucket = ctx.obj['work_bucket']
     log_dirpath = ctx.obj['log_dirpath']
+    reuse = ctx.obj['reuse']
 
-    if file_exists(mt_path):
-        print(f'{mt_path} exists, reusing')
+    if reuse and file_exists(mt_path):
+        logger.info(f'Reusing existing output: {mt_path}')
         return
-    hl.init(default_reference=DEFAULT_REF,
-            log=os.path.join(log_dirpath, f'gvcfs-combine-{TIMESTAMP}.log'))
 
-    with open(sample_map_fpath) as f:
-        names_and_paths = [tuple(l.strip().split('\t')) for l in f]
+    try:
+        init_hail('combine_gvcfs', log_dirpath)
+    except:
+        pass
+
+    sample_df = pd.read_csv(sample_map_csv, sep=',')
 
     hl.experimental.run_combiner(
-        [p for n, p in names_and_paths],
+        sample_df['gvcf'],
         out_file=mt_path,
         reference_genome=DEFAULT_REF,
         use_genome_default_intervals=True,
@@ -69,30 +81,96 @@ def combine_gvcfs(ctx, sample_map_fpath: str):
 
 @cli.command()
 @click.pass_context
-def sample_qc(ctx):
-    from hail.experimental.vcf_combiner.sparse_mt_utils import lgt_to_gt
-
+@click.option('--out-ht', 'out_ht_path', required=True)
+def sample_qc(ctx: click.core.Context, out_ht_path: str):
     mt_path = ctx.obj['mt_path']
     work_bucket = ctx.obj['work_bucket']
     log_dirpath = ctx.obj['log_dirpath']
-    overwrite = ctx.obj['overwrite']
-    resources.BUCKET = work_bucket
+    reuse = ctx.obj['reuse']
 
-    mt_out_path = os.path.basename(mt_path).replace('.mt', '').replace('/', '') + '.qc.mt'
-
-    if not overwrite and file_exists(mt_out_path):
-        print(f'{mt_out_path} exists, reusing')
+    if reuse and file_exists(out_ht_path):
+        logger.info(f'Reusing existing output: {out_ht_path}')
         return
 
-    hl.init(default_reference=DEFAULT_REF,
-            log=os.path.join(log_dirpath, f'sample-qc-{TIMESTAMP}.log'))
+    init_hail('sample_qc', log_dirpath)
+
+    mt = hl.read_matrix_table(mt_path)
+    basename = os.path.splitext(out_ht_path)[0]
+    ht = qc.compute_sample_qc(mt, basename)
+    ht.write(out_ht_path, overwrite=True)
+
+
+@cli.command()
+@click.pass_context
+@click.option('--out-ht', 'out_ht_path', required=True)
+def impute_sex(ctx: click.core.Context, out_ht_path: str):
+    mt_path = ctx.obj['mt_path']
+    work_bucket = ctx.obj['work_bucket']
+    log_dirpath = ctx.obj['log_dirpath']
+    reuse = ctx.obj['reuse']
+
+    if reuse and file_exists(out_ht_path):
+        logger.info(f'Reusing existing output: {out_ht_path}')
+        return
+
+    init_hail('impute_sex', log_dirpath)
 
     mt = hl.read_matrix_table(mt_path)
 
-    ht = qc.compute_sample_qc(mt, os.path.join(work_bucket, 'checkpoints', 'qc'))
-    ht.write(resources.get_sample_qc_url(work_bucket).path, overwrite=True)
+    from gnomad.resources.grch38 import telomeres_and_centromeres
+    ht = qc.annotate_sex(
+        mt,
+        excluded_intervals=telomeres_and_centromeres.ht(),
+        aaf_threshold=0.001,
+        f_stat_cutoff=0.5,
+        gt_expr="LGT",
+    )
+    ht.write(out_ht_path, overwrite=True)
 
-    qc.compute_sex(mt).write(resources.sex, overwrite=True)
+
+@cli.command()
+@click.pass_context
+@click.option('--out-ht', 'out_ht_path', required=True)
+@click.option('--sex-ht', 'sex_ht_path', required=True)
+@click.option('--biallelic-qc-ht', 'biallelic_qc_ht_path', required=True)
+@click.option('--min-cov', 'min_cov', default=18)
+@click.option('--sample-map', 'sample_map_csv',
+help=\
+'sample_map: path to the sample map (must be filesystem local).'
+'The sample map should be comma-separated with the following columns:\n'
+'sample,gvcfs,contamination,alignment_summary_metrics,duplicate_metrics,insert_size_metrics,wgs_metrics\n'
+'The first column is the sample ID.')
+def compute_hard_filters(
+        ctx: click.core.Context,
+        out_ht_path: str,
+        sex_ht_path: str,
+        biallelic_qc_ht_path: str,
+        min_cov: int,
+        sample_map_csv: str
+    ):
+    mt_path = ctx.obj['mt_path']
+    work_bucket = ctx.obj['work_bucket']
+    log_dirpath = ctx.obj['log_dirpath']
+    reuse = ctx.obj['reuse']
+
+    if reuse and file_exists(out_ht_path):
+        logger.info(f'Reusing existing output: {out_ht_path}')
+        return
+
+    init_hail('impute_sex', log_dirpath)
+
+    mt = hl.read_matrix_table(mt_path)
+
+    sample_df = pd.read_csv(sample_map_csv, sep=',')
+    metrics_ht = qc.parse_metrics(sample_df, log_dirpath)
+
+    qc.compute_hard_filters(
+        mt,
+        cov_threshold=min_cov,
+        biallelic_qc_ht=hl.read_table(biallelic_qc_ht_path),
+        sex_ht=hl.read_table(sex_ht_path),
+        metrics_ht=metrics_ht
+    ).write(out_ht_path, overwrite=True)
 
 
 if __name__ == '__main__':
