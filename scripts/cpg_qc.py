@@ -9,6 +9,7 @@ import hail as hl
 from gnomad.utils.file_utils import file_exists
 
 from qc import resources, sample_qc as qc
+from qc.utils import safe_mkdir
 
 logger = logging.getLogger("cpg_qc")
 
@@ -16,8 +17,8 @@ DEFAULT_REF = 'GRCh38'
 TIMESTAMP = time.strftime('%Y%m%d-%H%M')
 
 
-def init_hail(name, log_dirpath):
-    hl_log = os.path.join(log_dirpath, f'{name}-{TIMESTAMP}.log')
+def init_hail(name, local_tmp_dir):
+    hl_log = os.path.join(safe_mkdir(os.path.join(local_tmp_dir, 'log')), f'{name}-{TIMESTAMP}.log')
     hl.init(default_reference=DEFAULT_REF, log=hl_log)
 
 
@@ -26,19 +27,19 @@ def init_hail(name, log_dirpath):
               help='path to the matrix table .mt directory (can be on gs://)')
 @click.option('--bucket', 'work_bucket', required=True,
               help='path to folder for intermediate output (can be on gs://)')
-@click.option('--log-dir', 'log_dirpath', required=True,
-              help='local directory store Hail logs (must be local)')
+@click.option('--local-tmp-dir', 'local_tmp_dir', required=True,
+              help='local directory to store temporary files and Hail logs (must be local)')
 @click.option('--reuse', 'reuse', is_flag=True)
 @click.pass_context
 def cli(ctx: click.core.Context,
         mt_path: str,
         work_bucket: str,
-        log_dirpath: str,
+        local_tmp_dir: str,
         reuse: bool):
     ctx.ensure_object(dict)
     ctx.obj['mt_path'] = mt_path
     ctx.obj['work_bucket'] = work_bucket
-    ctx.obj['log_dirpath'] = log_dirpath
+    ctx.obj['local_tmp_dir'] = local_tmp_dir
     ctx.obj['reuse'] = reuse
     resources.BUCKET = work_bucket
 
@@ -54,7 +55,7 @@ help=\
 def combine_gvcfs(ctx: click.core.Context, sample_map_csv: str):
     mt_path = ctx.obj['mt_path']
     work_bucket = ctx.obj['work_bucket']
-    log_dirpath = ctx.obj['log_dirpath']
+    local_tmp_dir = ctx.obj['local_tmp_dir']
     reuse = ctx.obj['reuse']
 
     if reuse and file_exists(mt_path):
@@ -62,7 +63,7 @@ def combine_gvcfs(ctx: click.core.Context, sample_map_csv: str):
         return
 
     try:
-        init_hail('combine_gvcfs', log_dirpath)
+        init_hail('combine_gvcfs', local_tmp_dir)
     except:
         pass
 
@@ -85,14 +86,14 @@ def combine_gvcfs(ctx: click.core.Context, sample_map_csv: str):
 def sample_qc(ctx: click.core.Context, out_ht_path: str):
     mt_path = ctx.obj['mt_path']
     work_bucket = ctx.obj['work_bucket']
-    log_dirpath = ctx.obj['log_dirpath']
+    local_tmp_dir = ctx.obj['local_tmp_dir']
     reuse = ctx.obj['reuse']
 
     if reuse and file_exists(out_ht_path):
         logger.info(f'Reusing existing output: {out_ht_path}')
         return
 
-    init_hail('sample_qc', log_dirpath)
+    init_hail('sample_qc', local_tmp_dir)
 
     mt = hl.read_matrix_table(mt_path)
     basename = os.path.splitext(out_ht_path)[0]
@@ -106,14 +107,14 @@ def sample_qc(ctx: click.core.Context, out_ht_path: str):
 def impute_sex(ctx: click.core.Context, out_ht_path: str):
     mt_path = ctx.obj['mt_path']
     work_bucket = ctx.obj['work_bucket']
-    log_dirpath = ctx.obj['log_dirpath']
+    local_tmp_dir = ctx.obj['local_tmp_dir']
     reuse = ctx.obj['reuse']
 
     if reuse and file_exists(out_ht_path):
         logger.info(f'Reusing existing output: {out_ht_path}')
         return
 
-    init_hail('impute_sex', log_dirpath)
+    init_hail('impute_sex', local_tmp_dir)
 
     mt = hl.read_matrix_table(mt_path)
 
@@ -150,19 +151,19 @@ def compute_hard_filters(
     ):
     mt_path = ctx.obj['mt_path']
     work_bucket = ctx.obj['work_bucket']
-    log_dirpath = ctx.obj['log_dirpath']
+    local_tmp_dir = ctx.obj['local_tmp_dir']
     reuse = ctx.obj['reuse']
 
     if reuse and file_exists(out_ht_path):
         logger.info(f'Reusing existing output: {out_ht_path}')
         return
 
-    init_hail('impute_sex', log_dirpath)
+    init_hail('impute_sex', local_tmp_dir)
 
     mt = hl.read_matrix_table(mt_path)
 
     sample_df = pd.read_csv(sample_map_csv, sep=',')
-    metrics_ht = qc.parse_metrics(sample_df, log_dirpath)
+    metrics_ht = qc.parse_metrics(sample_df, local_tmp_dir)
 
     qc.compute_hard_filters(
         mt,
