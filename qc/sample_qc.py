@@ -18,7 +18,7 @@ from gnomad.utils.annotations import bi_allelic_expr, get_adj_expr
 from gnomad.utils.filtering import add_filters_expr, filter_to_autosomes
 from gnomad.utils.sparse_mt import densify_sites
 
-from qc.utils import gs_download_file
+from qc.utils import safe_mkdir, gs_cache_file
 
 
 def compute_sample_qc(
@@ -56,42 +56,41 @@ def compute_hard_filters(mt: hl.MatrixTable,
                          metrics_ht: hl.Table,
                          ) -> hl.Table:
     ht = mt.cols()
-    hard_filters = dict()
+    ht = ht.annotate(hard_filters=hl.empty_set(hl.tstr))
 
-    # Remove low-coverage samples
-    cov_ht = sex_ht  # chrom 20 coverage is computed to infer sex and used here
-    hard_filters['low_coverage'] = (cov_ht[ht.key].chr20_mean_dp < cov_threshold)
-
-    # Remove extreme raw bi-allelic sample QC outliers
-    hard_filters['bad_qc_metrics'] = (
-            (biallelic_qc_ht.sample_qc.n_snp > 3.75e6) |
-            (biallelic_qc_ht.sample_qc.n_snp < 2.4e6) |
-            (biallelic_qc_ht.sample_qc.n_singleton > 1e5) |
-            (biallelic_qc_ht.sample_qc.r_het_hom_var > 3.3)
-    )
+    def add_filter(expr, name):
+        return ht.annotate(hard_filters =
+            hl.if_else(expr,
+                       ht.hard_filters.add(name),
+                       ht.hard_filters)
+        )
 
     # Remove samples with ambiguous sex assignments
-    sex_ht = sex_ht[ht.key]
-    hard_filters['ambiguous_sex'] = (sex_ht.sex_karyotype == 'Ambiguous')
-    hard_filters['sex_aneuploidy'] = ~hl.set({'Ambiguous', 'XX', 'XY'}).contains(sex_ht.sex_karyotype)
+    ht = add_filter((sex_ht[ht.key].sex_karyotype == 'Ambiguous'), "ambiguous_sex")
+    ht = add_filter(~hl.set({'Ambiguous', 'XX', 'XY'}).contains(sex_ht[ht.key].sex_karyotype), "sex_aneuploidy")
+
+    # Remove low-coverage samples
+    # chrom 20 coverage is computed to infer sex and used here
+    ht = add_filter((sex_ht[ht.key].chr20_mean_dp < cov_threshold), "low_coverage")
+
+    # Remove extreme raw bi-allelic sample QC outliers
+    ht = add_filter((
+        (biallelic_qc_ht[ht.key].sample_qc.n_snp > 3.75e6) |
+        (biallelic_qc_ht[ht.key].sample_qc.n_snp < 2.4e6) |
+        (biallelic_qc_ht[ht.key].sample_qc.n_singleton > 1e5) |
+        (biallelic_qc_ht[ht.key].sample_qc.r_het_hom_var > 3.3)
+    ), "bad_qc_metrics")
 
     # Remove samples that fail picard metric thresholds, percents are not divided by 100, e.g. 5% == 5.00, %5 != 0.05
-    hard_filters['contamination'] = metrics_ht.freemix > 5.00
-    hard_filters['chimera'] = metrics_ht.pct_chimeras > 5.00
-    hard_filters['coverage'] = metrics_ht.mean_coverage < 15
-    hard_filters['insert_size'] = metrics_ht.median_insert_size < 250
-
-    ht = ht.annotate(
-        hard_filters=add_filters_expr(
-            filters=hard_filters
-        )
-    )
-
+    ht = add_filter((metrics_ht.freemix > 5.00), "contamination")
+    ht = add_filter((metrics_ht.pct_chimeras > 5.00), "chimera")
+    ht = add_filter((metrics_ht.mean_coverage < 15), "coverage")
+    ht = add_filter((metrics_ht.median_insert_size < 250), "insert_size")
     ht = ht.filter(hl.len(ht.hard_filters) > 0)
     return ht
 
 
-def parse_metrics(sample_df, log_dirpath):
+def parse_metrics(sample_df, local_tmp_dir):
     """
 	* Contamination: freemix > 5% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-CheckContamination/*.selfSM`/`FREEMIX`)
 	* Chimeras: > 5% (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.alignment_summary_metrics`/`PCT_CHIMERAS`)
@@ -102,57 +101,60 @@ def parse_metrics(sample_df, log_dirpath):
     data = defaultdict(list)
 
     for i, row in sample_df.iterrows():
-        sname = row['sample']
+        data['sample'] = row['sample']
 
         contam = row.get('contamination')
-        if not pd.isnull(contam):
-            data['freemix'].append(_parse_picard_metric(contam, 'FREEMIX'))
+        data['freemix'].append(
+            _parse_picard_metric(contam, 'FREEMIX', local_tmp_dir))
 
         aln_sum_metrics = row.get('alignment_summary_metrics')
-        if pd.isnull(aln_sum_metrics):
-            data['chimera'].append(_parse_picard_metric(aln_sum_metrics, 'PCT_CHIMERAS'))
+        data['pct_chimeras'].append(
+            _parse_picard_metric(aln_sum_metrics, 'PCT_CHIMERAS', local_tmp_dir))
 
         dup_metrics = row.get('duplicate_metrics')
-        if dup_metrics:
-            data['duplication'].append(_parse_picard_metric(dup_metrics, 'PERCENT_DUPLICATION'))
+        data['duplication'].append(
+            _parse_picard_metric(dup_metrics, 'PERCENT_DUPLICATION', local_tmp_dir))
 
         is_metrics = row.get('insert_size_metrics')
-        if is_metrics:
-            data['insert_size'].append(_parse_picard_metric(is_metrics, 'MEDIAN_INSERT_SIZE'))
-        wgs_metrics = row.get('wgs_metrics')
-        if wgs_metrics:
-            data['coverage'].append(_parse_picard_metric(wgs_metrics, 'MEDIAN_COVERAGE'))
+        data['median_insert_size'].append(
+            _parse_picard_metric(is_metrics, 'MEDIAN_INSERT_SIZE', local_tmp_dir))
 
-    csv_path = os.path.join(log_dirpath, 'metrics.tsv')
-    pd.DataFrame.from_dict(data).to_csv(csv_path, sep='\t')
-    ht = hl.import_table(csv_path, impute=True)
+        wgs_metrics = row.get('wgs_metrics')
+        data['mean_coverage'].append(
+            _parse_picard_metric(wgs_metrics, 'MEDIAN_COVERAGE', local_tmp_dir))
+
+    csv_path = os.path.join(safe_mkdir(local_tmp_dir), 'sample_qc_metrics.tsv')
+    pd.DataFrame.from_dict(data).to_csv(csv_path, sep='\t', index=False)
+    ht = hl.import_table(csv_path, types={
+        "sample":             hl.tstr,
+        "freemix":            hl.tfloat32,
+        "pct_chimeras":       hl.tfloat32,
+        "duplication":        hl.tfloat32,
+        "median_insert_size": hl.tint32,
+        "mean_coverage":      hl.tint32,
+    })
     return ht
 
 
-def _parse_picard_metric(fpath, metric_name):
+def _parse_picard_metric(fpath, metric_name, local_tmp_dir):
+    if not fpath or pd.isnull(fpath):
+        return None
     val = None
-    text = gs_download_file(fpath)
-    idx = None
-    for line in text.split('\n'):
-        if f"\t{metric_name}\t" in line:
-            idx = line.split('\t').index(metric_name)
-        if idx is not None:
-            val = line.split('\t')[idx]
-            try:
-                val = int(val)
-            except ValueError:
+    with open(gs_cache_file(fpath, local_tmp_dir)) as fh:
+        idx = None
+        for line in fh:
+            if f"\t{metric_name}\t" in line:
+                idx = line.split('\t').index(metric_name)
+                continue
+            if idx is not None:
+                val = line.split('\t')[idx]
                 try:
-                    val = float(val)
+                    val = int(val)
                 except ValueError:
+                    try:
+                        val = float(val)
+                    except ValueError:
+                        pass
                     pass
-                pass
-            break
+                break
     return val
-
-
-
-
-
-
-
-
