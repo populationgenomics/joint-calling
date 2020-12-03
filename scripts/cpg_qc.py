@@ -158,7 +158,7 @@ def compute_hard_filters(
         logger.info(f'Reusing existing output: {out_ht_path}')
         return
 
-    init_hail('impute_sex', local_tmp_dir)
+    init_hail('compute_hard_filters', local_tmp_dir)
 
     mt = hl.read_matrix_table(mt_path)
 
