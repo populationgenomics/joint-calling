@@ -103,6 +103,25 @@ def sample_qc(ctx: click.core.Context, out_ht_path: str):
 
 @cli.command()
 @click.pass_context
+@click.option('--out-mt', 'out_mt_path', required=True)
+def compute_qc_mt(ctx: click.core.Context, out_mt_path: str):
+    mt_path = ctx.obj['mt_path']
+    work_bucket = ctx.obj['work_bucket']
+    local_tmp_dir = ctx.obj['local_tmp_dir']
+    reuse = ctx.obj['reuse']
+    if reuse and file_exists(out_mt_path):
+        logger.info(f'Reusing existing output: {out_mt_path}')
+        return
+
+    init_hail('compute_qc_mt', local_tmp_dir)
+    mt = hl.read_matrix_table(mt_path)
+
+    mt = qc.compute_qc_mt(mt)
+    mt.write(out_mt_path, overwrite=True)
+
+
+@cli.command()
+@click.pass_context
 @click.option('--out-ht', 'out_ht_path', required=True)
 def impute_sex(ctx: click.core.Context, out_ht_path: str):
     mt_path = ctx.obj['mt_path']
@@ -159,7 +178,6 @@ def compute_hard_filters(
         return
 
     init_hail('compute_hard_filters', local_tmp_dir)
-
     mt = hl.read_matrix_table(mt_path)
 
     sample_df = pd.read_csv(sample_map_csv, sep=',')
@@ -172,6 +190,35 @@ def compute_hard_filters(
         sex_ht=hl.read_table(sex_ht_path),
         metrics_ht=metrics_ht
     ).write(out_ht_path, overwrite=True)
+
+
+@cli.command()
+@click.pass_context
+@click.option('--out-ht', 'out_ht_path', required=True)
+def run_pc_relate(
+        ctx: click.core.Context,
+        out_ht_path: str,
+    ):
+    mt_path = ctx.obj['mt_path']
+    work_bucket = ctx.obj['work_bucket']
+    local_tmp_dir = ctx.obj['local_tmp_dir']
+    reuse = ctx.obj['reuse']
+    if reuse and file_exists(out_ht_path):
+        logger.info(f'Reusing existing output: {out_ht_path}')
+        return
+
+    init_hail('run_pc_relate', local_tmp_dir)
+    qc_mt = hl.read_matrix_table(mt_path)
+    eig, scores, _ = hl.hwe_normalized_pca(qc_mt.LGT, k=10, compute_loadings=False)
+    # scores = scores.checkpoint(v3_pc_relate_pca_scores.path, overwrite=reuse, _read_if_exists=not reuse)
+    relatedness_ht = hl.pc_relate(
+        qc_mt.LGT,
+        min_individual_maf=0.01,
+        scores_expr=scores[qc_mt.col_key].scores,
+        block_size=4096,
+        min_kinship=0.05,
+        statistics='all')
+    relatedness_ht.write(out_ht_path, overwrite=True)
 
 
 if __name__ == '__main__':

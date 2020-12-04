@@ -21,6 +21,37 @@ from gnomad.utils.sparse_mt import densify_sites
 from qc.utils import safe_mkdir, gs_cache_file
 
 
+def compute_qc_mt(mt: hl.MatrixTable) -> hl.MatrixTable:
+    mt = mt.select_entries(
+        'END',
+        GT=mt.LGT,
+        adj=get_adj_expr(
+            mt.LGT,
+            mt.GQ,
+            mt.DP,
+            mt.LAD
+        )
+    )
+    mt = mt.filter_rows(
+        (hl.len(mt.alleles) == 2) &
+        hl.is_snp(mt.alleles[0], mt.alleles[1])
+    )
+    mt = mt.naive_coalesce(5000)
+
+    qc_mt = get_qc_mt(
+        mt,
+        adj_only=False,
+        min_af=0.0,
+        min_inbreeding_coeff_threshold=-0.025,
+        min_hardy_weinberg_threshold=None,
+        ld_r2=None,
+        filter_lcr=False,
+        filter_decoy=False,
+        filter_segdup=False
+    )
+    return qc_mt
+
+
 def compute_sample_qc(
     mt: hl.MatrixTable,
     tmp_ht_prefix: Optional[str],
