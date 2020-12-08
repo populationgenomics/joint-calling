@@ -31,8 +31,6 @@ workflow CpgQC {
   }
 
   output {
-#    File sample_qc_ht_mrk = SampleQcWfl.sample_qc_ht_mrk
-#    File sex_ht_mrk       = SampleQcWfl.sex_ht_mrk
     String sample_qc_ht_dir = SampleQcWfl.sample_qc_ht_dir
     String sex_ht_dir = SampleQcWfl.sex_ht_dir
     String hard_filters_ht_dir = SampleQcWfl.hard_filters_ht_dir
@@ -48,7 +46,6 @@ task CombineGVCFs {
   }
   output {
     String combined_mt_dir = out_mt_dir
-#    File   combined_mt_mrk = out_mt_dir + "/_SUCCESS"
   }
   command <<<
     python /Users/vlad/CPG/cpg_qc/scripts/cpg_qc.py \
