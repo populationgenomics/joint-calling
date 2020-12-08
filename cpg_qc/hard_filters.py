@@ -11,45 +11,13 @@ from gnomad.sample_qc.ancestry import (assign_population_pcs,
 from gnomad.sample_qc.filtering import (compute_qc_metrics_residuals,
                                         compute_stratified_metrics_filter,
                                         compute_stratified_sample_qc)
-from gnomad.sample_qc.pipeline import annotate_sex, get_qc_mt
 from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
 from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
 from gnomad.utils.annotations import bi_allelic_expr, get_adj_expr
 from gnomad.utils.filtering import add_filters_expr, filter_to_autosomes
 from gnomad.utils.sparse_mt import densify_sites
 
-from qc.utils import safe_mkdir, gs_cache_file
-
-
-def compute_qc_mt(mt: hl.MatrixTable) -> hl.MatrixTable:
-    mt = mt.select_entries(
-        'END',
-        GT=mt.LGT,
-        adj=get_adj_expr(
-            mt.LGT,
-            mt.GQ,
-            mt.DP,
-            mt.LAD
-        )
-    )
-    mt = mt.filter_rows(
-        (hl.len(mt.alleles) == 2) &
-        hl.is_snp(mt.alleles[0], mt.alleles[1])
-    )
-    mt = mt.naive_coalesce(5000)
-
-    qc_mt = get_qc_mt(
-        mt,
-        adj_only=False,
-        min_af=0.0,
-        min_inbreeding_coeff_threshold=-0.025,
-        min_hardy_weinberg_threshold=None,
-        ld_r2=None,
-        filter_lcr=False,
-        filter_decoy=False,
-        filter_segdup=False
-    )
-    return qc_mt
+from cpg_qc.utils import safe_mkdir, gs_cache_file
 
 
 def compute_sample_qc(
@@ -121,18 +89,18 @@ def compute_hard_filters(mt: hl.MatrixTable,
     return ht
 
 
-def parse_metrics(sample_df, local_tmp_dir):
+def parse_metrics(sample_df, work_bucket):
     """
-	* Contamination: freemix > 5% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-CheckContamination/*.selfSM`/`FREEMIX`)
-	* Chimeras: > 5% (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.alignment_summary_metrics`/`PCT_CHIMERAS`)
-	* Duplication: > 30% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-MarkDuplicates/*.duplicate_metrics`/`PERCENT_DUPLICATION`)
-	* Median insert size: < 250 (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.insert_size_metrics`/`MEDIAN_INSERT_SIZE`)
-	* Median coverage < 15X (`call-CollectWgsMetrics/*.wgs_metrics`/`MEDIAN_COVERAGE`)
+    * Contamination: freemix > 5% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-CheckContamination/*.selfSM`/`FREEMIX`)
+    * Chimeras: > 5% (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.alignment_summary_metrics`/`PCT_CHIMERAS`)
+    * Duplication: > 30% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-MarkDuplicates/*.duplicate_metrics`/`PERCENT_DUPLICATION`)
+    * Median insert size: < 250 (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.insert_size_metrics`/`MEDIAN_INSERT_SIZE`)
+    * Median coverage < 15X (`call-CollectWgsMetrics/*.wgs_metrics`/`MEDIAN_COVERAGE`)
     """
     data = defaultdict(list)
 
     for i, row in sample_df.iterrows():
-        data['s'] = row['sample']
+        data['s'].append(row['sample'])
 
         contam = row.get('contamination')
         data['freemix'].append(
@@ -154,7 +122,7 @@ def parse_metrics(sample_df, local_tmp_dir):
         data['mean_coverage'].append(
             _parse_picard_metric(wgs_metrics, 'MEDIAN_COVERAGE', local_tmp_dir))
 
-    csv_path = os.path.join(safe_mkdir(local_tmp_dir), 'sample_qc_metrics.tsv')
+    csv_path = os.path.join(work_bucket, 'tmp', 'sample_qc_metrics.tsv')
     pd.DataFrame.from_dict(data).to_csv(csv_path, sep='\t', index=False)
     ht = hl.import_table(
         csv_path,
@@ -192,3 +160,4 @@ def _parse_picard_metric(fpath, metric_name, local_tmp_dir):
                     pass
                 break
     return val
+

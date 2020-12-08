@@ -130,8 +130,12 @@ dmypy.json
 
 hail-*.log
 test
+test6samples
 cromwell-executions/
 data/
 
 .idea
 .DS_Store
+
+playground/
+

@@ -1,7 +1,7 @@
 from gnomad.resources.grch38 import (VersionedTableResource, TableResource)
 
 
-from qc.constants import CURRENT_RELEASE, RELEASES
+from cpg_qc.constants import CURRENT_RELEASE, RELEASES
 
 BUCKET = None
 

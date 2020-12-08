@@ -4,7 +4,7 @@ import os
 from os.path import join
 from setuptools import setup
 
-pkg = 'qc'
+pkg = 'cpg_qc'
 
 try:
     import versionpy
@@ -45,7 +45,7 @@ setup(
         'click',
     ],
     scripts=[
-        join('scripts', 'cpg_qc.py'),
+        join('scripts', 'cpg_qc'),
     ],
     keywords='bioinformatics',
     classifiers=[
