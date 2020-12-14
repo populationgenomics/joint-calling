@@ -14,15 +14,25 @@ build:
 requirements:
   build:
     - python >=3.6
-    {% for dep in data.get("install_requires", []) -%}
-    - {{ dep.lower() }}
-    {% endfor %}
+    - versionpy
+    - click
+    - pandas
+    - pip:
+      - hail
+      - git+https://github.com/vladsaveliev/gnomad_methods@master
+      - google-cloud-secret-manager
+      - google-api-python-client
 
   run:
     - python >=3.6
-    {% for dep in data.get("install_requires", []) -%}
-    - {{ dep.lower() }}
-    {% endfor %}
+    - versionpy
+    - click
+    - pandas
+    - pip:
+      - hail
+      - git+https://github.com/vladsaveliev/gnomad_methods@master
+      - google-cloud-secret-manager
+      - google-api-python-client
 
 test:
   commands:
