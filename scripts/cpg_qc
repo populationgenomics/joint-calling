@@ -1,20 +1,24 @@
 #!/bin/env python
 
 import os
-from os.path import join, basename, dirname, splitext
+from os.path import join, splitext
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import click
 import logging
 import pandas as pd
 import hail as hl
 
-from gnomad.sample_qc.pipeline import annotate_sex
 from gnomad.utils.file_utils import file_exists
 from gnomad.resources.grch38 import telomeres_and_centromeres
-
-from cpg_qc import hard_filters, pca, utils
+from gnomad.sample_qc.filtering import compute_stratified_sample_qc
+from gnomad.sample_qc.pipeline import annotate_sex
+from gnomad.utils.annotations import bi_allelic_expr
+from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.filtering import add_filters_expr
+
+from cpg_qc.utils import file_exists
+from cpg_qc import hard_filtering, pop_strat_qc, utils
 
 logger = logging.getLogger("cpg_qc")
 
@@ -25,8 +29,9 @@ PATH_MAP = {
     'sample_qc_bi_allelic_ht':            'sample_qc_bi_allelic.ht',
     'sex_ht':                             'sex.ht',
     'hard_filters_ht':                    'hard_filters.ht',
+    'meta_ht':                            'metadata.ht',
     'meta_tsv':                           'metadata.tsv.gz',
-    'project_meta_ht':                    'project_meta.ht',
+    'ancestry_training_ht':               'ancestry_training.ht',
     # pop_strat_qc() outputs:
     'pop_ht':                             'pop.ht',  # Inferred sample populations
     'pca_related_samples_to_drop_ht':     'pca_related_samples_to_drop.ht',
@@ -44,26 +49,12 @@ def init_hail(name, local_tmp_dir):
 
 
 @click.command()
-@click.argument('cmd', nargs=-1, type=click.Choice([
-    'all',
-    'combine_gvcfs',
-    'sample_qc_ht',
-    'qc_mt',
-    'sex',
-    'hard_filters',
-    'relatedness',
-    'pca',
-    'assign_pops',
-    'apply_stratified_filters',
-    'apply_regressed_filters',
-    'compute_related_samples_to_drop',
-    'generate_metadata'
-]))
 @click.option('--sample-map', 'sample_map_csv', help=
-'path to a per-sample data CSV file (must be filesystem local).'
+'path to a per-sample data CSV file (must be filesystem local). '
 'The file should be comma-separated with a header and the following columns:\n'
-'sample,gvcfs,contamination,alignment_summary_metrics,duplicate_metrics,insert_size_metrics,wgs_metrics\n'
-'The first column is the sample ID.')
+'sample,population,gvcfs,contamination,alignment_summary_metrics,duplicate_metrics,insert_size_metrics,wgs_metrics\n'
+'The first column is the sample ID. The samples with data in the "population" column '
+'are used to train the random forest for population inferral of other samples.')
 @click.option('--mt', 'mt_path', required=True,
               help='path to input the matrix table .mt directory (can be on gs://)')
 @click.option('--bucket', 'work_bucket', required=True,
@@ -76,10 +67,6 @@ def init_hail(name, local_tmp_dir):
 
 @click.option('--min-cov', 'min_cov', default=18,
               help='minimum coverage for inclusion when computing har-filters')
-
-@click.option('--do-pop-strat-qc', 'do_pop_strat_qc', is_flag=True,
-              help='Infer ancestry and pedigree using PCA and calculate '
-                   'population-stratified metrics. Only reasonable for large cohorts.')
 @click.option('--kin-threshold', 'kin_threshold', default=0.1,
               help='maximum kin threshold to be considered unrelated')
 @click.option('--n-pcs', 'n_pcs', default=30,
@@ -88,33 +75,109 @@ def init_hail(name, local_tmp_dir):
               help='minimum RF prob for pop assignment')
 @click.option('--filtering-qc-metrics', 'filtering_qc_metrics',
               help="List of QC metrics for filtering.",
-              default=",".join([
+              default=','.join([
                   'n_snp', 'n_singleton', 'r_ti_tv',
                   'r_insertion_deletion', 'n_insertion', 'n_deletion',
                   'r_het_hom_var', 'n_het', 'n_hom_var', 'n_transition',
                   'n_transversion']))
 
-def main(cmd: List[str],
-         sample_map_csv,
-         mt_path: str,
-         work_bucket: str,
-         local_tmp_dir: str,
-         overwrite: bool,
-         min_cov: int,
-         do_pop_strat_qc: bool,
-         kin_threshold: float,
-         n_pcs: int,
-         min_pop_prob: float,
-         filtering_qc_metrics: str,
-    ):
-    """
-    cpg_qc.py <commands>
-    """
+def main(
+    sample_map_csv,
+    mt_path: str,
+    work_bucket: str,
+    local_tmp_dir: str,
+    overwrite: bool,
+    min_cov: int,
+    kin_threshold: float,
+    n_pcs: int,
+    min_pop_prob: float,
+    filtering_qc_metrics: str,
+):
     init_hail('sample_qc', local_tmp_dir)
     sample_df = pd.read_csv(sample_map_csv, sep=',')
     path_map = {name: join(work_bucket, p) for name, p in PATH_MAP.items()}
 
-    if overwrite or not file_exists(mt_path) or 'combine_gvcfs' in cmd:
+    mt = _run_combiner(
+        mt_path,
+        sample_df,
+        work_bucket,
+        reference_genome=DEFAULT_REF,
+        overwrite=overwrite,
+    )
+
+    sample_qc_ht, sample_qc_bi_allelic_ht = _compute_sample_qc(
+        mt,
+        sample_qc_ht_path=path_map['sample_qc_ht'],
+        sample_qc_bi_allelic_ht_path=path_map['sample_qc_bi_allelic_ht'],
+        tmp_ht_prefix=splitext(path_map['sample_qc_ht'])[0],
+        overwrite=overwrite
+    )
+
+    sex_ht = _infer_sex(mt, path_map['sex_ht'], overwrite)
+
+    hard_filters_ht = hard_filtering.compute_hard_filters(
+        mt,
+        sex_ht,
+        sample_qc_bi_allelic_ht,
+        sample_df,
+        hard_filters_ht_path=path_map['hard_filters_ht'],
+        work_bucket=work_bucket,
+        local_tmp_dir=local_tmp_dir,
+        cov_threshold=min_cov,
+        overwrite=overwrite
+    )
+
+    (pca_related_samples_to_drop_ht,
+     pop_ht,
+     stratified_metrics_ht,
+     regressed_metrics_ht,
+     release_related_samples_to_drop_ht) = pop_strat_qc.run_pop_strat_qc(
+        mt,
+        sample_df,
+        work_bucket=work_bucket,
+        overwrite=overwrite,
+
+        # Inputs:
+        sex_ht=sex_ht,
+        hard_filters_ht=hard_filters_ht,
+        sample_qc_ht=sample_qc_ht,
+
+        # Outputs:
+        pca_related_samples_to_drop_ht_path=path_map['pca_related_samples_to_drop_ht'],
+        pop_ht_path=path_map['pop_ht'],
+        stratified_metrics_ht_path=path_map['stratified_metrics_ht'],
+        regressed_metrics_ht_path=path_map['regressed_metrics_ht'],
+        release_related_samples_to_drop_ht_path=path_map['release_related_samples_to_drop_ht'],
+
+        kin_threshold=kin_threshold,
+        n_pcs=n_pcs,
+        filtering_qc_metrics=filtering_qc_metrics.split(","),
+        min_pop_prob=min_pop_prob
+    )
+
+    _generate_metadata(
+        sample_qc_ht=sample_qc_ht,
+        sex_ht=sex_ht,
+        hard_filters_ht=hard_filters_ht,
+        regressed_metrics_ht=regressed_metrics_ht,
+        pop_ht=pop_ht,
+        pca_related_samples_to_drop_ht=pca_related_samples_to_drop_ht,
+        release_related_samples_to_drop_ht=release_related_samples_to_drop_ht,
+        meta_ht_path=path_map['meta_ht'],
+        meta_tsv_path=path_map['meta_tsv'],
+        overwrite=overwrite
+    )
+
+
+def _run_combiner(
+    mt_path: str,
+    sample_df: pd.DataFrame,
+    work_bucket: str,
+    reference_genome: str,
+    overwrite: bool = False,
+) -> hl.MatrixTable:
+
+    if overwrite or not file_exists(mt_path):
         logger.info('Running vcf_combiner')
         """
         Runs the Hail vcf_combiner:
@@ -125,27 +188,70 @@ def main(cmd: List[str],
         hl.experimental.run_combiner(
             sample_df['gvcf'],
             out_file=mt_path,
-            reference_genome=DEFAULT_REF,
+            reference_genome=reference_genome,
             use_genome_default_intervals=True,
             tmp_path=os.path.join(work_bucket, 'tmp'),
             key_by_locus_and_alleles=True,
             overwrite=True
         )
-    mt = hl.read_matrix_table(mt_path)
+    return hl.read_matrix_table(mt_path)
 
+
+def _compute_sample_qc(
+    mt: hl.MatrixTable,
+    sample_qc_ht_path: str,
+    sample_qc_bi_allelic_ht_path: str,
+    tmp_ht_prefix: Optional[str],
+    overwrite: bool = False,
+) -> Tuple[hl.Table, hl.Table]:
     """
     Run Hail hl.sample_qc to generate a Hail Table with per-sample
     QC metrics. Additionally generates 2 more tables separately for
     bi-allelic and multi-allelic calls with `_bi_allelic.ht` and
     `_multi_allelic.ht` suffixes to the out path name correspondingly.
     """
-    if overwrite or not file_exists(path_map['sample_qc_ht']):
-        logger.info('Running sample_qc')
-        basename = splitext(path_map['sample_qc_ht'])[0]
-        ht = hard_filters.compute_sample_qc(mt, basename)
-        ht.write(path_map['sample_qc_ht'], overwrite=True)
+    if overwrite or not file_exists(sample_qc_ht_path):
+        logger.info('Running sample QC')
 
-    if overwrite or not file_exists(path_map['sex_ht']):
+        mt = filter_to_autosomes(mt)
+        mt = mt.filter_rows(
+            ~hl.is_defined(telomeres_and_centromeres.ht()[mt.locus]) &
+            (hl.len(mt.alleles) > 1))
+        mt = mt.select_entries('LGT')
+
+        sample_qc_ht = compute_stratified_sample_qc(
+            mt,
+            strata={
+                'bi_allelic': bi_allelic_expr(mt),
+                'multi_allelic': ~bi_allelic_expr(mt)
+            },
+            tmp_ht_prefix=tmp_ht_prefix,
+            gt_col='LGT'
+        )
+
+        # Remove annotations that cannot be computed from the sparse format
+        sample_qc_ht = sample_qc_ht.annotate(
+            **{
+                x: sample_qc_ht[x].drop('n_called', 'n_not_called', 'call_rate')
+                for x in sample_qc_ht.row_value
+            }
+        )
+        sample_qc_ht = sample_qc_ht.repartition(100)
+        sample_qc_ht.write(sample_qc_ht, overwrite=True)
+
+    return (
+        hl.read_table(sample_qc_ht_path),
+        hl.read_table(sample_qc_bi_allelic_ht_path)
+    )
+
+
+def _infer_sex(
+        mt: hl.MatrixTable,
+        sex_ht_path: str,
+        overwrite: bool = False,
+) -> hl.Table:
+
+    if overwrite or not file_exists(sex_ht_path):
         logger.info('Inferring sex')
         annotate_sex(
             mt,
@@ -153,74 +259,11 @@ def main(cmd: List[str],
             aaf_threshold=0.001,
             f_stat_cutoff=0.5,
             gt_expr="LGT",
-        ).write(path_map['sex_ht'], overwrite=True)
-
-    if overwrite or not file_exists(path_map['hard_filters_ht']):
-        logger.info('Generating hard filters')
-        sample_df = pd.read_csv(sample_map_csv, sep=',')
-        metrics_ht = hard_filters.parse_metrics(sample_df, work_bucket)
-        hard_filters.compute_hard_filters(
-            mt,
-            cov_threshold=min_cov,
-            biallelic_qc_ht=hl.read_table(path_map['sample_qc_bi_allelic_ht']),
-            sex_ht=hl.read_table(path_map['sex_ht']),
-            metrics_ht=metrics_ht
-        ).write(path_map['hard_filters_ht'], overwrite=True)
-
-    if do_pop_strat_qc:
-        project_meta_ht = hl.read_table(path_map['project_meta_ht']) \
-            if file_exists(path_map['project_meta_ht']) else None
-
-        pca.pop_strat_qc(
-            mt=mt,
-            sample_df=sample_df,
-            work_bucket=work_bucket,
-            overwrite=overwrite,
-
-            # Inputs:
-            sex_ht=hl.read_table(path_map['sex_ht']),
-            hard_filters_ht=hl.read_table(path_map['hard_filters_ht']),
-            gnomad_meta_ht=project_meta_ht,
-            sample_qc_ht=hl.read_table(path_map['sample_qc_ht']),
-
-            # Outputs:
-            pca_related_samples_to_drop_ht_path=path_map['pca_related_samples_to_drop_ht'],
-            pop_ht_path=path_map['pop_ht'],
-            stratified_metrics_ht_path=path_map['stratified_metrics_ht'],
-            regressed_metrics_ht_path=path_map['regressed_metrics_ht'],
-            release_related_samples_to_drop_ht_path=path_map['release_related_samples_to_drop_ht'],
-
-            kin_threshold=kin_threshold,
-            n_pcs=n_pcs,
-            filtering_qc_metrics=filtering_qc_metrics.split(","),
-            min_pop_prob=min_pop_prob
-        )
-
-    if overwrite or not file_exists(path_map['meta_tsv_path']):
-        # Generate the metadata HT and TSV file
-        meta_ht = generate_metadata(
-            project_meta_ht=hl.read_table('project_meta_ht'),
-            sample_qc_ht=hl.read_table('sample_qc_ht'),
-            sex_ht=hl.read_table('sex_ht'),
-            hard_filters_ht=hl.read_table('hard_filters_ht'),
-            regressed_metrics_ht=hl.read_table('regressed_metrics_ht'),
-            pop_ht=hl.read_table('pop_ht'),
-            pca_related_samples_to_drop_ht=hl.read_table('pca_related_samples_to_drop_ht'),
-            release_related_samples_to_drop_ht=hl.read_table('release_related_samples_to_drop_ht'),
-        )
-        meta_ht.checkpoint(path_map['meta_tsv_path'], overwrite=overwrite,
-                           _read_if_exists=not overwrite)
-        n_pcs = meta_ht.aggregate(hl.agg.min(hl.len(meta_ht.pca_scores)))
-        meta_ht = meta_ht.transmute(
-            **{f'PC{i + 1}': meta_ht.pca_scores[i] for i in range(n_pcs)},
-            hard_filters=hl.or_missing(hl.len(meta_ht.hard_filters) > 0, hl.delimit(meta_ht.hard_filters)),
-            qc_metrics_filters=hl.or_missing(hl.len(meta_ht.qc_metrics_filters) > 0, hl.delimit(meta_ht.qc_metrics_filters))
-        )
-        meta_ht.flatten().export(path_map['meta_tsv_path'])
+        ).write(sex_ht_path, overwrite=True)
+    return hl.read_table(sex_ht_path)
 
 
-def generate_metadata(
-        project_meta_ht: hl.Table,
+def _generate_metadata(
         sample_qc_ht: hl.Table,
         sex_ht: hl.Table,
         hard_filters_ht: hl.Table,
@@ -228,46 +271,65 @@ def generate_metadata(
         pop_ht: hl.Table,
         pca_related_samples_to_drop_ht: hl.Table,
         release_related_samples_to_drop_ht: hl.Table,
+        meta_tsv_path: str,
+        meta_ht_path: str,
+        overwrite: bool = False,
 ) -> hl.Table:
-    sex_ht = sex_ht.transmute(
-        impute_sex_stats=hl.struct(
-            f_stat=sex_ht.f_stat,
-            n_called=sex_ht.n_called,
-            expected_homs=sex_ht.expected_homs,
-            observed_homs=sex_ht.observed_homs
+
+    if overwrite or not file_exists(meta_tsv_path):
+        logger.info('Generate the metadata HT and TSV files')
+
+        meta_ht = sex_ht.transmute(
+            impute_sex_stats=hl.struct(
+                f_stat=sex_ht.f_stat,
+                n_called=sex_ht.n_called,
+                expected_homs=sex_ht.expected_homs,
+                observed_homs=sex_ht.observed_homs
+            )
         )
-    )
 
-    meta_ht = project_meta_ht.annotate_globals(
-        **regressed_metrics_ht.index_globals()
-    )
-
-    meta_ht = meta_ht.annotate(
-        sample_qc=sample_qc_ht[meta_ht.key].sample_qc,
-        **hard_filters_ht[meta_ht.key],
-        **regressed_metrics_ht[meta_ht.key],
-        **pop_ht[meta_ht.key],
-        **sex_ht[meta_ht.key],
-        release_related=hl.is_defined(release_related_samples_to_drop_ht[meta_ht.key]),
-        all_samples_related=hl.is_defined(pca_related_samples_to_drop_ht[meta_ht.key]),
-    )
-
-    meta_ht = meta_ht.annotate(
-        hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
-        sample_filters=add_filters_expr(
-            filters={
-                'related': meta_ht.release_related
-            },
-            current_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters)
+        meta_ht = meta_ht.annotate_globals(
+            **regressed_metrics_ht.index_globals()
         )
-    )
 
-    meta_ht = meta_ht.annotate(
-        high_quality=(hl.len(meta_ht.hard_filters) == 0) & (hl.len(meta_ht.qc_metrics_filters) == 0),
-        release=meta_ht.releasable & (hl.len(meta_ht.sample_filters) == 0)
-    )
+        meta_ht = meta_ht.annotate(
+            sample_qc=sample_qc_ht[meta_ht.key].sample_qc,
+            **hard_filters_ht[meta_ht.key],
+            **regressed_metrics_ht[meta_ht.key],
+            **pop_ht[meta_ht.key],
+            release_related=hl.is_defined(release_related_samples_to_drop_ht[meta_ht.key]),
+            all_samples_related=hl.is_defined(pca_related_samples_to_drop_ht[meta_ht.key]),
+        )
 
-    return meta_ht
+        meta_ht = meta_ht.annotate(
+            hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
+            sample_filters=add_filters_expr(
+                filters={
+                    'related': meta_ht.release_related
+                },
+                current_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters)
+            )
+        )
+
+        meta_ht = meta_ht.annotate(
+            high_quality=(hl.len(meta_ht.hard_filters) == 0) &
+                         (hl.len(meta_ht.qc_metrics_filters) == 0),
+            release=hl.len(meta_ht.sample_filters) == 0
+        )
+
+        meta_ht.checkpoint(meta_ht_path, overwrite=overwrite, _read_if_exists=not overwrite)
+
+        n_pcs = meta_ht.aggregate(hl.agg.min(hl.len(meta_ht.pca_scores)))
+        meta_ht = meta_ht.transmute(
+            **{f'PC{i + 1}': meta_ht.pca_scores[i] for i in range(n_pcs)},
+            hard_filters=hl.or_missing(hl.len(meta_ht.hard_filters) > 0,
+                                       hl.delimit(meta_ht.hard_filters)),
+            qc_metrics_filters=hl.or_missing(hl.len(meta_ht.qc_metrics_filters) > 0,
+                                             hl.delimit(meta_ht.qc_metrics_filters))
+        )
+        meta_ht.flatten().export(meta_tsv_path)
+
+    return hl.read_table(meta_ht_path)
 
 
 if __name__ == '__main__':

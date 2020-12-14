@@ -12,6 +12,8 @@ def file_exists(path: str):
     if path.startswith('gs://'):
         bucket = path.replace('gs://', '').split('/')[0]
         path = path.replace('gs://', '').split('/', maxsplit=1)[1]
+        if path.endswith('.mt') or path.endswith('.mt/'):
+            path = os.path.join(path, '_SUCCESS')
         gs = storage.Client()
         return gs.get_bucket(bucket).get_blob(path)
     return os.path.exists(path)
