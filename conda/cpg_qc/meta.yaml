@@ -1,0 +1,34 @@
+{% set data=load_setup_py_data() %}
+
+package:
+  name: cpg_qc
+  version: {{ data['version'] }}
+
+source:
+  path: ../../
+
+build:
+  number: 0
+  noarch: python
+
+requirements:
+  build:
+    - python >=3.6
+    {% for dep in data.get("install_requires", []) -%}
+    - {{ dep.lower() }}
+    {% endfor %}
+
+  run:
+    - python >=3.6
+    {% for dep in data.get("install_requires", []) -%}
+    - {{ dep.lower() }}
+    {% endfor %}
+
+test:
+  commands:
+    - cpg_qc --version
+
+about:
+  home: {{ data['url'] }}
+  license: {{ data['license'] }}
+  summary: {{ data['description'] }}

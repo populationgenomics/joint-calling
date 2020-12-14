@@ -1,6 +1,8 @@
 pip
 git+git://github.com/vladsaveliev/gnomad_methods.git@master#egg=gnomad
+hail
 google-cloud-secret-manager
 google-api-python-client
 versionpy
 click
+pandas

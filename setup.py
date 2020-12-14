@@ -40,10 +40,7 @@ setup(
     package_data=package_data,
     include_package_data=True,
     zip_safe=False,
-    install_requires=[
-        'versionpy',
-        'click',
-    ],
+    install_requires=install_requires,
     scripts=[
         join('scripts', 'cpg_qc'),
     ],
