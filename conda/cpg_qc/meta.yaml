@@ -19,7 +19,7 @@ requirements:
     - pandas
     - pip:
       - hail
-      - git+https://github.com/vladsaveliev/gnomad_methods@master
+      - git+https://github.com/broadinstitute/gnomad_methods@master
       - google-cloud-secret-manager
       - google-api-python-client
 
