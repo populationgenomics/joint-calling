@@ -56,7 +56,8 @@ def compute_hard_filters(
             (sample_qc_bi_allelic_ht[ht.key].sample_qc.r_het_hom_var > 3.3)
         ), "bad_qc_metrics")
 
-        # Remove samples that fail picard metric thresholds, percents are not divided by 100, e.g. 5% == 5.00, %5 != 0.05
+        # Remove samples that fail picard metric thresholds, percents are not
+        # divided by 100, e.g. 5% == 5.00, %5 != 0.05
         ht = add_filter(ht, metrics_ht[ht.key].freemix > 5.00, "contamination")
         ht = add_filter(ht, metrics_ht[ht.key].pct_chimeras > 5.00, "chimera")
         ht = add_filter(ht, metrics_ht[ht.key].mean_coverage < 15, "coverage")
@@ -70,11 +71,20 @@ def compute_hard_filters(
 
 def _parse_metrics(sample_df, work_bucket, local_tmp_dir):
     """
-    * Contamination: freemix > 5% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-CheckContamination/*.selfSM`/`FREEMIX`)
-    * Chimeras: > 5% (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.alignment_summary_metrics`/`PCT_CHIMERAS`)
-    * Duplication: > 30% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-MarkDuplicates/*.duplicate_metrics`/`PERCENT_DUPLICATION`)
-    * Median insert size: < 250 (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.insert_size_metrics`/`MEDIAN_INSERT_SIZE`)
-    * Median coverage < 15X (`call-CollectWgsMetrics/*.wgs_metrics`/`MEDIAN_COVERAGE`)
+    * Contamination: freemix > 5%
+      `call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-CheckContamination/
+      *.selfSM`/`FREEMIX`)
+    * Chimeras: > 5%
+      `call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/
+      *.alignment_summary_metrics`/`PCT_CHIMERAS`
+    * Duplication: > 30%
+      `call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-MarkDuplicates/
+      *.duplicate_metrics`/`PERCENT_DUPLICATION`
+    * Median insert size: < 250
+      `call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/
+      *.insert_size_metrics`/`MEDIAN_INSERT_SIZE`
+    * Median coverage < 15X
+      `call-CollectWgsMetrics/*.wgs_metrics`/`MEDIAN_COVERAGE`
     """
     data = defaultdict(list)
 
