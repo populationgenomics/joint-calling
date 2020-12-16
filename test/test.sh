@@ -1,8 +1,15 @@
 #!/bin/bash
 
-cpg_qc \
-  --mt gs://playground-au/test/mt/genomes.exomesubset.mt \
+TIMESTAMP=$(date "+%Y%m%d-%H%M%S")
+
+combine_gvcfs \
+  --out-mt "gs://playground-au/ci/cpg_qc/${TIMESTAMP}/genomes.mt" \
   --sample-map gs://playground-au/test/gvcfs_gs.csv \
-  --bucket gs://playground-au/test/run \
-  --local-tmp-dir test \
-  --overwrite
+  --bucket "gs://playground-au/ci/cpg_qc/${TIMESTAMP}/" \
+  --local-tmp-dir test
+
+cpg_qc \
+  --out-mt "gs://playground-au/ci/cpg_qc/${TIMESTAMP}/genomes.mt" \
+  --sample-map gs://playground-au/test/gvcfs_gs.csv \
+  --bucket "gs://playground-au/ci/cpg_qc/${TIMESTAMP}/" \
+  --local-tmp-dir test

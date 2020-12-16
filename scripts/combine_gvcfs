@@ -1,0 +1,90 @@
+#!/bin/env python
+
+import os
+from os.path import join, splitext
+import time
+from typing import List, Optional, Tuple
+import click
+import logging
+import pandas as pd
+import hail as hl
+
+from cpg_qc.utils import file_exists
+from cpg_qc import hard_filtering, pop_strat_qc, utils
+from cpg_qc import _version
+
+logger = logging.getLogger("vcf_combiner")
+
+DEFAULT_REF = 'GRCh38'
+
+def init_hail(name, local_tmp_dir):
+    timestamp = time.strftime('%Y%m%d-%H%M')
+    hl_log = join(utils.safe_mkdir(join(local_tmp_dir, 'log')),
+                  f'{name}-{timestamp}.log')
+    hl.init(default_reference=DEFAULT_REF, log=hl_log)
+
+
+@click.command()
+@click.version_option(_version.__version__)
+@click.option('--sample-map', 'sample_map_csv', required=True, help=
+              'path to a per-sample data in a CSV file with a first line as '
+              'a header. The only 2 required columns are `sample` and `gvcf`, '
+              'in any order, possibly mixed with other columns.')
+@click.option('--out-mt', 'out_mt_path', required=True, help=
+              'path to write the MatrixTable. Must have an .mt extention. '
+              'Can be a Google Storage URL (i.e. start with `gs://`)')
+@click.option('--existing-mt', 'existing_mt_path', help=
+              'optional path to an existing MatrixTable. Must have an .mt extention. '
+              'Can be a Google Storage URL (i.e. start with `gs://`). '
+              'If provided, will be read and used as a base to get extended with the '
+              'samples in the input sample map. However this .mt directory will not '
+              'be overwritten, as the result will be written to the new location '
+              'provided with --out-mt. So the existing MT can be read-only')
+@click.option('--bucket', 'work_bucket', required=True, help=
+              'path to folder for intermediate output. '
+              'Can be a Google Storage URL (i.e. start with `gs://`).')
+@click.option('--local-tmp-dir', 'local_tmp_dir', required=True, help=
+              'local directory for temporary files and Hail logs (must be local)')
+@click.option('--overwrite', 'overwrite', is_flag=True, help=
+              'if an intermediate or a final file exists, skip running the code '
+              'that generates it')
+def main(
+        sample_map_csv,
+        existing_mt_path: str,
+        out_mt_path: str,
+        work_bucket: str,
+        local_tmp_dir: str,
+        overwrite: bool,
+):
+    """
+    Runs the Hail
+    [vcf_combiner](https://hail.is/docs/0.2/experimental/vcf_combiner.html)
+    using the GVCFs files specified in a `gvcf` column in the `sample_map_csv`
+    CSV file as input, and generates a multi-sample Matrix Table in a sparse
+    format, saved as `out_mt_path`.
+
+    If `existing_mt_path` is provided, uses that matrix table as a base to
+    extend with new samples. However, it will not overwrite `existing_mt_path`,
+    and isntead write the new table to `out_mt_path` as well.
+    """
+
+    logger.info('Running vcf_combiner')
+
+    sample_df = pd.read_csv(sample_map_csv, sep=',')
+
+    init_hail('combine_gvcfs', local_tmp_dir)
+    hl.experimental.run_combiner(
+        sample_df['gvcf'],
+        out_file=out_mt_path,
+        reference_genome=DEFAULT_REF,
+        use_genome_default_intervals=True,
+        tmp_path=os.path.join(work_bucket, 'tmp'),
+        key_by_locus_and_alleles=True,
+        overwrite=overwrite
+    )
+
+
+if __name__ == '__main__':
+    main()
+
+

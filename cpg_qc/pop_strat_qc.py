@@ -38,27 +38,27 @@ TMP_PATH_MAP = {
 
 
 def run_pop_strat_qc(
-    mt: hl.MatrixTable,
-    sample_df: pd.DataFrame,
-    work_bucket: str,
-    overwrite: bool,
+        mt: hl.MatrixTable,
+        sample_df: pd.DataFrame,
+        work_bucket: str,
+        overwrite: bool,
 
-    sex_ht: hl.Table,
-    hard_filters_ht: hl.Table,
-    sample_qc_ht: hl.Table,
+        sex_ht: hl.Table,
+        hard_filters_ht: hl.Table,
+        sample_qc_ht: hl.Table,
 
-    # Outputs:
-    pca_related_samples_to_drop_ht_path: str,
-    pop_ht_path: str,
-    stratified_metrics_ht_path: str,
-    regressed_metrics_ht_path: str,
-    release_related_samples_to_drop_ht_path: str,
+        # Outputs:
+        pca_related_samples_to_drop_ht_path: str,
+        pop_ht_path: str,
+        stratified_metrics_ht_path: str,
+        regressed_metrics_ht_path: str,
+        release_related_samples_to_drop_ht_path: str,
 
-    # Parameters:
-    kin_threshold: float,
-    n_pcs: int,
-    filtering_qc_metrics: List[str],
-    min_pop_prob: float,
+        # Parameters:
+        kin_threshold: float,
+        n_pcs: int,
+        filtering_qc_metrics: List[str],
+        min_pop_prob: float,
 ) -> Tuple[hl.Table, hl.Table, hl.Table, hl.Table, hl.Table]:
 
     tmp_path_map = {name: join(work_bucket, p) for name, p in TMP_PATH_MAP.items()}

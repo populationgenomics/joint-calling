@@ -42,6 +42,7 @@ setup(
     zip_safe=False,
     install_requires=install_requires,
     scripts=[
+        join('scripts', 'combine_gvcfs'),
         join('scripts', 'cpg_qc'),
     ],
     keywords='bioinformatics',
