@@ -13,6 +13,8 @@ import hashlib
 
 def get_validation_callback(ext: str = None, must_exist: bool = False) -> Callable:
     def callback(ctx: click.Context, param: click.Option, value: Any):
+        if value is None:
+            return value
         if ext:
             assert isinstance(value, str), value
             value = value.rstrip('/')
