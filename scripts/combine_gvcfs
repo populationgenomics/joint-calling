@@ -9,7 +9,7 @@ import logging
 import pandas as pd
 import hail as hl
 
-from cpg_qc.utils import file_exists
+from cpg_qc.utils import file_exists, get_validation_callback
 from cpg_qc import hard_filtering, pop_strat_qc, utils
 from cpg_qc import _version
 
@@ -26,15 +26,18 @@ def init_hail(name, local_tmp_dir):
 
 @click.command()
 @click.version_option(_version.__version__)
-@click.option('--sample-map', 'sample_map_csv', required=True, help=
-              'path to a per-sample data in a CSV file with a first line as '
-              'a header. The only 2 required columns are `sample` and `gvcf`, '
-              'in any order, possibly mixed with other columns.')
-@click.option('--out-mt', 'out_mt_path', required=True, help=
-              'path to write the MatrixTable. Must have an .mt extention. '
+@click.option('--sample-map', 'sample_map_csv_path', required=True,
+              callback=get_validation_callback(ext='csv', must_exist=True),
+              help='path to a per-sample data in a CSV file with '
+              'a first line as a header. The only 2 required columns are `sample` '
+              'and `gvcf`, in any order, possibly mixed with other columns.')
+@click.option('--out-mt', 'out_mt_path', required=True,
+              callback=get_validation_callback(ext='mt'),
+              help='path to write the MatrixTable. Must have an .mt extention. '
               'Can be a Google Storage URL (i.e. start with `gs://`)')
-@click.option('--existing-mt', 'existing_mt_path', help=
-              'optional path to an existing MatrixTable. Must have an .mt extention. '
+@click.option('--existing-mt', 'existing_mt_path',
+              callback=get_validation_callback(ext='mt', must_exist=True),
+              help='optional path to an existing MatrixTable. Must have an .mt extention. '
               'Can be a Google Storage URL (i.e. start with `gs://`). '
               'If provided, will be read and used as a base to get extended with the '
               'samples in the input sample map. However this .mt directory will not '
@@ -49,7 +52,7 @@ def init_hail(name, local_tmp_dir):
               'if an intermediate or a final file exists, skip running the code '
               'that generates it')
 def main(
-        sample_map_csv,
+        sample_map_csv_path: str,
         existing_mt_path: str,
         out_mt_path: str,
         work_bucket: str,
@@ -70,7 +73,7 @@ def main(
 
     logger.info('Running vcf_combiner')
 
-    sample_df = pd.read_csv(sample_map_csv, sep=',')
+    sample_df = pd.read_csv(sample_map_csv_path, sep=',')
 
     init_hail('combine_gvcfs', local_tmp_dir)
     hl.experimental.run_combiner(

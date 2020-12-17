@@ -1,6 +1,5 @@
 #!/bin/env python
 
-import os
 from os.path import join, splitext
 import time
 from typing import List, Optional, Tuple
@@ -16,7 +15,7 @@ from gnomad.utils.annotations import bi_allelic_expr
 from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.filtering import add_filters_expr
 
-from cpg_qc.utils import file_exists
+from cpg_qc.utils import file_exists, get_validation_callback
 from cpg_qc import hard_filtering, pop_strat_qc, utils
 from cpg_qc import _version
 
@@ -50,9 +49,10 @@ def init_hail(name, local_tmp_dir):
 
 @click.command()
 @click.version_option(_version.__version__)
-@click.option('--sample-map', 'sample_map_csv', required=True, help=
-              'path to a per-sample data in a CSV file with a first line as '
-              'a header. The allowed columns are the following:\n'
+@click.option('--sample-map', 'sample_map_csv_path', required=True,
+              callback=get_validation_callback(ext='csv', must_exist=True),
+              help='path to a per-sample data in a CSV file with '
+              'a first line as a header. The allowed columns are the following:\n'
               'sample,population,gvcfs,contamination,alignment_summary_metrics,'
               'duplicate_metrics,insert_size_metrics,wgs_metrics\n'
               'The first column is the only required one, and corresponds '
@@ -60,8 +60,9 @@ def init_hail(name, local_tmp_dir):
               'the "population" column will be used to train the random forest '
               'for population inferral of remaining samples. Other colums are '
               'used to apply QC hard filters to samples.')
-@click.option('--mt', 'mt_path', required=True, help=
-              'path to the input MatrixTable. Must have an .mt extention. '
+@click.option('--mt', 'mt_path', required=True,
+              callback=get_validation_callback(ext='mt', must_exist=True),
+              help='path to the input MatrixTable. Must have an .mt extention. '
               'Can be a Google Storage URL (i.e. start with `gs://`). '
               'To generate it, you can run the `combine_gvcfs` script with the '
               'same `--sample-map` input.')
@@ -90,7 +91,7 @@ def init_hail(name, local_tmp_dir):
                   'n_transversion']))
 
 def main(
-        sample_map_csv,
+        sample_map_csv_path,
         mt_path: str,
         work_bucket: str,
         local_tmp_dir: str,
@@ -101,7 +102,7 @@ def main(
         min_pop_prob: float,
         filtering_qc_metrics: str,
 ):
-    sample_df = pd.read_csv(sample_map_csv, sep=',')
+    sample_df = pd.read_csv(sample_map_csv_path, sep=',')
     path_map = {name: join(work_bucket, p) for name, p in PATH_MAP.items()}
 
     init_hail('sample_qc', local_tmp_dir)
@@ -148,11 +149,13 @@ def main(
         sample_qc_ht=sample_qc_ht,
 
         # Outputs:
-        pca_related_samples_to_drop_ht_path=path_map['pca_related_samples_to_drop_ht'],
+        pca_related_samples_to_drop_ht_path=path_map[
+            'pca_related_samples_to_drop_ht'],
         pop_ht_path=path_map['pop_ht'],
         stratified_metrics_ht_path=path_map['stratified_metrics_ht'],
         regressed_metrics_ht_path=path_map['regressed_metrics_ht'],
-        release_related_samples_to_drop_ht_path=path_map['release_related_samples_to_drop_ht'],
+        release_related_samples_to_drop_ht_path=path_map[
+            'release_related_samples_to_drop_ht'],
 
         kin_threshold=kin_threshold,
         n_pcs=n_pcs,
