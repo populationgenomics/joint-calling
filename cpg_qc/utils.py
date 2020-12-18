@@ -1,17 +1,40 @@
 import logging
 import os
-import subprocess
 import sys
 import time
 from os.path import isdir, isfile, exists
 from typing import Any, Callable
-
+import hail as hl
 import click
 from google.cloud import storage
 import hashlib
 
+DEFAULT_REF = 'GRCh38'
 
-def get_validation_callback(ext: str = None, must_exist: bool = False) -> Callable:
+
+def init_hail(name: str, local_tmp_dir: str):
+    """
+    Initialize Hail and set up the directory for logs
+    :param name: name to prefix the log file
+    :param local_tmp_dir: local directory to write Hail logs
+    :return:
+    """
+    timestamp = time.strftime('%Y%m%d-%H%M')
+    hl_log = os.path.join(safe_mkdir(
+        os.path.join(local_tmp_dir, 'log')), f'{name}-{timestamp}.log')
+    hl.init(default_reference=DEFAULT_REF, log=hl_log)
+
+
+def get_validation_callback(
+        ext: str = None,
+        must_exist: bool = False
+) -> Callable:
+    """
+    Get callback for Click parameters validation
+    :param ext: check that the path has the expected extention
+    :param must_exist: check that the input file/object/directory exists
+    :return: a callback suitable for Click parameter initialization
+    """
     def callback(ctx: click.Context, param: click.Option, value: Any):
         if value is None:
             return value
@@ -31,10 +54,22 @@ def get_validation_callback(ext: str = None, must_exist: bool = False) -> Callab
 
 
 def file_exists(path: str) -> bool:
+    """
+    Check if the object exists, where the object can be:
+        * local file
+        * local directory
+        * Google Storage object
+        * Google Storage URL representing a *.mt or *.ht Hail data,
+          in which case it will check for the existince of a
+          *.mt/_SUCCESS or *.ht/_SUCCESS file.
+    :param path: path to the file/directory/object/mt/ht
+    :return: True if the object exists
+    """
     if path.startswith('gs://'):
         bucket = path.replace('gs://', '').split('/')[0]
         path = path.replace('gs://', '').split('/', maxsplit=1)[1]
-        if path.endswith('.mt') or path.endswith('.mt/'):
+        path = path.rstrip('/')  # ".mt/" -> ".mt"
+        if any(path.endswith(f'.{suf}') for suf in ['mt', 'ht']):
             path = os.path.join(path, '_SUCCESS')
         gs = storage.Client()
         return gs.get_bucket(bucket).get_blob(path)
@@ -43,10 +78,11 @@ def file_exists(path: str) -> bool:
 
 def gs_cache_file(fpath: str, local_tmp_dir: str = None) -> str:
     """
-    :param fpath: local or gs:// path. If the latter, the file will be downloaded
-                  and cached if local_tmp_dir is provided, the local path will be
-                  returned
-    :param local_tmp_dir: a directory to cache files downloaded from cloud
+    :param fpath: local or a `gs://` path. If the latter, the file
+        will be downloaded and cached if local_tmp_dir is provided,
+        the local path will be returned
+    :param local_tmp_dir: a local directory to cache files downloaded
+        from Google Storage
     :return: file path
     """
     if fpath.startswith('gs://'):
@@ -65,7 +101,8 @@ def gs_cache_file(fpath: str, local_tmp_dir: str = None) -> str:
 
 
 def safe_mkdir(dirpath: str, descriptive_name: str = '') -> str:
-    """ Multiprocessing-safely and recursively creates a directory
+    """
+    Multiprocessing-safely and recursively creates a directory
     """
     if not dirpath:
         sys.stderr.write(f'Path is empty: {descriptive_name if descriptive_name else ""}\n')

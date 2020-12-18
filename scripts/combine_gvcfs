@@ -1,27 +1,16 @@
 #!/bin/env python
-
 import os
-from os.path import join, splitext
-import time
-from typing import List, Optional, Tuple
 import click
 import logging
 import pandas as pd
 import hail as hl
 
-from cpg_qc.utils import file_exists, get_validation_callback
-from cpg_qc import hard_filtering, pop_strat_qc, utils
+from cpg_qc.utils import get_validation_callback
+from cpg_qc import utils
 from cpg_qc import _version
 
 logger = logging.getLogger("vcf_combiner")
-
-DEFAULT_REF = 'GRCh38'
-
-def init_hail(name, local_tmp_dir):
-    timestamp = time.strftime('%Y%m%d-%H%M')
-    hl_log = join(utils.safe_mkdir(join(local_tmp_dir, 'log')),
-                  f'{name}-{timestamp}.log')
-    hl.init(default_reference=DEFAULT_REF, log=hl_log)
+logger.setLevel('INFO')
 
 
 @click.command()
@@ -37,8 +26,8 @@ def init_hail(name, local_tmp_dir):
               'Can be a Google Storage URL (i.e. start with `gs://`)')
 @click.option('--existing-mt', 'existing_mt_path',
               callback=get_validation_callback(ext='mt', must_exist=True),
-              help='optional path to an existing MatrixTable. Must have an .mt extention. '
-              'Can be a Google Storage URL (i.e. start with `gs://`). '
+              help='optional path to an existing MatrixTable. Must have an .mt '
+              'extention. Can be a Google Storage URL (i.e. start with `gs://`). '
               'If provided, will be read and used as a base to get extended with the '
               'samples in the input sample map. However this .mt directory will not '
               'be overwritten, as the result will be written to the new location '
@@ -68,18 +57,17 @@ def main(
 
     If `existing_mt_path` is provided, uses that matrix table as a base to
     extend with new samples. However, it will not overwrite `existing_mt_path`,
-    and isntead write the new table to `out_mt_path` as well.
+    and isntead write the new table to `out_mt_path`.
     """
 
-    logger.info('Running vcf_combiner')
-
     sample_df = pd.read_csv(sample_map_csv_path, sep=',')
+    utils.init_hail('combine_gvcfs', local_tmp_dir)
 
-    init_hail('combine_gvcfs', local_tmp_dir)
+    logger.info('Running Hail GVCF combiner')
     hl.experimental.run_combiner(
         sample_df['gvcf'],
         out_file=out_mt_path,
-        reference_genome=DEFAULT_REF,
+        reference_genome=utils.DEFAULT_REF,
         use_genome_default_intervals=True,
         tmp_path=os.path.join(work_bucket, 'tmp'),
         key_by_locus_and_alleles=True,

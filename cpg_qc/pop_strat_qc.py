@@ -16,27 +16,6 @@ from gnomad.utils.annotations import get_adj_expr
 logger = logging.getLogger("cpg_qc_pca")
 
 
-# Dictionary of file pointers that are used for checkpoints
-TMP_PATH_MAP = {
-    # Rows selected for PCA analysis
-    'for_pca_mt':                     'for_pca.mt',
-
-    'relatedness_ht':                 'relatedness.ht',
-    'relatedness_pca_scores_ht':      'relatedness_pca_scores.ht',
-    'pca_samples_rankings_ht':        'pca_samples_rankings.ht',
-    'pop_pca_loadings_ht':            'pop_pca_loadings.ht',
-    'pop_pca_eigenvalues_ht':         'pop_pca_eigenvalues.ht',
-    'pop_pca_scores_ht':              'pop_pca_scores.ht',
-    # Ranking of all release samples based on quality metrics. Used to remove relateds for release.
-    'release_samples_ranking_ht':     'release_samples_ranking.ht',
-
-    # Path to tab delimited file indicating inferred sample populations
-    'pop_tsv':                        'RF_pop_assignments.txt.gz',
-    # Path to RF model used for inferring sample populations
-    'pop_rf':                         'pop.RF_fit.pickle',
-}
-
-
 def run_pop_strat_qc(
         mt: hl.MatrixTable,
         sample_df: pd.DataFrame,
@@ -44,50 +23,60 @@ def run_pop_strat_qc(
         overwrite: bool,
 
         sex_ht: hl.Table,
-        hard_filters_ht: hl.Table,
+        hard_filtered_samples_ht: hl.Table,
         sample_qc_ht: hl.Table,
 
-        # Outputs:
-        pca_related_samples_to_drop_ht_path: str,
-        pop_ht_path: str,
-        stratified_metrics_ht_path: str,
-        regressed_metrics_ht_path: str,
-        release_related_samples_to_drop_ht_path: str,
-
-        # Parameters:
         kin_threshold: float,
         n_pcs: int,
         filtering_qc_metrics: List[str],
         min_pop_prob: float,
 ) -> Tuple[hl.Table, hl.Table, hl.Table, hl.Table, hl.Table]:
-
-    tmp_path_map = {name: join(work_bucket, p) for name, p in TMP_PATH_MAP.items()}
+    """
+    Computes relatedness and ancestry and re-calculates QC metrics
+    stratified by ancestry
+    :param mt: input matrix table
+    :param sample_df: DataFrame with a `sample` and a `population`
+    :param work_bucket:
+    :param overwrite:
+    :param sex_ht:
+    :param hard_filtered_samples_ht:
+    :param sample_qc_ht:
+    :param kin_threshold:
+    :param n_pcs:
+    :param filtering_qc_metrics:
+    :param min_pop_prob:
+    :return:
+    """
 
     for_pca_mt = _make_mt_for_pca(
-        mt,
-        tmp_path_map['for_pca_mt'],
-        overwrite
+        mt=mt,
+        work_bucket=work_bucket,
+        overwrite=overwrite
     )
 
     relatedness_ht = _compute_relatedness(
         for_pca_mt,
-        sample_df,
-        tmp_path_map['relatedness_pca_scores_ht'],
-        tmp_path_map['relatedness_ht'],
-        overwrite
+        sample_num=len(sample_df),
+        work_bucket=work_bucket,
+        overwrite=overwrite,
     )
 
-    pop_pca_scores_ht, pca_related_samples_to_drop_ht = _run_pca_ancestry_analysis(
-        for_pca_mt=for_pca_mt,
-        hard_filters_ht=hard_filters_ht,
+    # We don't want to include related samples into the
+    # ancestry PCA analysis
+    pca_related_samples_to_drop_ht = _flag_related_samples(
+        hard_filtered_samples_ht=hard_filtered_samples_ht,
         sex_ht=sex_ht,
         relatedness_ht=relatedness_ht,
-        pca_samples_rankings_ht_path=tmp_path_map['pca_samples_rankings_ht'],
-        pca_related_samples_to_drop_ht_path=pca_related_samples_to_drop_ht_path,
-        pop_pca_scores_ht_path=tmp_path_map['pop_pca_scores_ht'],
-        pop_pca_loadings_ht_path=tmp_path_map['pop_pca_loadings_ht'],
-        pop_pca_eigenvalues_ht_path=tmp_path_map['pop_pca_eigenvalues_ht'],
+        regressed_metrics_ht=None,
+        work_bucket=work_bucket,
         kin_threshold=kin_threshold,
+        overwrite=overwrite,
+    )
+
+    pop_pca_scores_ht = _run_pca_ancestry_analysis(
+        for_pca_mt=for_pca_mt,
+        sample_to_drop_ht=pca_related_samples_to_drop_ht,
+        work_bucket=work_bucket,
         n_pcs=n_pcs,
         overwrite=overwrite,
     )
@@ -95,9 +84,7 @@ def run_pop_strat_qc(
     pop_ht = _assign_pops(
         pop_pca_scores_ht,
         sample_df,
-        pop_ht_path=pop_ht_path,
-        pop_tsv_path=tmp_path_map['pop_tsv'],
-        pop_rf_path=tmp_path_map['pop_rf'],
+        work_bucket=work_bucket,
         min_prob=min_pop_prob,
         overwrite=overwrite,
     )
@@ -105,7 +92,7 @@ def run_pop_strat_qc(
     stratified_metrics_ht = _compute_stratified_qc(
         sample_qc_ht,
         pop_ht,
-        stratified_metrics_ht_path,
+        work_bucket=work_bucket,
         filtering_qc_metrics=filtering_qc_metrics,
         overwrite=overwrite,
     )
@@ -113,18 +100,19 @@ def run_pop_strat_qc(
     regressed_metrics_ht = _apply_regressed_filters(
         sample_qc_ht,
         pop_pca_scores_ht,
-        regressed_metrics_ht_path,
+        work_bucket=work_bucket,
         filtering_qc_metrics=filtering_qc_metrics,
         overwrite=overwrite
     )
 
-    release_related_samples_to_drop_ht = _flag_related_samples(
-        hard_filters_ht,
+    # Re-calculating the biggest set of unrelated samples
+    # now that we have metrics adjusted for population
+    final_related_samples_to_drop_ht = _flag_related_samples(
+        hard_filtered_samples_ht,
         sex_ht,
         relatedness_ht,
         regressed_metrics_ht,
-        release_samples_rankings_ht_path=tmp_path_map['release_samples_ranking_ht'],
-        release_related_samples_to_drop_ht_path=release_related_samples_to_drop_ht_path,
+        work_bucket=work_bucket,
         kin_threshold=kin_threshold,
         overwrite=overwrite
     )
@@ -134,20 +122,20 @@ def run_pop_strat_qc(
         pop_ht,
         stratified_metrics_ht,
         regressed_metrics_ht,
-        release_related_samples_to_drop_ht
+        final_related_samples_to_drop_ht
     )
 
 
 def _make_mt_for_pca(
         mt: hl.MatrixTable,
-        for_pca_mt_path: str,
+        work_bucket: str,
         overwrite: bool
 ) -> hl.MatrixTable:
     """
     Create a new MatrixTable suitable for PCA analysis of relatedness
     and ancestry.
     * Strips unnesessary entry-level fields.
-    * Kesps only bi-allelic SNPs.
+    * Keeps only bi-allelic SNPs.
     * Calls gnomad_methods's get_qc_mt() to filter rows further down based on:
       - the presence in problematic regions
       - callrate thresholds
@@ -155,272 +143,345 @@ def _make_mt_for_pca(
       - inbreeding coefficient
       - allelic frequency thresholds
       - genotypes ADJ critetria (GQ>=20, DP>=10, AB>0.2 for hets)
-    """
-    if overwrite or not file_exists(for_pca_mt_path):
-        logger.info('Making MatrixTable for PCA analysis')
-        mt = mt.select_entries(
-            'END',
-            'LGT',
-            GT=mt.LGT,
-            adj=get_adj_expr(
-                mt.LGT,
-                mt.GQ,
-                mt.DP,
-                mt.LAD
-            )
-        )
-        mt = mt.filter_rows(
-            (hl.len(mt.alleles) == 2) &
-            hl.is_snp(mt.alleles[0], mt.alleles[1])
-        )
-        mt = mt.naive_coalesce(5000)
 
-        qc_mt = get_qc_mt(
-            mt,
-            adj_only=False,
-            min_af=0.0,
-            min_inbreeding_coeff_threshold=-0.025,
-            min_hardy_weinberg_threshold=None,
-            ld_r2=None,
-            filter_lcr=False,
-            filter_decoy=False,
-            filter_segdup=False
+    :param mt: input matrix table
+    :param work_bucket: path to write checkpoints
+    :param overwrite: overwrite checkpoints if they exist
+    :return: matrix table with variants selected for PCA analysis
+    """
+    logger.info('Making MatrixTable for PCA analysis')
+    mt = mt.select_entries(
+        'END',
+        'LGT',
+        GT=mt.LGT,
+        adj=get_adj_expr(
+            mt.LGT,
+            mt.GQ,
+            mt.DP,
+            mt.LAD
         )
-        qc_mt.write(for_pca_mt_path, overwrite=True)
-    return hl.read_matrix_table(for_pca_mt_path)
+    )
+    mt = mt.filter_rows(
+        (hl.len(mt.alleles) == 2) &
+        hl.is_snp(mt.alleles[0], mt.alleles[1])
+    )
+    mt = mt.naive_coalesce(5000)
+
+    return get_qc_mt(
+        mt,
+        adj_only=False,
+        min_af=0.0,
+        min_inbreeding_coeff_threshold=-0.025,
+        min_hardy_weinberg_threshold=None,
+        ld_r2=None,
+        filter_lcr=False,
+        filter_decoy=False,
+        filter_segdup=False
+    ).checkpoint(
+        join(work_bucket, 'for_pca.mt'),
+        overwrite=overwrite, _read_if_exists=not overwrite
+    )
 
 
 def _compute_relatedness(
         for_pca_mt: hl.MatrixTable,
-        sample_df: pd.DataFrame,
-        relatedness_pca_scores_ht_path: str,
-        relatedness_ht_path: str,
+        sample_num: int,
+        work_bucket: str,
         overwrite: bool = False,
-) -> str:
+) -> hl.Table:
+    """
+    :param for_pca_mt: variants selected for PCA analysis
+    :param sample_num: total number of samples
+    :param work_bucket: path to write checkpoints
+    :param overwrite: overwrite checkpoints if they exist
+    :return: table with the following structure:
+    Row fields:
+        'i': str
+        'j': str
+        'kin': float64
+        'ibd0': float64
+        'ibd1': float64
+        'ibd2': float64
+    ----------------------------------------
+    Key: ['i', 'j']
+    """
+    logger.info('Running relatedness check')
+    eig, scores, _ = hl.hwe_normalized_pca(
+        for_pca_mt.GT,
+        k=max(1, min(sample_num // 3, 10)),
+        compute_loadings=False
+    )
+    scores = scores.checkpoint(
+        join(work_bucket, 'relatedness_pca_scores.ht'),
+        overwrite=overwrite, _read_if_exists=not overwrite
+    )
+    relatedness_ht = hl.pc_relate(
+        for_pca_mt.GT,
+        min_individual_maf=0.01,
+        scores_expr=scores[for_pca_mt.col_key].scores,
+        block_size=4096,
+        min_kinship=0.05,
+        statistics='all')
 
-    if overwrite or not file_exists(relatedness_ht_path):
-        logger.info('Running relatedness check')
-        eig, scores, _ = hl.hwe_normalized_pca(
-            for_pca_mt.GT,
-            k=max(1, min(len(sample_df) // 3, 10)),
-            compute_loadings=False
-        )
-        scores = scores.checkpoint(
-            relatedness_pca_scores_ht_path,
-            overwrite=overwrite, _read_if_exists=not overwrite)
-        relatedness_ht = hl.pc_relate(
-            for_pca_mt.GT,
-            min_individual_maf=0.01,
-            scores_expr=scores[for_pca_mt.col_key].scores,
-            block_size=4096,
-            min_kinship=0.05,
-            statistics='all')
-
-        # Converting keys for type struct{str} to str to align
-        # with the rank_ht `s` key:
-        relatedness_ht = relatedness_ht.key_by(
-            i=relatedness_ht.i.s,
-            j=relatedness_ht.j.s
-        )
-
-        relatedness_ht.write(relatedness_ht_path, overwrite=True)
-
-    return hl.read_table(relatedness_ht_path)
+    # Converting keys for type struct{str} to str to align
+    # with the rank_ht `s` key:
+    relatedness_ht = relatedness_ht.key_by(
+        i=relatedness_ht.i.s,
+        j=relatedness_ht.j.s
+    )
+    return relatedness_ht.checkpoint(
+        join(work_bucket, 'relatendess.ht'),
+        overwrite=overwrite, _read_if_exists=not overwrite
+    )
 
 
 def _run_pca_ancestry_analysis(
         for_pca_mt: hl.MatrixTable,
-        hard_filters_ht: hl.Table,
-        sex_ht: hl.Table,
-        relatedness_ht: hl.Table,
-        pca_samples_rankings_ht_path: str,
-        pca_related_samples_to_drop_ht_path: str,
-        pop_pca_scores_ht_path: str,
-        pop_pca_loadings_ht_path: str,
-        pop_pca_eigenvalues_ht_path: str,
-        kin_threshold: float,
+        sample_to_drop_ht: hl.Table,
+        work_bucket: str,
         n_pcs: int,
         overwrite: bool = False,
-) -> Tuple[hl.Table, hl.Table]:
-
-    if overwrite or not all(file_exists(fp) for fp in [
-            pca_related_samples_to_drop_ht_path,
-            pop_pca_scores_ht_path]):
-        logger.info('Running PCA ancestry analysis')
-
-        rank_ht = _compute_sample_rankings(
-            hard_filters_ht,
-            sex_ht,
-            use_qc_metrics_filters=False,  # QC metrics filters ("regressed_metrics_ht")
-                                           # do not exist at this point
-        )
-        rank_ht = rank_ht.checkpoint(
-            pca_samples_rankings_ht_path,
-            overwrite=overwrite, _read_if_exists=not overwrite)
-        filtered_samples = hl.literal(rank_ht.aggregate(
-            hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))
-        ))
-        samples_to_drop = compute_related_samples_to_drop(
-            relatedness_ht,
-            rank_ht,
-            kin_threshold,
-            filtered_samples=filtered_samples
-        )
-        samples_to_drop.checkpoint(
-            pca_related_samples_to_drop_ht_path,
-            overwrite=overwrite, _read_if_exists=not overwrite)
-        # Adjusting the number of principal components not to exceed the number of samples
-        n_pcs = min(n_pcs, for_pca_mt.cols().count() - samples_to_drop.count())
-        pop_pca_eignevalues, pop_pca_scores_ht, pop_pca_loadings_ht = run_pca_with_relateds(
-            for_pca_mt,
-            samples_to_drop,
-            n_pcs=n_pcs
-        )
-        pop_pca_scores_ht.write(pop_pca_scores_ht_path, overwrite=True)
-        pop_pca_loadings_ht.write(pop_pca_loadings_ht_path, overwrite=True)
-        with hl.utils.hadoop_open(pop_pca_eigenvalues_ht_path, mode='w') as f:
-            f.write(",".join([str(x) for x in pop_pca_eignevalues]))
-
-    return (
-        hl.read_table(pop_pca_scores_ht_path),
-        hl.read_table(pca_related_samples_to_drop_ht_path),
+) -> hl.Table:
+    """
+    :param for_pca_mt: variants usable for PCA analysis
+        of the same type, identifying the pair of samples for each row
+    :param work_bucket: bucket path to write checkpoints
+    :param sample_to_drop_ht: table with samples to drop based on
+        previous relatedness analysis. With a `rank` row field
+    :param n_pcs: maximum number of principal components
+    :param overwrite: overwrite checkpoints if they exist
+    :return: a Hail table `scores_ht` with a row field:
+        'scores': array<float64>
+    """
+    logger.info('Running PCA ancestry analysis')
+    # Adjusting the number of principal components not to exceed the
+    # number of samples
+    n_pcs = min(n_pcs, for_pca_mt.cols().count() - sample_to_drop_ht.count())
+    eignevalues, scores_ht, loadings_ht = run_pca_with_relateds(
+        for_pca_mt,
+        sample_to_drop_ht,
+        n_pcs=n_pcs
     )
+    scores_ht.checkpoint(
+        join(work_bucket, 'pop_pca_scores.ht'),
+        overwrite=overwrite, _read_if_exists=not overwrite
+    )
+    loadings_ht.checkpoint(
+        join(work_bucket, 'pop_pca_loadings.ht'),
+        overwrite=overwrite, _read_if_exists=not overwrite
+    )
+    eignevalues_txt = join(work_bucket, 'pop_pca_eigenvalues.txt')
+    with hl.utils.hadoop_open(eignevalues_txt, mode='w') as f:
+        f.write(",".join([str(x) for x in eignevalues]))
+
+    return scores_ht
 
 
 def _assign_pops(
         pop_pca_scores_ht: hl.Table,
         sample_df: pd.DataFrame,
-        pop_ht_path: str,
-        pop_tsv_path: str,
-        pop_rf_path: str,
+        work_bucket: str,
         min_prob: float,
         max_mislabeled_training_samples: int = 50,
         overwrite: bool = False,
 ) -> hl.Table:
+    """
+    Take population PCA results and training data, and run random forest
+    to assign global population labels.
 
-    if overwrite or not all(file_exists(fp) for fp in [
-            pop_ht_path, pop_tsv_path, pop_rf_path]):
-        logger.info("Assigning global population labels")
+    :param pop_pca_scores_ht: output table of `_run_pca_ancestry_analysis()`
+        with a row field 'scores': array<float64>
+    :param sample_df: DataFrame with a `sample` and a `population` column.
+        Samples for which the latter is defined will be used to train
+        the random forest
+    :param work_bucket: bucket to write checkpoints and intermediate files
+    :param min_prob: min probability of belonging to a given population
+        for the population to be set (otherwise set to `None`)
+    :param max_mislabeled_training_samples: keep rerunning until the number
+        of mislabeled samples is below this number
+    :param overwrite: overwrite checkpoints if they exist
+    :return: a table with the following row fields:
+        'training_pop': str
+        'pca_scores': array<float64>
+        'pop': str
+        'prob_CEU': float64
+    """
+    logger.info("Assigning global population labels")
 
-        samples_with_pop_df = sample_df\
-            [['sample', 'population']]\
-            [pd.notna(sample_df['population'])]\
-            .rename(columns={'sample': 's'})
-        samples_with_pop_ht = hl.Table.from_pandas(samples_with_pop_df, key='s')
-        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
-            training_pop=samples_with_pop_ht[pop_pca_scores_ht.key].population
+    samples_with_pop_df = sample_df\
+        [['sample', 'population']]\
+        [pd.notna(sample_df['population'])]\
+        .rename(columns={'sample': 's'})
+    samples_with_pop_ht = hl.Table.from_pandas(samples_with_pop_df, key='s')
+    pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+        training_pop=samples_with_pop_ht[pop_pca_scores_ht.key].population
+    )
+
+    def _run_assign_population_pcs(pop_pca_scores_ht, min_prob):
+        examples_num = pop_pca_scores_ht.aggregate(
+            hl.agg.count_where(hl.is_defined(pop_pca_scores_ht.training_pop))
         )
+        logger.info(f'Running RF using {examples_num} training examples')
+        pop_ht, pops_rf_model = assign_population_pcs(
+            pop_pca_scores_ht,
+            pc_cols=pop_pca_scores_ht.scores,
+            known_col='training_pop',
+            min_prob=min_prob
+        )
+        n_mislabeled_samples = pop_ht.aggregate(
+            hl.agg.count_where(pop_ht.training_pop != pop_ht.pop))
+        return pop_ht, pops_rf_model, n_mislabeled_samples
 
-        def _run_assign_population_pcs(pop_pca_scores_ht, min_prob):
-            examples_num = pop_pca_scores_ht.aggregate(
-                hl.agg.count_where(hl.is_defined(pop_pca_scores_ht.training_pop))
+    pop_ht, pops_rf_model, n_mislabeled_samples = \
+        _run_assign_population_pcs(pop_pca_scores_ht, min_prob)
+    while n_mislabeled_samples > max_mislabeled_training_samples:
+        logger.info(f"Found {n_mislabeled_samples} samples "
+                    f"labeled differently from their known pop. "
+                    f"Re-running without them.")
+
+        pop_ht = pop_ht[pop_pca_scores_ht.key]
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+            training_pop=hl.or_missing(
+                (pop_ht.training_pop == pop_ht.pop),
+                pop_pca_scores_ht.training_pop
             )
-            logger.info(f'Running RF using {examples_num} training examples')
-            pop_ht, pops_rf_model = assign_population_pcs(
-                pop_pca_scores_ht,
-                pc_cols=pop_pca_scores_ht.scores,
-                known_col='training_pop',
-                min_prob=min_prob
-            )
-            n_mislabeled_samples = pop_ht.aggregate(
-                hl.agg.count_where(pop_ht.training_pop != pop_ht.pop))
-            return pop_ht, pops_rf_model, n_mislabeled_samples
+        ).persist()
 
         pop_ht, pops_rf_model, n_mislabeled_samples = \
             _run_assign_population_pcs(pop_pca_scores_ht, min_prob)
-        while n_mislabeled_samples > max_mislabeled_training_samples:
-            logger.info(f"Found {n_mislabeled_samples} samples "
-                        f"labeled differently from their known pop. "
-                        f"Re-running without them.")
 
-            pop_ht = pop_ht[pop_pca_scores_ht.key]
-            pop_pca_scores_ht = pop_pca_scores_ht.annotate(
-                training_pop=hl.or_missing(
-                    (pop_ht.training_pop == pop_ht.pop),
-                    pop_pca_scores_ht.training_pop
-                )
-            ).persist()
+    pop_ht = pop_ht.checkpoint(
+        join(work_bucket, 'pop.ht'),
+        overwrite=overwrite, _read_if_exists=not overwrite
+    )
 
-            pop_ht, pops_rf_model, n_mislabeled_samples = \
-                _run_assign_population_pcs(pop_pca_scores_ht, min_prob)
-
-        pop_ht = pop_ht.checkpoint(
-            pop_ht_path,
-            overwrite=overwrite, _read_if_exists=not overwrite)
+    # Writing a tab delimited file indicating inferred sample populations
+    pop_tsv_file = join(work_bucket, 'RF_pop_assignments.txt.gz')
+    if overwrite or not file_exists(pop_tsv_file):
         pc_cnt = min(hl.min(10, hl.len(pop_ht.pca_scores)).collect())
         pop_ht.transmute(
             **{f'PC{i + 1}': pop_ht.pca_scores[i] for i in range(pc_cnt)}
-        ).export(pop_tsv_path)
-        with hl.hadoop_open(pop_rf_path, 'wb') as out:
+        ).export(pop_tsv_file)
+
+    # Writing the RF model used for inferring sample populations
+    pop_rf_file = join(work_bucket, 'pop.RF_fit.pickle')
+    if overwrite or not file_exists(pop_rf_file):
+        with hl.hadoop_open(pop_rf_file, 'wb') as out:
             pickle.dump(pops_rf_model, out)
 
-    return hl.read_table(pop_ht_path)
+    return pop_ht
 
 
 def _compute_stratified_qc(
         sample_qc_ht: hl.Table,
         pop_ht: hl.Table,
-        stratified_metrics_ht_path: str,
+        work_bucket: str,
         filtering_qc_metrics: List[str],
         overwrite: bool = False,
 ) -> hl.Table:
     """
     Computes median, MAD, and upper and lower thresholds for each metric
-    in `filtering_qc_metrics`, stratified by `pop` field in `pop_ht`
-    """
-    if overwrite or not file_exists(stratified_metrics_ht_path):
-        logger.info(f'Computing stratified QC metrics filters using '
-                    f'metrics: {", ".join(filtering_qc_metrics)}')
+    in `filtering_qc_metrics`, groupped by `pop` field in `pop_ht`
 
-        sample_qc_ht = sample_qc_ht.annotate(
-            qc_pop=pop_ht[sample_qc_ht.key].pop
-        )
-        stratified_metrics_ht = compute_stratified_metrics_filter(
-            sample_qc_ht,
-            qc_metrics={metric: sample_qc_ht.sample_qc[metric]
-                        for metric in filtering_qc_metrics},
-            strata={'qc_pop': sample_qc_ht.qc_pop},
-            metric_threshold={'n_singleton': (4.0, 8.0)}
-        )
-        stratified_metrics_ht.write(stratified_metrics_ht_path,
-                                    overwrite=True)
-    return hl.read_table(stratified_metrics_ht_path)
+    :param sample_qc_ht: table with a row field
+        `sample_qc` = struct { n_snp: int64, n_singleton: int64, ... }
+    :param pop_ht: table with a `pop` row field
+    :param work_bucket: bucket to write checkpoints
+    :param filtering_qc_metrics: metrics to annotate with
+    :param overwrite: overwrite checkpoints if they exist
+    :return: table with the following structure:
+        Global fields:
+            'qc_metrics_stats': dict<tuple (
+                str
+                ), struct {
+                    n_snp: struct {
+                        median: int64,
+                        mad: float64,
+                        lower: float64,
+                        upper: float64
+                    },
+                    n_singleton: struct {
+                        ...
+                    },
+                    ...
+            }
+        Row fields:
+            'fail_n_snp': bool
+            'fail_n_singleton': bool
+            ...
+            'qc_metrics_filters': set<str>
+    """
+    logger.info(f'Computing stratified QC metrics filters using '
+                f'metrics: {", ".join(filtering_qc_metrics)}')
+
+    sample_qc_ht = sample_qc_ht.annotate(
+        qc_pop=pop_ht[sample_qc_ht.key].pop
+    )
+    stratified_metrics_ht = compute_stratified_metrics_filter(
+        sample_qc_ht,
+        qc_metrics={metric: sample_qc_ht.sample_qc[metric]
+                    for metric in filtering_qc_metrics},
+        strata={'qc_pop': sample_qc_ht.qc_pop},
+        metric_threshold={'n_singleton': (4.0, 8.0)}
+    )
+    return stratified_metrics_ht.checkpoint(
+        join(work_bucket, 'stratified_metrics.ht'),
+        overwrite=overwrite, _read_if_exists=overwrite
+    )
 
 
 def _flag_related_samples(
-        hard_filters_ht: hl.Table,
+        hard_filtered_samples_ht: hl.Table,
         sex_ht: hl.Table,
         relatedness_ht: hl.Table,
-        regressed_metrics_ht: hl.Table,
-        release_samples_rankings_ht_path: str,
-        release_related_samples_to_drop_ht_path: str,
+        regressed_metrics_ht: Optional[hl.Table],
+        work_bucket: str,
         kin_threshold: float,
         overwrite: bool = False,
 ) -> hl.Table:
+    """
+    Flag samples to drop based on relatedness, so the final set
+    has only unrelated samples, best quality one per family
 
-    if overwrite or not file_exists(release_related_samples_to_drop_ht_path):
-        logger.info('Flagging related samples to drop')
-        rank_ht = _compute_sample_rankings(
-            hard_filters_ht,
-            sex_ht,
-            use_qc_metrics_filters=True,
-            regressed_metrics_ht=regressed_metrics_ht,
+    :param hard_filtered_samples_ht: table with failed samples
+        and a `hard_filters` row field
+    :param sex_ht: table with a `chr20_mean_dp` row field
+    :param relatedness_ht: table keyed by exactly two fields (i and j)
+        of the same type, identifying the pair of samples for each row
+    :param regressed_metrics_ht: optional table with a `qc_metrics_filters`
+        field calculated with _apply_regressed_filters() from PCA scores
+    :param work_bucket: bucket to write checkpoints
+    :param kin_threshold: kinship threshold to call two samples as related
+    :param overwrite: overwrite checkpoints if they exist
+    :return: a table of the samples to drop along with their rank
+        row field: 'rank': int64
+    """
+    logger.info('Flagging related samples to drop')
+    label = "final" if regressed_metrics_ht is not None else "intermediate"
+    rank_ht = _compute_sample_rankings(
+        hard_filtered_samples_ht,
+        sex_ht,
+        use_qc_metrics_filters=regressed_metrics_ht is not None,
+        regressed_metrics_ht=regressed_metrics_ht,
+    ).checkpoint(
+        join(work_bucket, f'{label}_samples_rankings.ht'),
+        overwrite=overwrite, _read_if_exists=not overwrite
+    )
+    filtered_samples = hl.literal(
+        rank_ht.aggregate(
+            hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))
         )
-        rank_ht = rank_ht.checkpoint(
-            release_samples_rankings_ht_path,
-            overwrite=overwrite, _read_if_exists=not overwrite
-        )
-        filtered_samples = hl.literal(rank_ht.aggregate(
-            hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))))
-        samples_to_drop = compute_related_samples_to_drop(
-            relatedness_ht,
-            rank_ht,
-            kin_threshold=kin_threshold,
-            filtered_samples=filtered_samples
-        )
-        samples_to_drop.write(release_related_samples_to_drop_ht_path, overwrite=True)
-
-    return hl.read_table(release_related_samples_to_drop_ht_path)
+    )
+    samples_to_drop_ht = compute_related_samples_to_drop(
+        relatedness_ht,
+        rank_ht,
+        kin_threshold=kin_threshold,
+        filtered_samples=filtered_samples
+    )
+    return samples_to_drop_ht.checkpoint(
+        join(work_bucket, f'{label}_related_samples_to_drop.ht'),
+        overwrite=True, _read_if_exists=not overwrite
+    )
 
 
 def _compute_sample_rankings(
@@ -430,13 +491,20 @@ def _compute_sample_rankings(
         regressed_metrics_ht: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
-    :param hard_filtered_samples_ht: HT with hard_filters row field
-    :param sex_ht: HT with chr20_mean_dp row field
+    Orders samples by hard filters and coverage and adds rank,
+    which is the lower the better.
+
+    :param hard_filtered_samples_ht: table with failed samples
+        and a `hard_filters` row field
+    :param sex_ht: table with a `chr20_mean_dp` row field
     :param use_qc_metrics_filters: apply population-stratified QC filters
-    :param regressed_metrics_ht: applied only if use_qc_metrics_filters
-    :return: table ordered according to rank
+    :param regressed_metrics_ht: table with a `qc_metrics_filters` field.
+        Used only if `use_qc_metrics_filters` is True.
+    :return: table ordered by rank, with the following row fields:
+        `rank`, `filtered`
     """
-    ht = sex_ht.select(
+    ht = sex_ht.drop(*[k for k in sex_ht.globals.dtype.keys()])
+    ht = ht.select(
         'chr20_mean_dp',
         filtered=hl.or_else(
             hl.len(hard_filtered_samples_ht[sex_ht.key].hard_filters) > 0,
@@ -458,50 +526,98 @@ def _compute_sample_rankings(
         ht.filtered,
         hl.desc(ht.chr20_mean_dp)
     ).add_index(name='rank')
-
     return ht.key_by('s').select('filtered', 'rank')
 
 
 def _apply_regressed_filters(
         sample_qc_ht: hl.Table,
-        ancestry_pca_scores_ht: hl.Table,
-        regressed_metrics_ht_path: str,
+        pop_pca_scores_ht: hl.Table,
+        work_bucket: str,
         filtering_qc_metrics: List[str],
         overwrite: bool = False,
 ) -> hl.Table:
     """
-    Compute QC metrics adjusted for popopulation
+    Compute QC metrics adjusted for population
+
+    :param sample_qc_ht: table with a row field
+       `bi_allelic_sample_qc` =
+          struct { n_snp: int64, n_singleton: int64, ... }
+    :param pop_pca_scores_ht: table with a `scores` row field
+    :param work_bucket: bucket to write checkpoints
+    :param filtering_qc_metrics: metrics to annotate with
+    :param overwrite: overwrite checkpoints if they exist
+    :return: a table with the folliwing structure:
+        Global fields:
+            'lms': struct {
+                n_snp: struct {
+                    beta: array<float64>,
+                    standard_error: array<float64>,
+                    t_stat: array<float64>,
+                    p_value: array<float64>,
+                    multiple_standard_error: float64,
+                    multiple_r_squared: float64,
+                    adjusted_r_squared: float64,
+                    f_stat: float64,
+                    multiple_p_value: float64,
+                    n: int32
+                },
+                n_singleton: struct {
+                    ...
+                },
+                ...
+            }
+            'qc_metrics_stats': struct {
+                n_snp_residual: struct {
+                    median: float64,
+                    mad: float64,
+                    lower: float64,
+                    upper: float64
+                },
+                n_singleton_residual: struct {
+                    ...
+                },
+                ...
+            }
+        Row fields:
+            's': str
+            'n_snp_residual': float64
+            'n_singleton_residual': float64
+            ...
+            'fail_n_snp_residual': bool
+            'fail_n_singleton_residual': bool
+            ...
+            'qc_metrics_filters': set<str>
     """
 
-    if overwrite or not file_exists(regressed_metrics_ht_path):
-        logger.info('Compute QC metrics adjusted for popopulation')
+    logger.info('Compute QC metrics adjusted for popopulation')
 
-        sample_qc_ht = sample_qc_ht.select(
-            **sample_qc_ht.sample_qc,
-            **ancestry_pca_scores_ht[sample_qc_ht.key],
-            releasable=hl.bool(True)
-        )
-        residuals_ht = compute_qc_metrics_residuals(
-            ht=sample_qc_ht,
-            pc_scores=sample_qc_ht.scores,
-            qc_metrics={metric: sample_qc_ht[metric] for metric in
-                        filtering_qc_metrics},
-            regression_sample_inclusion_expr=sample_qc_ht.releasable
-        )
+    sample_qc_ht = sample_qc_ht.select(
+        **sample_qc_ht.bi_allelic_sample_qc,
+        **pop_pca_scores_ht[sample_qc_ht.key],
+        releasable=hl.bool(True)
+    )
+    residuals_ht = compute_qc_metrics_residuals(
+        ht=sample_qc_ht,
+        pc_scores=sample_qc_ht.scores,
+        qc_metrics={metric: sample_qc_ht[metric] for metric in
+                    filtering_qc_metrics},
+        regression_sample_inclusion_expr=sample_qc_ht.releasable
+    )
 
-        stratified_metrics_ht = compute_stratified_metrics_filter(
-            ht=residuals_ht,
-            qc_metrics=dict(residuals_ht.row_value),
-            metric_threshold={'n_singleton_residual': (4.0, 8.0)}
-        )
+    stratified_metrics_ht = compute_stratified_metrics_filter(
+        ht=residuals_ht,
+        qc_metrics=dict(residuals_ht.row_value),
+        metric_threshold={'n_singleton_residual': (4.0, 8.0)}
+    )
 
-        residuals_ht = residuals_ht.annotate(
-            **stratified_metrics_ht[residuals_ht.key]
-        )
-        residuals_ht = residuals_ht.annotate_globals(
-            **stratified_metrics_ht.index_globals()
-        )
+    residuals_ht = residuals_ht.annotate(
+        **stratified_metrics_ht[residuals_ht.key]
+    )
+    residuals_ht = residuals_ht.annotate_globals(
+        **stratified_metrics_ht.index_globals()
+    )
 
-        residuals_ht.write(regressed_metrics_ht_path, overwrite=overwrite)
-
-    return hl.read_table(regressed_metrics_ht_path)
+    return residuals_ht.checkpoint(
+        join(work_bucket, 'regressed_metrics.ht'),
+        overwrite=overwrite, _read_if_exists=not overwrite
+    )
