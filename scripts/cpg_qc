@@ -60,14 +60,6 @@ logger.setLevel('INFO')
               help='number of PCs to compute for ancestry PCA')
 @click.option('--min-pop-prob', 'min_pop_prob', default=0.9,
               help='minimum RF prob for pop assignment')
-@click.option('--filtering-qc-metrics', 'filtering_qc_metrics',
-              help="List of QC metrics for filtering.",
-              default=','.join([
-                  'n_snp', 'n_singleton', 'r_ti_tv',
-                  'r_insertion_deletion', 'n_insertion', 'n_deletion',
-                  'r_het_hom_var', 'n_het', 'n_hom_var', 'n_transition',
-                  'n_transversion']))
-
 def main(
         sample_map_csv_path,
         mt_path: str,
@@ -79,28 +71,20 @@ def main(
         kin_threshold: float,
         n_pcs: int,
         min_pop_prob: float,
-        filtering_qc_metrics: str,
 ):
     sample_df = pd.read_csv(sample_map_csv_path, sep=',')
     utils.init_hail('sample_qc', local_tmp_dir)
     mt = hl.read_matrix_table(mt_path)
 
     # `sample_qc_ht` row fields: sample_qc, bi_allelic_sample_qc
-    sample_qc_ht = _compute_sample_qc(
-        mt,
-        work_bucket,
-        overwrite=overwrite
-    )
+    sample_qc_ht = _compute_sample_qc(mt, work_bucket, overwrite)
 
     # `sex_ht` row fields: is_female, chr20_mean_dp, sex_karyotype
-    sex_ht = _infer_sex(
-        mt,
-        work_bucket,
-        overwrite=overwrite)
+    sex_ht = _infer_sex(mt, work_bucket, overwrite)
 
-    # `hard_filters_ht` row fields: hard_filters
-    # includes only failed samples
-    hard_filters_ht = hard_filtering.compute_hard_filters(
+    # `hard_filtered_samples_ht` row fields: hard_filters;
+    # also includes only failed samples
+    hard_filtered_samples_ht = hard_filtering.compute_hard_filters(
         mt,
         sex_ht,
         sample_qc_ht,
@@ -111,31 +95,72 @@ def main(
         overwrite=overwrite
     )
 
-    (all_related_samples_to_drop_ht,
-     pop_ht,
-     stratified_metrics_ht,
-     regressed_metrics_ht,
-     final_related_samples_to_drop_ht) = pop_strat_qc.run_pop_strat_qc(
-        mt,
-        sample_df,
-        work_bucket=work_bucket,
-        overwrite=overwrite,
+    # Subset the matrix table to the variants suitable for PCA
+    # (for both relateness and population analysis)
+    for_pca_mt = pop_strat_qc.make_mt_for_pca(mt, work_bucket, overwrite)
+
+    relatedness_ht = pop_strat_qc.compute_relatedness(
+        for_pca_mt, work_bucket, overwrite)
+
+    # We don't want to include related samples into the
+    # ancestry PCA analysis
+    pca_related_samples_to_drop_ht = pop_strat_qc.flag_related_samples(
+        hard_filtered_samples_ht=hard_filtered_samples_ht,
         sex_ht=sex_ht,
-        hard_filtered_samples_ht=hard_filters_ht,
-        sample_qc_ht=sample_qc_ht,
+        relatedness_ht=relatedness_ht,
+        regressed_metrics_ht=None,
+        work_bucket=work_bucket,
         kin_threshold=kin_threshold,
-        n_pcs=n_pcs,
-        filtering_qc_metrics=filtering_qc_metrics.split(","),
-        min_pop_prob=min_pop_prob
+        overwrite=overwrite,
     )
 
+    pop_pca_scores_ht = pop_strat_qc.run_pca_ancestry_analysis(
+        for_pca_mt=for_pca_mt,
+        sample_to_drop_ht=pca_related_samples_to_drop_ht,
+        work_bucket=work_bucket,
+        n_pcs=n_pcs,
+        overwrite=overwrite,
+    )
+
+    # Using calculated PCA scores as well as training samples with known
+    # `population` tag, to assign population tags to remaining samples
+    pop_ht = pop_strat_qc.assign_pops(
+        pop_pca_scores_ht,
+        sample_df,
+        work_bucket=work_bucket,
+        min_prob=min_pop_prob,
+        overwrite=overwrite,
+    )
+
+    # Re-computing QC metrics per population and annotating failing samples
+    regressed_metrics_ht = pop_strat_qc.apply_regressed_filters(
+        sample_qc_ht,
+        pop_pca_scores_ht,
+        work_bucket=work_bucket,
+        overwrite=overwrite
+    )
+
+    # Re-calculating the maximum set of unrelated samples now that
+    # we have metrics adjusted for population, so newly QC-failed samples
+    # are excluded
+    final_related_samples_to_drop_ht = pop_strat_qc.flag_related_samples(
+        hard_filtered_samples_ht,
+        sex_ht,
+        relatedness_ht,
+        regressed_metrics_ht,
+        work_bucket=work_bucket,
+        kin_threshold=kin_threshold,
+        overwrite=overwrite
+    )
+
+    # Combine all intermediate tables together
     _generate_metadata(
         sample_qc_ht=sample_qc_ht,
         sex_ht=sex_ht,
-        hard_filters_ht=hard_filters_ht,
+        hard_filtered_samples_ht=hard_filtered_samples_ht,
         regressed_metrics_ht=regressed_metrics_ht,
         pop_ht=pop_ht,
-        all_related_samples_to_drop_ht=all_related_samples_to_drop_ht,
+        all_related_samples_to_drop_ht=pca_related_samples_to_drop_ht,
         final_related_samples_to_drop_ht=final_related_samples_to_drop_ht,
         meta_ht_path=meta_ht_path,
         meta_tsv_path=meta_ht_path.rstrip('/').replace('.ht', '.tsv'),
@@ -159,13 +184,16 @@ def _compute_sample_qc(
             <output of hl.sample_qc() (n_filtered, n_hom_ref, etc)>
         }
         'bi_allelic_sample_qc': {
-            <output of hl.sample_qc()>
+            <output of hl.sample_qc() for bi-allelic variants only>
         }
         'multi_allelic_sample_qc': {
-            <output of hl.sample_qc()>
+            <output of hl.sample_qc() for multi-allelic variants only>
         }
     """
-    logger.info('Running sample QC')
+    logger.info('Sample QC')
+    out_ht_path = join(work_bucket, 'sample_qc.ht')
+    if not overwrite and file_exists(out_ht_path):
+        return hl.read_table(out_ht_path)
 
     mt = filter_to_autosomes(mt)
     mt = mt.filter_rows(
@@ -179,8 +207,8 @@ def _compute_sample_qc(
             'bi_allelic': bi_allelic_expr(mt),
             'multi_allelic': ~bi_allelic_expr(mt)
         },
-        tmp_ht_prefix=join(work_bucket, 'sample_qc'),
-        gt_col='LGT'
+        tmp_ht_prefix=None,
+        gt_col='LGT',
     )
 
     # Remove annotations that cannot be computed from the sparse format
@@ -191,11 +219,7 @@ def _compute_sample_qc(
         }
     )
     sample_qc_ht = sample_qc_ht.repartition(100)
-    sample_qc_ht.checkpoint(
-        join(work_bucket, 'sample_qc.ht'),
-        overwrite=overwrite,
-        _read_if_exists=not overwrite
-    )
+    sample_qc_ht.write(out_ht_path, overwrite=True)
     return sample_qc_ht
 
 
@@ -210,39 +234,40 @@ def _infer_sex(
     :param work_bucket: bucket to write checkpoints
     :param overwrite: overwrite checkpoints if they exist
     :return: a Hail table with the following row fields:
-    's': str
-    'is_female': bool
-    'f_stat': float64
-    'n_called': int64
-    'expected_homs': float64
-    'observed_homs': int64
-    'chr20_mean_dp': float32
-    'chrX_mean_dp': float32
-    'chrY_mean_dp': float32
-    'chrX_ploidy': float32
-    'chrY_ploidy': float32
-    'X_karyotype': str
-    'Y_karyotype': str
-    'sex_karyotype': str
+        'is_female': bool
+        'f_stat': float64
+        'n_called': int64
+        'expected_homs': float64
+        'observed_homs': int64
+        'chr20_mean_dp': float32
+        'chrX_mean_dp': float32
+        'chrY_mean_dp': float32
+        'chrX_ploidy': float32
+        'chrY_ploidy': float32
+        'X_karyotype': str
+        'Y_karyotype': str
+        'sex_karyotype': str
     """
-
     logger.info('Inferring sex')
-    return annotate_sex(
+    out_ht_path = join(work_bucket, 'sex.ht')
+    if not overwrite and file_exists(out_ht_path):
+        return hl.read_table(out_ht_path)
+
+    ht = annotate_sex(
         mt,
         excluded_intervals=telomeres_and_centromeres.ht(),
         aaf_threshold=0.001,
         f_stat_cutoff=0.5,
         gt_expr="LGT",
-    ).checkpoint(
-        join(work_bucket, 'sex.ht'),
-        overwrite=overwrite, _read_if_exists=not overwrite
     )
+    ht.write(out_ht_path, overwrite=True)
+    return ht
 
 
 def _generate_metadata(
         sample_qc_ht: hl.Table,
         sex_ht: hl.Table,
-        hard_filters_ht: hl.Table,
+        hard_filtered_samples_ht: hl.Table,
         regressed_metrics_ht: hl.Table,
         pop_ht: hl.Table,
         all_related_samples_to_drop_ht: hl.Table,
@@ -257,7 +282,7 @@ def _generate_metadata(
     :param sample_qc_ht: table with a `bi_allelic_sample_qc` row field
     :param sex_ht: table with the follwing row fields:
         `f_stat`, `n_called`, `expected_homs`, `observed_homs`
-    :param hard_filters_ht: table with a `hard_filters` field
+    :param hard_filtered_samples_ht: table with a `hard_filters` field
     :param regressed_metrics_ht: table with global fields
         `lms`, `qc_metrics_stats`;
         and metric row fields `n_snp_residual`, `r_ti_tv_residual`, etc;
@@ -283,7 +308,6 @@ def _generate_metadata(
                 not `regressed_metrics_ht.qc_metrics_filters`
             'release': bool = high_quality & not `release_related`
     """
-
     logger.info('Generate the metadata HT and TSV files')
 
     meta_ht = sex_ht.transmute(
@@ -301,7 +325,7 @@ def _generate_metadata(
 
     meta_ht = meta_ht.annotate(
         sample_qc=sample_qc_ht[meta_ht.key].bi_allelic_sample_qc,
-        **hard_filters_ht[meta_ht.key],
+        **hard_filtered_samples_ht[meta_ht.key],
         **regressed_metrics_ht[meta_ht.key],
         **pop_ht[meta_ht.key],
         release_related=hl.is_defined(

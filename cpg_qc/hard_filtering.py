@@ -5,7 +5,7 @@ import pandas as pd
 import hail as hl
 import logging
 
-from cpg_qc.utils import gs_cache_file
+from cpg_qc.utils import gs_cache_file, file_exists
 
 logger = logging.getLogger("cpg_qc_hard_filtering")
 
@@ -46,6 +46,9 @@ def compute_hard_filters(
             coverage, insert_size }
     """
     logger.info('Generating hard filters')
+    out_ht_path = join(work_bucket, 'hard_filters.ht')
+    if not overwrite and file_exists(out_ht_path):
+        return hl.read_table(out_ht_path)
 
     metrics_ht = _parse_picard_metrics(sample_df, work_bucket, local_tmp_dir)
     metrics_ht.checkpoint(
@@ -92,11 +95,8 @@ def compute_hard_filters(
     ht = add_filter(ht, metrics_ht[ht.key].median_insert_size < 250,
                     "insert_size")
     ht = ht.filter(hl.len(ht.hard_filters) > 0)
-    return ht.checkpoint(
-        join(work_bucket, 'hard_filters.ht'),
-        overwrite=overwrite,
-        _read_if_exists=not overwrite
-    )
+    ht.write(out_ht_path, overwrite=True)
+    return ht
 
 
 def _parse_picard_metrics(

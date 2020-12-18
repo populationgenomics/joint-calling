@@ -16,117 +16,7 @@ from gnomad.utils.annotations import get_adj_expr
 logger = logging.getLogger("cpg_qc_pca")
 
 
-def run_pop_strat_qc(
-        mt: hl.MatrixTable,
-        sample_df: pd.DataFrame,
-        work_bucket: str,
-        overwrite: bool,
-
-        sex_ht: hl.Table,
-        hard_filtered_samples_ht: hl.Table,
-        sample_qc_ht: hl.Table,
-
-        kin_threshold: float,
-        n_pcs: int,
-        filtering_qc_metrics: List[str],
-        min_pop_prob: float,
-) -> Tuple[hl.Table, hl.Table, hl.Table, hl.Table, hl.Table]:
-    """
-    Computes relatedness and ancestry and re-calculates QC metrics
-    stratified by ancestry
-    :param mt: input matrix table
-    :param sample_df: DataFrame with a `sample` and a `population`
-    :param work_bucket:
-    :param overwrite:
-    :param sex_ht:
-    :param hard_filtered_samples_ht:
-    :param sample_qc_ht:
-    :param kin_threshold:
-    :param n_pcs:
-    :param filtering_qc_metrics:
-    :param min_pop_prob:
-    :return:
-    """
-
-    for_pca_mt = _make_mt_for_pca(
-        mt=mt,
-        work_bucket=work_bucket,
-        overwrite=overwrite
-    )
-
-    relatedness_ht = _compute_relatedness(
-        for_pca_mt,
-        sample_num=len(sample_df),
-        work_bucket=work_bucket,
-        overwrite=overwrite,
-    )
-
-    # We don't want to include related samples into the
-    # ancestry PCA analysis
-    pca_related_samples_to_drop_ht = _flag_related_samples(
-        hard_filtered_samples_ht=hard_filtered_samples_ht,
-        sex_ht=sex_ht,
-        relatedness_ht=relatedness_ht,
-        regressed_metrics_ht=None,
-        work_bucket=work_bucket,
-        kin_threshold=kin_threshold,
-        overwrite=overwrite,
-    )
-
-    pop_pca_scores_ht = _run_pca_ancestry_analysis(
-        for_pca_mt=for_pca_mt,
-        sample_to_drop_ht=pca_related_samples_to_drop_ht,
-        work_bucket=work_bucket,
-        n_pcs=n_pcs,
-        overwrite=overwrite,
-    )
-
-    pop_ht = _assign_pops(
-        pop_pca_scores_ht,
-        sample_df,
-        work_bucket=work_bucket,
-        min_prob=min_pop_prob,
-        overwrite=overwrite,
-    )
-
-    stratified_metrics_ht = _compute_stratified_qc(
-        sample_qc_ht,
-        pop_ht,
-        work_bucket=work_bucket,
-        filtering_qc_metrics=filtering_qc_metrics,
-        overwrite=overwrite,
-    )
-
-    regressed_metrics_ht = _apply_regressed_filters(
-        sample_qc_ht,
-        pop_pca_scores_ht,
-        work_bucket=work_bucket,
-        filtering_qc_metrics=filtering_qc_metrics,
-        overwrite=overwrite
-    )
-
-    # Re-calculating the biggest set of unrelated samples
-    # now that we have metrics adjusted for population
-    final_related_samples_to_drop_ht = _flag_related_samples(
-        hard_filtered_samples_ht,
-        sex_ht,
-        relatedness_ht,
-        regressed_metrics_ht,
-        work_bucket=work_bucket,
-        kin_threshold=kin_threshold,
-        overwrite=overwrite
-    )
-
-    return (
-        pca_related_samples_to_drop_ht,
-        pop_ht,
-        stratified_metrics_ht,
-        regressed_metrics_ht,
-        final_related_samples_to_drop_ht
-    )
-
-
-def _make_mt_for_pca(
+def make_mt_for_pca(
         mt: hl.MatrixTable,
         work_bucket: str,
         overwrite: bool
@@ -183,15 +73,13 @@ def _make_mt_for_pca(
     )
 
 
-def _compute_relatedness(
+def compute_relatedness(
         for_pca_mt: hl.MatrixTable,
-        sample_num: int,
         work_bucket: str,
         overwrite: bool = False,
 ) -> hl.Table:
     """
     :param for_pca_mt: variants selected for PCA analysis
-    :param sample_num: total number of samples
     :param work_bucket: path to write checkpoints
     :param overwrite: overwrite checkpoints if they exist
     :return: table with the following structure:
@@ -206,6 +94,9 @@ def _compute_relatedness(
     Key: ['i', 'j']
     """
     logger.info('Running relatedness check')
+
+    sample_num = for_pca_mt.cols().count()
+
     eig, scores, _ = hl.hwe_normalized_pca(
         for_pca_mt.GT,
         k=max(1, min(sample_num // 3, 10)),
@@ -235,7 +126,7 @@ def _compute_relatedness(
     )
 
 
-def _run_pca_ancestry_analysis(
+def run_pca_ancestry_analysis(
         for_pca_mt: hl.MatrixTable,
         sample_to_drop_ht: hl.Table,
         work_bucket: str,
@@ -277,7 +168,7 @@ def _run_pca_ancestry_analysis(
     return scores_ht
 
 
-def _assign_pops(
+def assign_pops(
         pop_pca_scores_ht: hl.Table,
         sample_df: pd.DataFrame,
         work_bucket: str,
@@ -372,7 +263,7 @@ def _assign_pops(
     return pop_ht
 
 
-def _compute_stratified_qc(
+def compute_stratified_qc(
         sample_qc_ht: hl.Table,
         pop_ht: hl.Table,
         work_bucket: str,
@@ -426,11 +317,11 @@ def _compute_stratified_qc(
     )
     return stratified_metrics_ht.checkpoint(
         join(work_bucket, 'stratified_metrics.ht'),
-        overwrite=overwrite, _read_if_exists=overwrite
+        overwrite=overwrite, _read_if_exists=not overwrite
     )
 
 
-def _flag_related_samples(
+def flag_related_samples(
         hard_filtered_samples_ht: hl.Table,
         sex_ht: hl.Table,
         relatedness_ht: hl.Table,
@@ -480,7 +371,7 @@ def _flag_related_samples(
     )
     return samples_to_drop_ht.checkpoint(
         join(work_bucket, f'{label}_related_samples_to_drop.ht'),
-        overwrite=True, _read_if_exists=not overwrite
+        overwrite=overwrite, _read_if_exists=not overwrite
     )
 
 
@@ -507,7 +398,7 @@ def _compute_sample_rankings(
     ht = ht.select(
         'chr20_mean_dp',
         filtered=hl.or_else(
-            hl.len(hard_filtered_samples_ht[sex_ht.key].hard_filters) > 0,
+            hl.len(hard_filtered_samples_ht[ht.key].hard_filters) > 0,
             False)
     )
     if use_qc_metrics_filters:
@@ -529,15 +420,17 @@ def _compute_sample_rankings(
     return ht.key_by('s').select('filtered', 'rank')
 
 
-def _apply_regressed_filters(
+def apply_regressed_filters(
         sample_qc_ht: hl.Table,
         pop_pca_scores_ht: hl.Table,
         work_bucket: str,
-        filtering_qc_metrics: List[str],
         overwrite: bool = False,
 ) -> hl.Table:
     """
-    Compute QC metrics adjusted for population
+    Re-compute QC metrics (with hl.sample_qc() - like n_snp, r_het_hom)
+    per population, and adding "fail_*" row fields when a metric is below
+    the the lower MAD threshold or higher the upper MAD threshold
+    (see `compute_stratified_metrics_filter` for defaults)
 
     :param sample_qc_ht: table with a row field
        `bi_allelic_sample_qc` =
@@ -588,7 +481,6 @@ def _apply_regressed_filters(
             ...
             'qc_metrics_filters': set<str>
     """
-
     logger.info('Compute QC metrics adjusted for popopulation')
 
     sample_qc_ht = sample_qc_ht.select(
@@ -596,11 +488,20 @@ def _apply_regressed_filters(
         **pop_pca_scores_ht[sample_qc_ht.key],
         releasable=hl.bool(True)
     )
+
+    filtering_qc_metrics = [
+        'n_snp', 'n_singleton', 'r_ti_tv',
+        'r_insertion_deletion', 'n_insertion', 'n_deletion',
+        'r_het_hom_var', 'n_het', 'n_hom_var', 'n_transition',
+        'n_transversion'
+    ]
     residuals_ht = compute_qc_metrics_residuals(
         ht=sample_qc_ht,
         pc_scores=sample_qc_ht.scores,
-        qc_metrics={metric: sample_qc_ht[metric] for metric in
-                    filtering_qc_metrics},
+        qc_metrics={
+            metric: sample_qc_ht[metric] for metric in
+            filtering_qc_metrics
+        },
         regression_sample_inclusion_expr=sample_qc_ht.releasable
     )
 
