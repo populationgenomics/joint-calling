@@ -43,7 +43,7 @@ setup(
     install_requires=install_requires,
     scripts=[
         join('scripts', 'combine_gvcfs'),
-        join('scripts', 'cpg_qc'),
+        join('scripts', 'sample_qc'),
     ],
     keywords='bioinformatics',
     classifiers=[
