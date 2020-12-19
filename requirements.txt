@@ -1,7 +1,7 @@
 pip
 versionpy
 hail
-git+git://github.com/vladsaveliev/gnomad_methods.git@master#egg=gnomad
+git+git://github.com/broadinstitute/gnomad_methods.git@master#egg=gnomad
 google-cloud-secret-manager
 google-api-python-client
 click
