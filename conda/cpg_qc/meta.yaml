@@ -13,24 +13,23 @@ build:
 
 requirements:
   build:
-    - python >=3.6
+    - python ==3.7.*
     - versionpy
     - click
     - pandas
     - pip:
       - hail
-      - git+https://github.com/broadinstitute/gnomad_methods@master
-      - google-cloud-secret-manager
-      - google-api-python-client
 
   run:
-    - python >=3.6
+    - python ==3.7.*
     - versionpy
     - click
     - pandas
+    - google-cloud-sdk
+    - gsutil
     - pip:
       - hail
-      - git+https://github.com/vladsaveliev/gnomad_methods@master
+      - git+git://github.com/broadinstitute/gnomad_methods.git@master#egg=gnomad
       - google-cloud-secret-manager
       - google-api-python-client
 
