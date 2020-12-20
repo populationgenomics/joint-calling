@@ -22,7 +22,7 @@ def compute_hard_filters(
 ) -> hl.Table:
     """
     Uses the sex imputation results, results of the sample_qc() run on
-    bi-allelic variants, and Picard stats files specificed in s`ample_df`,
+    bi-allelic variants, and Picard stats files specificed in `sample_df`,
     to apply filters to samples in `mt` and create a table with
     samples that fail at least one sampe.
 
