@@ -94,6 +94,9 @@ def compute_relatedness(
     Key: ['i', 'j']
     """
     logger.info('Running relatedness check')
+    out_ht_path = join(work_bucket, 'relatendess.ht')
+    if not overwrite and file_exists(out_ht_path):
+        return hl.read_table(out_ht_path)
 
     sample_num = for_pca_mt.cols().count()
 
@@ -120,10 +123,8 @@ def compute_relatedness(
         i=relatedness_ht.i.s,
         j=relatedness_ht.j.s
     )
-    return relatedness_ht.checkpoint(
-        join(work_bucket, 'relatendess.ht'),
-        overwrite=overwrite, _read_if_exists=not overwrite
-    )
+    relatedness_ht.write(out_ht_path, overwrite=True)
+    return relatedness_ht
 
 
 def run_pca_ancestry_analysis(
@@ -145,26 +146,19 @@ def run_pca_ancestry_analysis(
         'scores': array<float64>
     """
     logger.info('Running PCA ancestry analysis')
+    scores_ht_path = join(work_bucket, 'pop_pca_scores.ht')
+    if not overwrite and file_exists(scores_ht_path):
+        return hl.read_table(scores_ht_path)
+
     # Adjusting the number of principal components not to exceed the
     # number of samples
     n_pcs = min(n_pcs, for_pca_mt.cols().count() - sample_to_drop_ht.count())
-    eignevalues, scores_ht, loadings_ht = run_pca_with_relateds(
+    _, scores_ht, _ = run_pca_with_relateds(
         for_pca_mt,
         sample_to_drop_ht,
         n_pcs=n_pcs
     )
-    scores_ht.checkpoint(
-        join(work_bucket, 'pop_pca_scores.ht'),
-        overwrite=overwrite, _read_if_exists=not overwrite
-    )
-    loadings_ht.checkpoint(
-        join(work_bucket, 'pop_pca_loadings.ht'),
-        overwrite=overwrite, _read_if_exists=not overwrite
-    )
-    eignevalues_txt = join(work_bucket, 'pop_pca_eigenvalues.txt')
-    with hl.utils.hadoop_open(eignevalues_txt, mode='w') as f:
-        f.write(",".join([str(x) for x in eignevalues]))
-
+    scores_ht.write(scores_ht_path, overwrite=True)
     return scores_ht
 
 
@@ -347,8 +341,12 @@ def flag_related_samples(
     :return: a table of the samples to drop along with their rank
         row field: 'rank': int64
     """
-    logger.info('Flagging related samples to drop')
     label = "final" if regressed_metrics_ht is not None else "intermediate"
+    logger.info(f'Flagging related samples to drop, {label}')
+    out_ht_path = join(work_bucket, f'{label}_related_samples_to_drop.ht')
+    if not overwrite and file_exists(out_ht_path):
+        return hl.read_table(out_ht_path)
+
     rank_ht = _compute_sample_rankings(
         hard_filtered_samples_ht,
         sex_ht,
@@ -369,10 +367,8 @@ def flag_related_samples(
         kin_threshold=kin_threshold,
         filtered_samples=filtered_samples
     )
-    return samples_to_drop_ht.checkpoint(
-        join(work_bucket, f'{label}_related_samples_to_drop.ht'),
-        overwrite=overwrite, _read_if_exists=not overwrite
-    )
+    samples_to_drop_ht.write(out_ht_path, overwrite=True)
+    return samples_to_drop_ht
 
 
 def _compute_sample_rankings(

@@ -6,8 +6,8 @@ from os.path import isdir, isfile, exists
 from typing import Any, Callable
 import hail as hl
 import click
-from google.cloud import storage
 import hashlib
+from google.cloud import storage
 
 DEFAULT_REF = 'GRCh38'
 
