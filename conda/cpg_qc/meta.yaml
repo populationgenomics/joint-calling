@@ -8,34 +8,26 @@ source:
   path: ../../
 
 build:
-  number: 0
+  number: 3
   noarch: python
 
 requirements:
-  build:
+  host:
     - python ==3.7.*
-    - versionpy
-    - click
-    - pandas
-    - pip:
-      - hail
-
+    - hail >=0.2.61
   run:
     - python ==3.7.*
-    - versionpy
+    - hail >=0.2.61
     - click
     - pandas
     - google-cloud-sdk
-    - gsutil
-    - pip:
-      - hail
-      - git+git://github.com/broadinstitute/gnomad_methods.git@master#egg=gnomad
-      - google-cloud-secret-manager
-      - google-api-python-client
+    - google-cloud-storage
+    - gnomad
 
 test:
   commands:
-    - cpg_qc --version
+    - sample_qc --version
+    - combine_gvcfs --version
 
 about:
   home: {{ data['url'] }}

@@ -1,8 +1,7 @@
 #!/usr/bin/env python
-
 import os
 from os.path import join
-from setuptools import setup
+import setuptools
 
 pkg = 'cpg_qc'
 
@@ -21,15 +20,12 @@ package_data = {
 }
 
 install_requires = []
-with open("requirements.txt", "r") as requirements_file:
-    for req in (line.strip() for line in requirements_file):
-        if req != "hail":
-            install_requires.append(req)
+with open("requirements.txt", "r") as f:
+    for req in (line.strip() for line in f):
+        install_requires.append(req)
 
-
-setup(
+setuptools.setup(
     name=pkg,
-    script_name=pkg,
     version=version,
     description='Variant and sample QC, based on Broad\'s gnomad_qc',
     long_description=open('README.md').read(),
