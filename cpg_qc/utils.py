@@ -27,12 +27,15 @@ def init_hail(name: str, local_tmp_dir: str):
 
 def get_validation_callback(
         ext: str = None,
-        must_exist: bool = False
+        must_exist: bool = False,
+        accompanying_metadata_suffix: str = None,
 ) -> Callable:
     """
     Get callback for Click parameters validation
     :param ext: check that the path has the expected extention
     :param must_exist: check that the input file/object/directory exists
+    :param accompanying_metadata_suffix: checks that a file at the same location but
+    with a different suffix also exists (e.g. genomes.mt and genomes.metadata.ht)
     :return: a callback suitable for Click parameter initialization
     """
     def callback(ctx: click.Context, param: click.Option, value: Any):
@@ -49,6 +52,13 @@ def get_validation_callback(
             if not file_exists(value):
                 raise click.BadParameter(
                     f'The value for {param.name} is expected to exist: {value}')
+            if accompanying_metadata_suffix:
+                accompanying_metadata_fpath = os.path.splitext(value)[0] + \
+                    accompanying_metadata_suffix
+                if not file_exists(accompanying_metadata_fpath):
+                    raise click.BadParameter(
+                        f'An accompanying file for {param.name} is expected '
+                        f'to exist: {accompanying_metadata_fpath}')
         return value
     return callback
 

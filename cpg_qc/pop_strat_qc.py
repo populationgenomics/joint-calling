@@ -94,7 +94,7 @@ def compute_relatedness(
     Key: ['i', 'j']
     """
     logger.info('Running relatedness check')
-    out_ht_path = join(work_bucket, 'relatendess.ht')
+    out_ht_path = join(work_bucket, 'relatedness.ht')
     if not overwrite and file_exists(out_ht_path):
         return hl.read_table(out_ht_path)
 
@@ -164,7 +164,7 @@ def run_pca_ancestry_analysis(
 
 def assign_pops(
         pop_pca_scores_ht: hl.Table,
-        sample_df: pd.DataFrame,
+        metadata_ht: pd.DataFrame,
         work_bucket: str,
         min_prob: float,
         max_mislabeled_training_samples: int = 50,
@@ -176,9 +176,8 @@ def assign_pops(
 
     :param pop_pca_scores_ht: output table of `_run_pca_ancestry_analysis()`
         with a row field 'scores': array<float64>
-    :param sample_df: DataFrame with a `sample` and a `population` column.
-        Samples for which the latter is defined will be used to train
-        the random forest
+    :param metadata_ht: table with a `population` field. Samples for which
+        the latter is defined will be used to train the random forest
     :param work_bucket: bucket to write checkpoints and intermediate files
     :param min_prob: min probability of belonging to a given population
         for the population to be set (otherwise set to `None`)
@@ -193,11 +192,7 @@ def assign_pops(
     """
     logger.info("Assigning global population labels")
 
-    samples_with_pop_df = sample_df\
-        [['sample', 'population']]\
-        [pd.notna(sample_df['population'])]\
-        .rename(columns={'sample': 's'})
-    samples_with_pop_ht = hl.Table.from_pandas(samples_with_pop_df, key='s')
+    samples_with_pop_ht = metadata_ht.filter(metadata_ht.population != '')
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop=samples_with_pop_ht[pop_pca_scores_ht.key].population
     )
