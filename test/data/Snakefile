@@ -1,0 +1,60 @@
+
+rule all:
+    input:
+        expand('{sample}.g.vcf.gz', sample='NA12878 NA12891 NA12892 NA19238 NA19239 NA19240'.split())
+
+rule ref_fa_dict:
+    output:
+        'resources/Homo_sapiens_assembly38.dict',
+    params:
+        ref_url = 'gs://genomics-public-data/references/hg38/v0/',
+    shell:
+        "gsutil cp {params.ref_url}/Homo_sapiens_assembly38.dict -"
+        " | awk '{{ if ($1 ~ /@HD/ || $2 ~ /^SN:chr[0-9YXM]+$/) print $0}}"
+        " > {output}"
+
+rule ref_fa_fai:
+    output:
+        'resources/Homo_sapiens_assembly38.fasta.fai',
+    params:
+        ref_url = 'gs://genomics-public-data/references/hg38/v0/',
+    shell:
+        "gsutil cp {params.ref_url}/Homo_sapiens_assembly38.fasta.fai -"
+        " | awk '{{ if ($1 ~ /^chr[0-9YXM]+$/) print $0}}'"
+        " > {output}"
+
+rule ref_fa:
+    output:
+        'resources/Homo_sapiens_assembly38.fasta',
+    shell:
+        'touch {output}'
+
+rule prep_bed:
+    output:
+        'resources/toy_regions.bed'
+    shell:
+        "gsutil cp gs://playground-au/CDS-canonical.bed -"
+        " | awk 'BEGIN {{srand()}} {{ if (rand() <= .1 && $1 !~ /alt/"
+        " || $1 ~ /chrY/) print $0}}' > {output}"
+
+rule subset_gvcf:
+    input:
+        regions = rules.prep_bed.output
+    output:
+        'work/{sample}.toy_regions.g.vcf.gz'
+    shell:
+         "gsutil cp gs://playground-au/gvcf/{sample}.g.vcf.gz -"
+         " | bcftools view -T {regions} -Oz -o {output}"
+
+rule reblock_gvcf:
+    input:
+        gvcf = rules.subset_gvcf.output,
+        ref_fa = rules.ref_fa.output,
+        ref_fa_fai = rules.ref_fa_fai.output,
+        ref_fa_dict = rules.ref_fa_dict.output,
+    output:
+        '{sample}.g.vcf.gz'
+    shell:
+        "gatk ReblockGVCF --drop-low-quals"
+        " -R {input.ref_fa}"
+        " -V {input.gvcf} -O {output}"
