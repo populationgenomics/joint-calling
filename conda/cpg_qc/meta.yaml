@@ -15,11 +15,9 @@ requirements:
   host:
     - python ==3.7.*
     - hail >=0.2.61
-    - versionpy
   run:
     - python ==3.7.*
     - hail >=0.2.61
-    - versionpy
     - click
     - pandas
     - google-cloud-sdk
