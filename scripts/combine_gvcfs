@@ -69,8 +69,7 @@ def main(
     utils.init_hail('combine_gvcfs', local_tmp_dir)
 
     metadata_ht = hl.import_table(
-        sample_map_csv_path, delimiter=',', key='sample'
-    ).rename({'sample': 's'})
+        sample_map_csv_path, delimiter=',', key='sample')
 
     logger.info('Running Hail GVCF combiner')
     hl.experimental.run_combiner(

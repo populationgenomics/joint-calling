@@ -5,8 +5,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 sample_qc \
   --mt            ${DIR}/test_run/genomes.mt \
   --out-ht        ${DIR}/test_run/sample_qc.ht \
-  --sample-map    ${DIR}/data/samples.toy.local.csv \
-  --bucket        gs://playground-au/tmp/sample_qc/bucket \
+  --bucket        ${DIR}/test_run/sample_qc/bucket \
   --local-tmp-dir ${DIR}/test_run/sample_qc/local
 
 if [ $? -eq 0 ]; then

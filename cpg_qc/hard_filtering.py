@@ -137,7 +137,7 @@ def _parse_picard_metrics(
     """
     data = defaultdict(list)
     for row in metadata_ht.collect():
-        data['s'].append(row.s)
+        data['s'].append(row.sample)
 
         contam = row.get('contamination')
         data['freemix'].append(
