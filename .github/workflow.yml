@@ -8,7 +8,7 @@ jobs:
     if: "! startsWith(github.event.head_commit.message, 'Bump ') || startsWith(github.ref, 'refs/tags/')"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@main
 
       - name: Add miniconda to PATH
         run: echo "PATH=${HOME}/miniconda3/bin:${PATH}" >> $GITHUB_ENV
@@ -19,33 +19,28 @@ jobs:
             --no-verbose -O miniconda.sh
           bash miniconda.sh -b
           conda config --set always_yes yes --set changeps1 no
+          # Installing mamba, which is a much faster alternative for conda
           conda install -c conda-forge mamba
-          mamba update conda
-          conda config --add channels cpg --add channels bioconda --add channels conda-forge
-          mamba install pip versionpy conda-build conda-verify anaconda-client
-
-      - id: gcloud
-        uses: google-github-actions/setup-gcloud@master
-        with:
-          project_id: "cpg-ci"
-          service_account_key: ${{ secrets.HAIL_BATCH_CPG_CI_TOKEN }}
-          export_default_credentials: true
+          # The last channel has the highest priority, making sure CPG Hail build is installed
+          conda config --add channels bioconda --add channels conda-forge --add channels cpg
+          # Installing tools needed to build and publish the package
+          mamba install pip conda-build conda-verify anaconda-client
 
       - name: Build package
         run: mamba build conda/$(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
 
-      - name: Install
+      - name: Install the local build
         if: "!startsWith(github.ref, 'refs/tags/')"
         run: mamba install --use-local $(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
 
-      - name: Test
+      - name: Run tests
         if: "!startsWith(github.ref, 'refs/tags/')"
         run: |
-          export PATH="${HOME}/miniconda3/bin:${PATH}"
           cd test
-          source test.sh
+          source test_combine_gvcfs.sh
+          source test_sample_qc.sh
 
-      - name: Upload to anaconda
+      - name: Upload to anaconda package repository
         if: "startsWith(github.ref, 'refs/tags/')"
         run: |
           anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
