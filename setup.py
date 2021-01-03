@@ -6,7 +6,7 @@ pkg = 'cpg_qc'
 
 setuptools.setup(
     name=pkg,
-    version='0.1.1',
+    version='0.1.2',
     description='Variant and sample QC, based on Broad\'s gnomad_qc',
     long_description=open('README.md').read(),
     long_description_content_type="text/markdown",
