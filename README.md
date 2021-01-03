@@ -26,7 +26,7 @@ The `--sample-map` value is a CSV file with a header as follows:
 
 ```
 sample,population,gvcfs,contamination,alignment_summary_metrics,duplicate_metrics,insert_size_metrics,wgs_metrics
-NA19238,YRI,gs://playground-au/gvcf/NA19238.g.vcf.gz,,gs://playground-au/<...>/NA19238.readgroup.alignment_summary_metrics,<..>/NA19238.duplicate_metrics,<..>/NA19238.insert_size_metrics,<..>/NA19238.wgs_metrics
+NA19238,YRI,gs://playground-au/gvcf/NA19238.g.vcf.gz,,gs://playground-au/<...>/NA19238.readgroup.alignment_summary_metrics,<..>/NA19238.duplicate_metrics,<...>/NA19238.insert_size_metrics,<...>/NA19238.wgs_metrics
 ```
 
 The first column is the sample ID. The samples with data in the "population" column are used to train the random forest for population inferral of other samples.
