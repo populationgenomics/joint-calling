@@ -36,7 +36,7 @@ The first column is the sample ID. The samples with data in the "population" col
 
 The input is a set of GVCF files, which are merged into a Hail matrix table using vcf_combiner; then filtered on the sample level using such information as the coverage and intra-sample variant numbers/distributions; then exported into a VCF for an allele-specific VQSR, and finally exported into MT again to be filtered on the variant level using Hail.
 
-The code is largely based on [gnomAD QC tools](https://github.com/broadinstitute/gnomad_qc), which is a collection of methods used to validate and prepare gnomAD releases. We explore gnomAD QC functions [here](gnomad_qc.md). Good summaries of gnomAD QC pipeline can be found in gnomAD update blog posts:
+The code is largely based on [gnomAD QC tools](https://github.com/broadinstitute/gnomad_qc), which is a collection of methods used to validate and prepare gnomAD releases. We explore gnomAD QC functions [here](docs/gnomad_qc.md). Good summaries of gnomAD QC pipeline can be found in gnomAD update blog posts:
 
 * [https://macarthurlab.org/2017/02/27/the-genome-aggregation-database-gnomad](https://macarthurlab.org/2017/02/27/the-genome-aggregation-database-gnomad)
 * [https://macarthurlab.org/2018/10/17/gnomad-v2-1](https://macarthurlab.org/2018/10/17/gnomad-v2-1)
