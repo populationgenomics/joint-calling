@@ -37,3 +37,4 @@ cromwell-executions/
 data/
 !test/data/
 work/
+.snakemake

@@ -1,23 +1,36 @@
+ import os
+
+SAMPLES = 'NA12878 NA12891 NA12892 NA19238 NA19239 NA19240'.split()
+POPS = ['YRI', '', '', 'CEU', '', '']
+PICARD_SUFFICES = [
+    'alignment_summary_metrics',
+    'duplicate_metrics',
+    'insert_size_metrics',
+    'wgs_metrics',
+]
+# We are recycling files for 3 samples to make the toy dataset even smaller
+PICARD_FILES_SAMPLE_MAP = {'NA12878': 'NA19238', 'NA12891': 'NA19239', 'NA12892': 'NA19240'}
+
 
 rule all:
     input:
-        expand('{sample}.g.vcf.gz', sample='NA12878 NA12891 NA12892 NA19238 NA19239 NA19240'.split())
+        'samples.toy.local.csv'
 
 rule ref_fa_dict:
     output:
         'resources/Homo_sapiens_assembly38.dict',
     params:
-        ref_url = 'gs://genomics-public-data/references/hg38/v0/',
+        ref_url = 'gs://genomics-public-data/references/hg38/v0',
     shell:
         "gsutil cp {params.ref_url}/Homo_sapiens_assembly38.dict -"
-        " | awk '{{ if ($1 ~ /@HD/ || $2 ~ /^SN:chr[0-9YXM]+$/) print $0}}"
+        " | awk '{{ if ($1 ~ /@HD/ || $2 ~ /^SN:chr[0-9YXM]+$/) print $0}}'"
         " > {output}"
 
 rule ref_fa_fai:
     output:
         'resources/Homo_sapiens_assembly38.fasta.fai',
     params:
-        ref_url = 'gs://genomics-public-data/references/hg38/v0/',
+        ref_url = 'gs://genomics-public-data/references/hg38/v0',
     shell:
         "gsutil cp {params.ref_url}/Homo_sapiens_assembly38.fasta.fai -"
         " | awk '{{ if ($1 ~ /^chr[0-9YXM]+$/) print $0}}'"
@@ -43,18 +56,66 @@ rule subset_gvcf:
     output:
         'work/{sample}.toy_regions.g.vcf.gz'
     shell:
-         "gsutil cp gs://playground-au/gvcf/{sample}.g.vcf.gz -"
-         " | bcftools view -T {regions} -Oz -o {output}"
+         "gsutil cp gs://playground-au/gvcf/{wildcards.sample}.g.vcf.gz -"
+         " | bcftools view -T {input.regions} -Oz -o {output}"
 
+rule tabix_subset_gvcf:
+    input:
+        'work/{sample}.toy_regions.g.vcf.gz'
+    output:
+        'work/{sample}.toy_regions.g.vcf.gz.tbi'
+    shell:
+        'tabix -p vcf {input}'
+
+# Reblocking GVCFs to significantly reduce their size
 rule reblock_gvcf:
     input:
         gvcf = rules.subset_gvcf.output,
+        tbi = rules.tabix_subset_gvcf.output,
         ref_fa = rules.ref_fa.output,
         ref_fa_fai = rules.ref_fa_fai.output,
         ref_fa_dict = rules.ref_fa_dict.output,
     output:
-        '{sample}.g.vcf.gz'
+        gvcf = 'gvcfs/{sample}.toy.g.vcf.gz',
+        tbi = 'gvcfs/{sample}.toy.g.vcf.gz.tbi'
     shell:
         "gatk ReblockGVCF --drop-low-quals"
         " -R {input.ref_fa}"
-        " -V {input.gvcf} -O {output}"
+        " -V {input.gvcf} -O {output.gvcf}"
+
+rule copy_picard_file:
+    params:
+        bucket = 'gs://playground-au/warp/output/WholeGenomeGermlineSingleSample',
+        fname = lambda wildcards: f'{wildcards.sample}.{wildcards.suffix}'
+    output:
+        'picard_files/{sample}.{suffix}'
+    shell:
+        'gsutil cp "{params.bucket}/**/{params.fname}" picard_files/'
+
+rule make_csv:
+    input:
+        gvcfs = expand(rules.reblock_gvcf.output, sample=SAMPLES),
+        picard_files = expand(
+            rules.copy_picard_file.output,
+            sample=PICARD_FILES_SAMPLE_MAP.values(),
+            suffix=PICARD_SUFFICES,
+        )
+    output:
+        'samples.toy.local.csv'
+    run:
+        rows = []
+        hdr = ['sample', 'population', 'gvcf'] + PICARD_SUFFICES
+        for sample, gvcf, pop in zip(SAMPLES, input.gvcfs, POPS):
+            row = dict(sample=sample, gvcf=f'data/{gvcf}', population=pop)
+            for picard_suffix in PICARD_SUFFICES:
+                picard_sample = PICARD_FILES_SAMPLE_MAP.get(sample, sample)
+                picard_fpath = f'picard_files/{picard_sample}.{picard_suffix}'
+                if os.path.isfile(picard_fpath):
+                    row[picard_suffix] = f'data/{picard_fpath}'
+                else:
+                    row[picard_suffix] = ''
+            rows.append(row)
+        with open(output[0], 'w') as out:
+            out.write(','.join(hdr) + '\n')
+            for row in rows:
+                out.write(','.join(row[h] for h in hdr) + '\n')
