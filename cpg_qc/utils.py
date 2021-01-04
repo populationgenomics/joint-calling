@@ -51,14 +51,14 @@ def get_validation_callback(
         if must_exist:
             if not file_exists(value):
                 raise click.BadParameter(
-                    f'The value for {param.name} is expected to exist: {value}')
+                    f'{value} doesn\'t exist or incomplete')
             if accompanying_metadata_suffix:
                 accompanying_metadata_fpath = os.path.splitext(value)[0] + \
                     accompanying_metadata_suffix
                 if not file_exists(accompanying_metadata_fpath):
                     raise click.BadParameter(
-                        f'An accompanying file for {param.name} is expected '
-                        f'to exist: {accompanying_metadata_fpath}')
+                        f'An accompanying file {accompanying_metadata_fpath} doesn\'t '
+                        f'exist')
         return value
     return callback
 
