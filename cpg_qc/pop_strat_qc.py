@@ -184,11 +184,14 @@ def assign_pops(
     :param max_mislabeled_training_samples: keep rerunning until the number
         of mislabeled samples is below this number
     :param overwrite: overwrite checkpoints if they exist
-    :return: a table with the following row fields:
+    :return: a table with the following row fields, including `prob_<POP>`
+        probabily fields for each population label:
         'training_pop': str
         'pca_scores': array<float64>
         'pop': str
         'prob_CEU': float64
+        'prob_YRI': float64
+        ... (prob_*: float64 for each population label)
     """
     logger.info("Assigning global population labels")
 
