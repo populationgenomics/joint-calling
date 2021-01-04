@@ -11,13 +11,13 @@ jobs:
       - uses: actions/checkout@main
 
       - name: Add miniconda to PATH
-        run: echo "PATH=${HOME}/miniconda3/bin:${PATH}" >> $GITHUB_ENV
+        run: echo "PATH=${HOME}/miniconda/bin:${PATH}" >> $GITHUB_ENV
 
       - name: Setup conda
         run: |
           wget https://repo.anaconda.com/miniconda/Miniconda3-py38_4.9.2-Linux-x86_64.sh \
             --no-verbose -O miniconda.sh
-          bash miniconda.sh -b
+          bash miniconda.sh -b -p ${HOME}/miniconda
           conda config --set always_yes yes --set changeps1 no
           # Installing mamba, which is a much faster alternative for conda
           conda install -c conda-forge mamba
@@ -29,9 +29,12 @@ jobs:
       - name: Build package
         run: mamba build conda/$(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
 
-      - name: Install the local build
+      - name: Install the local build into a test environment
         if: "!startsWith(github.ref, 'refs/tags/')"
-        run: mamba install --use-local $(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
+        run: mamba create -n testenv --use-local $(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
+
+      - name: Activate the test environment
+        run: echo "PATH=${HOME}/miniconda/envs/testenv/bin:${PATH}" >> $GITHUB_ENV
 
       - name: Run tests
         if: "!startsWith(github.ref, 'refs/tags/')"
@@ -44,4 +47,4 @@ jobs:
         if: "startsWith(github.ref, 'refs/tags/')"
         run: |
           anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
-          upload ${HOME}/miniconda3/conda-bld/**/*.tar.bz2
+          upload ${HOME}/miniconda/conda-bld/**/*.tar.bz2
