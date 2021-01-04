@@ -6,7 +6,8 @@ combine_gvcfs \
   --out-mt        ${DIR}/test_run/genomes.mt \
   --sample-map    ${DIR}/data/samples.toy.local.csv \
   --bucket        ${DIR}/test_run/combine_gvcfs/bucket \
-  --local-tmp-dir ${DIR}/test_run/combine_gvcfs/local
+  --local-tmp-dir ${DIR}/test_run/combine_gvcfs/local \
+  --overwrite
 
 if [ $? -eq 0 ]; then
   test -e ${DIR}/test_run/genomes.mt

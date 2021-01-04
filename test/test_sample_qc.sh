@@ -6,7 +6,8 @@ sample_qc \
   --mt            ${DIR}/test_run/genomes.mt \
   --out-ht        ${DIR}/test_run/sample_qc.ht \
   --bucket        ${DIR}/test_run/sample_qc/bucket \
-  --local-tmp-dir ${DIR}/test_run/sample_qc/local
+  --local-tmp-dir ${DIR}/test_run/sample_qc/local \
+  --overwrite
 
 if [ $? -eq 0 ]; then
   test -e ${DIR}/test_run/sample_qc.ht
