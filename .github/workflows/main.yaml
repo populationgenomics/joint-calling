@@ -34,7 +34,7 @@ jobs:
       # so using -c file://${CONDA_PREFIX}/... instead
       - name: Install package
         run: |
-          mamba install -c file://${CONDA_PREFIX}/conda-bld/
+          mamba install -c file://${CONDA_PREFIX}/conda-bld/ \
           $(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
 
       # We only need gcloud to pull gnomad reference file from public buckets,
