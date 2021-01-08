@@ -1,0 +1,37 @@
+{% set data=load_setup_py_data() %}
+
+package:
+  name: cpg-qc
+  version: {{ data['version'] }}
+
+source:
+  path: ../../
+
+build:
+  number: 3
+  noarch: python
+
+requirements:
+  host:
+    - python ==3.7.*
+    - hail >=0.2.61
+  run:
+    - python ==3.7.*
+    - hail >=0.2.61
+    - click
+    - pandas
+    - google-cloud-sdk
+    - google-cloud-storage
+    - gnomad
+    - fsspec  # for reading files from Google Cloud Storage
+    - gcsfs >=0.3.0  # for reading files from Google Cloud Storage
+
+test:
+  commands:
+    - sample_qc --version
+    - combine_gvcfs --version
+
+about:
+  home: {{ data['url'] }}
+  license: {{ data['license'] }}
+  summary: {{ data['description'] }}

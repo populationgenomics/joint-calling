@@ -35,6 +35,6 @@ hail-*.log
 test_run/
 cromwell-executions/
 data/
-
-
-
+!test/data/
+work/
+.snakemake
