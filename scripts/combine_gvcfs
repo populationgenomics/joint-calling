@@ -9,7 +9,7 @@ import uuid
 import hail as hl
 from hail.experimental.vcf_combiner import vcf_combiner
 
-from cpg_qc.utils import get_validation_callback
+from cpg_qc.utils import get_validation_callback, file_exists
 from cpg_qc import utils
 from cpg_qc import _version
 
@@ -53,74 +53,90 @@ TARGET_RECORDS = 25_000
               'Can be a Google Storage URL (i.e. start with `gs://`).')
 @click.option('--local-tmp-dir', 'local_tmp_dir', required=True, help=
               'local directory for temporary files and Hail logs (must be local)')
-@click.option('--overwrite', 'overwrite', is_flag=True, help=
-              'if an intermediate or a final file exists, skip running the code '
-              'that generates it')
+@click.option('--reuse', 'reuse', is_flag=True, help=
+              'if an intermediate or a final file exists, reuse it instead of '
+              'rerunning the code that generates it')
 def main(
         sample_map_csv_path: str,
         out_mt_path: str,
         existing_mt_path: str,
         work_bucket: str,
         local_tmp_dir: str,
-        overwrite: bool,
+        reuse: bool,
 ):
     """
     Runs the Hail
     [vcf_combiner](https://hail.is/docs/0.2/experimental/vcf_combiner.html)
     using the GVCFs files specified in a `gvcf` column in the `sample_map_csv`
     CSV file as input, and generates a multi-sample Matrix Table in a sparse
-    format, saved as `out_mt_path`; and also an accompanying table in an HT
-    format, with the contents of the sample map, which will be used for
-    incremental adding of new samples, as well as for running QC.
+    format, saved as `out_mt_path`. It also generates an accompanying table
+    in an HT format with a `.metadata.ht` suffix, with the contents of the
+    sample map, which can be used for incremental adding of new samples,
+    as well as for running the QC.
 
     If `existing_mt_path` is provided, uses that matrix table as a base to
     extend with new samples. However, it will not overwrite `existing_mt_path`,
-    and isntead write the new table to `out_mt_path`.
+    and instead write the new table to `out_mt_path`. It would also combine
+    the accompanying metadata HT tables and write the result with a
+    `.metadata.ht` suffix.
     """
     utils.init_hail('combine_gvcfs', local_tmp_dir)
 
+    logger.info(f'Combining new samples')
     new_metadata_ht = hl.import_table(
         sample_map_csv_path, delimiter=',', key='sample')
-
-    logger.info(f'Combining new samples')
-    new_samples_mt_path = \
-        os.path.join(work_bucket, 'new_samples.mt')\
+    new_mt_path = os.path.join(work_bucket, 'new.mt')\
         if existing_mt_path else out_mt_path
-    combine_initial_set_of_gvcfs(
-        metadata_ht=new_metadata_ht,
-        out_mt_path=new_samples_mt_path,
-        work_bucket=work_bucket,
-        overwrite=overwrite
-    )
-    logger.info(f'Written new {new_metadata_ht.rows().count()} '
-        f'samples into a MatrixTable {out_mt_path}')
+    if reuse and file_exists(new_mt_path):
+        logger.info(f'MatrixTable with new samples exists, reusing: {new_mt_path}')
+    else:
+        combine_gvcfs(
+            gvcf_paths=new_metadata_ht.gvcf.collect(),
+            out_mt_path=new_mt_path,
+            work_bucket=work_bucket,
+            overwrite=True
+        )
+        logger.info(f'Written {new_metadata_ht.count()} new '
+                    f'samples into a MatrixTable {out_mt_path}')
 
     if existing_mt_path:
-        existing_mt = hl.read_matrix_table(existing_mt_path)
-        existing_mt = existing_mt.drop('gvcf_info')
-        sample_number = existing_mt.cols().count()
-        logger.info(f'Combining with the existing matrix table '
-                    f'({sample_number} samples)')
-        intervals = vcf_combiner.calculate_new_intervals(
-            hl.read_matrix_table(new_samples_mt_path).rows(),
-            n=TARGET_RECORDS,
-            reference_genome=DEFAULT_REF,
+        _combine_with_the_existing_mt(
+            existing_mt=hl.read_matrix_table(existing_mt_path),
+            new_mt_path=new_mt_path,
+            out_mt_path=out_mt_path,
         )
-        new_samples_mt = hl.read_matrix_table(new_samples_mt_path, _intervals=intervals)
-        new_samples_mt = new_samples_mt.drop('gvcf_info')
-        out_mt = vcf_combiner.combine_gvcfs([existing_mt, new_samples_mt])
-        out_mt.write(out_mt_path, overwrite=overwrite)
-
-        existing_metadata_ht_path = os.path.splitext(existing_mt_path)[0] + '.metadata.ht'
-        existing_metadata_ht = hl.read_table(existing_metadata_ht_path)
-
-        metadata_ht = existing_metadata_ht.concat(new_metadata_ht)
+        existing_meta_ht_path = os.path.splitext(existing_mt_path)[0] + '.metadata.ht'
+        existing_meta_ht = hl.read_table(existing_meta_ht_path)
+        metadata_ht = existing_meta_ht.union(new_metadata_ht)
     else:
         metadata_ht = new_metadata_ht
 
-    combined_metadata_ht_path = os.path.splitext(out_mt_path)[0] + '.metadata.ht'
-    metadata_ht.write(combined_metadata_ht_path)
-    logger.info(f'Written metadata table to {out_metadata_ht_path}')
+    metadata_ht_path = os.path.splitext(out_mt_path)[0] + '.metadata.ht'
+    if reuse and file_exists(metadata_ht_path):
+        logger.info(f'Metadata table exists, reusing: {metadata_ht_path}')
+    else:
+        metadata_ht.write(metadata_ht_path, overwrite=True)
+        logger.info(f'Written metadata table to {metadata_ht_path}')
+
+
+def _combine_with_the_existing_mt(
+        existing_mt: hl.MatrixTable,
+        new_mt_path: str,  # passing as a path because we are going
+                           # to re-read it with different intervals
+        out_mt_path: str
+):
+    existing_mt = existing_mt.drop('gvcf_info')
+    logger.info(f'Combining with the existing matrix table '
+                f'({existing_mt.count_cols()} samples)')
+    intervals = vcf_combiner.calculate_new_intervals(
+        hl.read_matrix_table(new_mt_path).rows(),
+        n=TARGET_RECORDS,
+        reference_genome=DEFAULT_REF,
+    )
+    new_mt = hl.read_matrix_table(new_mt_path, _intervals=intervals)
+    new_mt = new_mt.drop('gvcf_info')
+    out_mt = vcf_combiner.combine_gvcfs([existing_mt, new_mt])
+    out_mt.write(out_mt_path, overwrite=True)
 
 
 def chunks(seq, size):
@@ -152,7 +168,7 @@ def _combine_multiwrite_chunk(
         os.path.join(tmp_i_prefix, str(j).zfill(pad) + '.mt')
         for j in range(len(inputs_path_chunks))
     ]
-    if not overwrite and all(file_exists(path) for path in out_combined_mt_paths):
+    if not overwrite and all(utils.file_exists(path) for path in out_combined_mt_paths):
         return out_combined_mt_paths
 
     # Create a MatrixTable for each single GVCF
@@ -210,8 +226,8 @@ def _combine_in_chunks(
     return out_mt_paths
 
 
-def combine_initial_set_of_gvcfs(
-        sample_df: pd.DataFrame,
+def combine_gvcfs(
+        gvcf_paths: List[str],
         out_mt_path: str,
         work_bucket: str,
         overwrite: bool = True
@@ -227,7 +243,6 @@ def combine_initial_set_of_gvcfs(
             interval_size=vcf_combiner.CombinerConfig.default_genome_interval_size,
         )
     tmp_bucket = os.path.join(work_bucket, 'combiner-tmp')
-    gvcf_paths = metadata_ht.gvcf.collect()
     logger.info('Combining chunks of GVCFs')
     small_chunks_mt_paths = _combine_in_chunks(
         gvcf_paths=gvcf_paths,
@@ -268,7 +283,7 @@ def combine_initial_set_of_gvcfs(
             for j in range(len(larger_chunk_mts))
         ]
         for (mt_path, mt) in zip(larger_chunk_mt_paths, larger_chunk_mts):
-            if overwrite or not file_exists(mt_path):
+            if overwrite or not utils.file_exists(mt_path):
                 mt.write(mt_path, overwrite=True)
 
         intervals = vcf_combiner.calculate_new_intervals(
@@ -288,7 +303,7 @@ def combine_initial_set_of_gvcfs(
         larger_chunk_mts = even_larger_chunk_mts
         i += 1
     larger_chunk_mts[0].write(out_mt_path, overwrite=True)
-    return out_mt_path
+    return larger_chunk_mts[0]
 
 
 if __name__ == '__main__':
