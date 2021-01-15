@@ -32,9 +32,12 @@ playground/
 .ipynb_checkpoints/
 
 hail-*.log
-test_run/
+test_run*/
 cromwell-executions/
 data/
 !test/data/
 work/
 .snakemake
+test/data/resources/Homo_sapiens_assembly38.dict
+test/data/resources/Homo_sapiens_assembly38.fasta
+test/data/resources/Homo_sapiens_assembly38.fasta.fai

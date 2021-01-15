@@ -38,7 +38,7 @@ jobs:
           $(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
 
       # We only need gcloud to pull gnomad reference file from public buckets,
-      # So the service account doesn't need to have any spending allowance
+      # so the service account doesn't need to have any spending allowance
       - id: gcloud
         uses: google-github-actions/setup-gcloud@master
         with:

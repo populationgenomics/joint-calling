@@ -1,6 +1,5 @@
-NA19238	1	1
-NA19239	1	2
-NA19240	1	3	2	1	2
-NA12878	2	4
-NA12891	2	5
-NA12892	2	6
+Family.ID	Individual.ID	Paternal.ID	Maternal.ID	Gender	Phenotype	Population	Other.info	Relationships.from.Pemberton.et.al.AJHG.2010	Broad.IBD.Analysis	sequence_read	alignment	exome_alignment	high_coverage_alignment
+Y117	NA19238	0	0	2	0	YRI	mother, Probable mother of NA18913	Grandparent of NA18914	cryptic 2nd order relationship to NA18914	True	True	True	True
+Y117	NA19239	0	0	1	0	YRI	father	0		True	True	True	True
+Y117	NA19240	NA19239	NA19238	2	0	YRI	child	Half Sibling of NA18913	cryptic 3nd order relationship to NA18914	True	True	True	True
+1463	NA12878	NA12891	NA12892	2	0	CEU	mother	0		True	True	True	True

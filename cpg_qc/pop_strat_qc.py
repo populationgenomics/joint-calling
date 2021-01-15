@@ -115,7 +115,8 @@ def compute_relatedness(
         scores_expr=scores[for_pca_mt.col_key].scores,
         block_size=4096,
         min_kinship=0.05,
-        statistics='all')
+        statistics='all'
+    )
 
     # Converting keys for type struct{str} to str to align
     # with the rank_ht `s` key:
