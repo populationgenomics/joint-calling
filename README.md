@@ -43,9 +43,10 @@ The first column is the sample ID. The samples with data in the "population" col
 ### Description
 
 The pipeline consists of 3 scripts: 
-	1. `combine_gvcfs` that takes GVCFs specified in the sample map and interatively merges them into a sparse Matrix Table using [Hail's vcf_combiner](https://hail.is/docs/0.2/experimental/vcf_combiner.html);
-	2. `sample_qc` that performs sample-level QC using such information as sex, coverage and intra-sample variant numbers/distributions, and flags samples that do not pass filters;
-	3. `variant_qc` that exports variants into a VCF for an allele-specific VQSR, and imports back into a Matrix Table to apply variant-level filters.
+
+1. `combine_gvcfs` that takes GVCFs specified in the sample map and interatively merges them into a sparse Matrix Table using [Hail's vcf_combiner](https://hail.is/docs/0.2/experimental/vcf_combiner.html);
+2. `sample_qc` that performs sample-level QC using such information as sex, coverage and intra-sample variant numbers/distributions, and flags samples that do not pass filters;
+3. `variant_qc` that exports variants into a VCF for an allele-specific VQSR, and imports back into a Matrix Table to apply variant-level filters.
 
 The pipeline structure and the thresholds used are largely based on [gnomAD QC tools](https://github.com/broadinstitute/gnomad_qc), which is a collection of methods used to validate and prepare gnomAD releases. We explore gnomAD QC functions [in this document](docs/gnomad_qc.md). Good summaries of gnomAD QC pipeline can be found in gnomAD update blog posts:
 
