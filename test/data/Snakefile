@@ -74,8 +74,8 @@ rule reblock_gvcf:
         ref_fa_fai = rules.ref_fa_fai.output,
         ref_fa_dict = rules.ref_fa_dict.output,
     output:
-        gvcf = 'work/reblocked/{sample}.g.vcf.gz',
-        tbi = 'work/reblocked/{sample}.g.vcf.gz.tbi'
+        gvcf = 'gvcfs/{sample}.toy.g.vcf.gz',
+        tbi = 'gvcfs/{sample}.toy.g.vcf.gz.tbi'
     shell:
         "gatk ReblockGVCF --drop-low-quals"
         " -R {input.ref_fa}"
@@ -150,4 +150,3 @@ rule make_csv:
                 out_r1.write(','.join(row[h] for h in hdr) + '\n')
             for row in rows[3:]:
                 out_r2.write(','.join(row[h] for h in hdr) + '\n')
-

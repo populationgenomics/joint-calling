@@ -21,6 +21,7 @@ requirements:
     - click
     - pandas
     - google-cloud-sdk
+    - google-cloud-storage
     - gnomad
     - fsspec  # for reading files from Google Cloud Storage
     - gcsfs >=0.3.0  # for reading files from Google Cloud Storage
