@@ -11,8 +11,14 @@
 #    C0326: Bad whitespace
 # 5. fixme (left 'TODO' lines)
 # 6. logging-fstring-interpolation (forbids f-strings in logging functions)
+# 7. The following require installing the python modules imported in the source code.
+#    Add these if you don't want to include all dependencies into the dev environment:
+#    import-error ("Unable to import")
+#    no-member
+#    c-extension-no-member
+# 8. unsubscriptable-object (see https://github.com/PyCQA/pylint/issues/3882)
 
-disable=f-string-without-interpolation,inherit-non-class,too-few-public-methods,C0330,C0326,fixme,logging-fstring-interpolation
+disable=f-string-without-interpolation,inherit-non-class,too-few-public-methods,C0330,C0326,fixme,logging-fstring-interpolation,import-error,no-member,c-extension-no-member,unsubscriptable-object
 
 # Overriding variable name patterns to allow short 1- or 2-letter variables
 attr-rgx=[a-z_][a-z0-9_]{0,30}$
@@ -22,6 +28,8 @@ variable-rgx=[a-z_][a-z0-9_]{0,30}$
 # Maximum number of characters on a single line. Default for black, see:
 # https://black.readthedocs.io/en/stable/the_black_code_style.html#line-length
 max-line-length=88
+
+ignore=setup.py
 
 [DESIGN]
 # Maximum number of locals for function / method body
