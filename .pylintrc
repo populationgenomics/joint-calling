@@ -23,6 +23,8 @@ variable-rgx=[a-z_][a-z0-9_]{0,30}$
 # https://black.readthedocs.io/en/stable/the_black_code_style.html#line-length
 max-line-length=88
 
+ignore=setup.py
+
 [DESIGN]
 # Maximum number of locals for function / method body
 max-locals=25
