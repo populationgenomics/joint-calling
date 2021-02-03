@@ -57,25 +57,25 @@ jobs:
           mamba install -c file://${CONDA_PREFIX}/conda-bld/ \
           $(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
 
-      # We only need gcloud to pull gnomad reference file from public buckets,
-      # so the service account doesn't need to have any spending allowance
-      - id: gcloud
-        uses: google-github-actions/setup-gcloud@master
-        with:
-          project_id: "${{ secrets.GCP_PROJECT_ID }}"
-          service_account_key: "${{ secrets.GCP_SA_KEY }}"
-          export_default_credentials: true
+      # # We only need gcloud to pull gnomad reference file from public buckets,
+      # # so the service account doesn't need to have any spending allowance
+      # - id: gcloud
+      #   uses: google-github-actions/setup-gcloud@master
+      #   with:
+      #     project_id: "${{ secrets.GCP_PROJECT_ID }}"
+      #     service_account_key: "${{ secrets.GCP_SA_KEY }}"
+      #     export_default_credentials: true
 
-      - name: Install GCS connector
-        run: |
-          wget https://broad.io/install-gcs-connector
-          python install-gcs-connector -k "${GOOGLE_APPLICATION_CREDENTIALS}"
+      # - name: Install GCS connector
+      #   run: |
+      #     wget https://broad.io/install-gcs-connector
+      #     python install-gcs-connector -k "${GOOGLE_APPLICATION_CREDENTIALS}"
 
-      - name: Run tests
-        run: |
-          cd test
-          source test_combine_gvcfs.sh
-          source test_sample_qc.sh
+      # - name: Run tests
+      #   run: |
+      #     cd test
+      #     source test_combine_gvcfs.sh
+      #     source test_sample_qc.sh
 
       - name: Upload to anaconda package repository
         if: "startsWith(github.ref, 'refs/tags/')"
