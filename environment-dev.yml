@@ -6,14 +6,5 @@ channels:
   - bioconda
 
 dependencies:
-  - python ==3.7.*
   - pre-commit
   - pylint
-  - hail >=0.2.61
-  - click
-  - pandas
-  - gnomad
-  - google-cloud-sdk
-  - google-cloud-storage
-  - fsspec  # for reading files from Google Cloud Storage
-  - gcsfs >=0.3.0  # for reading files from Google Cloud Storage
