@@ -32,11 +32,7 @@ playground/
 .ipynb_checkpoints/
 
 hail-*.log
-<<<<<<< HEAD
 test_run*/
-=======
-test_run/
->>>>>>> main
 cromwell-executions/
 data/
 !test/data/
