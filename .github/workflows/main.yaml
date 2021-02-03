@@ -3,6 +3,7 @@ on: [push, pull_request]
 
 jobs:
   lint:
+    if: "! startsWith(github.event.head_commit.message, 'Bump ') || startsWith(github.ref, 'refs/tags/')"
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -24,7 +25,7 @@ jobs:
 
   build-test-publish:
     # For tag pushes, we want to assure only the tag event triggers CI, not the accompanying commit:
-    if: "! startsWith(github.event.head_commit.message, 'Bump ') || startsWith(github.ref, 'refs/tags/')"
+    if: "startsWith(github.ref, 'refs/tags/')"
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -33,52 +34,52 @@ jobs:
       run:
         shell: bash -l {0}
     steps:
-      - uses: actions/checkout@main
+    - uses: actions/checkout@main
 
-#      - uses: conda-incubator/setup-miniconda@v2
-#        with:
-#          activate-environment: buildenv
-#          channels: cpg,conda-forge,bioconda,defaults
-#          channel-priority: true
-#          mamba-version: "*"
-#          python-version: 3.7
-#
-#      - name: Setup build env
-#        run: mamba install pip conda-build anaconda-client
-#
-#      - name: Build package
-#        run: mamba build conda/$(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
-#
-#      # Using local build as we didn't push the tarball to anaconda yet
-#      # the --use-local flag is not working within an activated env,
-#      # so using -c file://${CONDA_PREFIX}/... instead
-#      - name: Install package
-#        run: |
-#          mamba install -c file://${CONDA_PREFIX}/conda-bld/ \
-#          $(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
+    - uses: conda-incubator/setup-miniconda@v2
+      with:
+        activate-environment: buildenv
+        channels: cpg,conda-forge,bioconda,defaults
+        channel-priority: true
+        mamba-version: "*"
+        python-version: 3.7
 
-      # We only need gcloud to pull gnomad reference file from public buckets,
-      # So the service account doesn't need to have any spending allowance
-      # - id: gcloud
-      #   uses: google-github-actions/setup-gcloud@master
-      #   with:
-      #     project_id: "${{ secrets.GCP_PROJECT_ID }}"
-      #     service_account_key: "${{ secrets.GCP_SA_KEY }}"
-      #     export_default_credentials: true
+    - name: Setup build env
+      run: mamba install pip conda-build anaconda-client
 
-      # - name: Install GCS connector
-      #   run: |
-      #     wget https://broad.io/install-gcs-connector
-      #     python install-gcs-connector -k "${GOOGLE_APPLICATION_CREDENTIALS}"
+    - name: Build package
+      run: mamba build conda/$(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
 
-      # - name: Run tests
-      #   run: |
-      #     cd test
-      #     source test_combine_gvcfs.sh
-      #     source test_sample_qc.sh
+    # Using local build as we didn't push the tarball to anaconda yet
+    # the --use-local flag is not working within an activated env,
+    # so using -c file://${CONDA_PREFIX}/... instead
+    - name: Install package
+      run: |
+        mamba install -c file://${CONDA_PREFIX}/conda-bld/ \
+        $(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
 
-#      - name: Upload to anaconda package repository
-#        if: "startsWith(github.ref, 'refs/tags/')"
-#        run: |
-#          anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
-#          upload ${CONDA_PREFIX}/conda-bld/**/*.tar.bz2
+    # We only need gcloud to pull gnomad reference file from public buckets,
+    # So the service account doesn't need to have any spending allowance
+    - id: gcloud
+      uses: google-github-actions/setup-gcloud@master
+      with:
+        project_id: "${{ secrets.GCP_PROJECT_ID }}"
+        service_account_key: "${{ secrets.GCP_SA_KEY }}"
+        export_default_credentials: true
+
+    - name: Install GCS connector
+      run: |
+        wget https://broad.io/install-gcs-connector
+        python install-gcs-connector -k "${GOOGLE_APPLICATION_CREDENTIALS}"
+
+    - name: Run tests
+      run: |
+        cd test
+        source test_combine_gvcfs.sh
+        source test_sample_qc.sh
+
+    - name: Upload to anaconda package repository
+      if: "startsWith(github.ref, 'refs/tags/')"
+      run: |
+        anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
+        upload ${CONDA_PREFIX}/conda-bld/**/*.tar.bz2
