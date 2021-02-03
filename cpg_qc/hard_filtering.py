@@ -1,24 +1,28 @@
+"""Sample-level hard filtering based on Picard statistics"""
+
 import os
 from collections import defaultdict
 from os.path import join
+import logging
+
 import pandas as pd
 import hail as hl
-import logging
 
 from cpg_qc.utils import gs_cache_file, file_exists
 
-logger = logging.getLogger("cpg_qc_hard_filtering")
+
+logger = logging.getLogger('cpg_qc_hard_filtering')
 
 
 def compute_hard_filters(
-        mt: hl.MatrixTable,
-        metadata_ht: hl.MatrixTable,
-        sex_ht: hl.Table,
-        hail_sample_qc_ht: hl.Table,
-        work_bucket: str,
-        local_tmp_dir: str,
-        cov_threshold: int,
-        overwrite: bool = False,
+    mt: hl.MatrixTable,
+    metadata_ht: hl.MatrixTable,
+    sex_ht: hl.Table,
+    hail_sample_qc_ht: hl.Table,
+    work_bucket: str,
+    local_tmp_dir: str,
+    cov_threshold: int,
+    overwrite: bool = False,
 ) -> hl.Table:
     """
     Uses the sex imputation results, results of the sample_qc() run on
@@ -53,7 +57,8 @@ def compute_hard_filters(
     metrics_ht = _parse_picard_metrics(metadata_ht, work_bucket, local_tmp_dir)
     metrics_ht.checkpoint(
         join(work_bucket, 'picard_metrics.ht'),
-        overwrite=overwrite, _read_if_exists=not overwrite
+        overwrite=overwrite,
+        _read_if_exists=not overwrite,
     )
 
     ht = mt.cols()
@@ -61,47 +66,49 @@ def compute_hard_filters(
 
     # Helper function to add filters into the `hard_filters` set
     def add_filter(ht, expr, name):
-        return ht.annotate(hard_filters =
-            hl.if_else(expr & hl.is_defined(expr),
-                       ht.hard_filters.add(name),
-                       ht.hard_filters)
+        return ht.annotate(
+            hard_filters=hl.if_else(
+                expr & hl.is_defined(expr), ht.hard_filters.add(name), ht.hard_filters
+            )
         )
 
     # Remove samples with ambiguous sex assignments
-    ht = add_filter(ht, sex_ht[ht.key].sex_karyotype == 'ambiguous',
-                    "ambiguous_sex")
-    ht = add_filter(ht, ~hl.set({'ambiguous', 'XX', 'XY'})
-                    .contains(sex_ht[ht.key].sex_karyotype),
-                    "sex_aneuploidy")
+    ht = add_filter(ht, sex_ht[ht.key].sex_karyotype == 'ambiguous', 'ambiguous_sex')
+    ht = add_filter(
+        ht,
+        ~hl.set({'ambiguous', 'XX', 'XY'}).contains(sex_ht[ht.key].sex_karyotype),
+        'sex_aneuploidy',
+    )
 
     # Remove low-coverage samples
     # chrom 20 coverage is computed to infer sex and used here
-    ht = add_filter(ht, sex_ht[ht.key].chr20_mean_dp < cov_threshold,
-                    "low_coverage")
+    ht = add_filter(ht, sex_ht[ht.key].chr20_mean_dp < cov_threshold, 'low_coverage')
 
     # Remove extreme raw bi-allelic sample QC outliers
-    ht = add_filter(ht, (
-            (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp > 3.75e6) |
-            (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp < 2.4e6) |
-            (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_singleton > 1e5) |
-            (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.r_het_hom_var > 3.3)
-    ), "bad_qc_metrics")
+    ht = add_filter(
+        ht,
+        (
+            (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp > 3.75e6)
+            | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp < 2.4e6)
+            | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_singleton > 1e5)
+            | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.r_het_hom_var > 3.3)
+        ),
+        'bad_qc_metrics',
+    )
 
-    # Remove samples that fail picard metric thresholds, percents are not divided by 100, e.g. 5% == 5.00, 5% != 0.05
-    ht = add_filter(ht, metrics_ht[ht.key].freemix > 5.00, "contamination")
-    ht = add_filter(ht, metrics_ht[ht.key].pct_chimeras > 5.00, "chimera")
-    ht = add_filter(ht, metrics_ht[ht.key].mean_coverage < 15, "coverage")
-    ht = add_filter(ht, metrics_ht[ht.key].median_insert_size < 250,
-                    "insert_size")
+    # Remove samples that fail picard metric thresholds, percents are not divided
+    # by 100, e.g. 5% == 5.00, 5% != 0.05
+    ht = add_filter(ht, metrics_ht[ht.key].freemix > 5.00, 'contamination')
+    ht = add_filter(ht, metrics_ht[ht.key].pct_chimeras > 5.00, 'chimera')
+    ht = add_filter(ht, metrics_ht[ht.key].mean_coverage < 15, 'coverage')
+    ht = add_filter(ht, metrics_ht[ht.key].median_insert_size < 250, 'insert_size')
     ht = ht.filter(hl.len(ht.hard_filters) > 0)
     ht.write(out_ht_path, overwrite=True)
     return ht
 
 
 def _parse_picard_metrics(
-        metadata_ht: hl.Table,
-        work_bucket: str,
-        local_tmp_dir: str
+    metadata_ht: hl.Table, work_bucket: str, local_tmp_dir: str
 ) -> hl.Table:
     """
     Reads Picard stats files from `metadata_ht`, and converts relevant
@@ -140,24 +147,27 @@ def _parse_picard_metrics(
         data['s'].append(row.sample)
 
         contam = row.get('contamination')
-        data['freemix'].append(
-            _parse_picard_metric(contam, 'FREEMIX', local_tmp_dir))
+        data['freemix'].append(_parse_picard_metric(contam, 'FREEMIX', local_tmp_dir))
 
         aln_sum_metrics = row.get('alignment_summary_metrics')
         data['pct_chimeras'].append(
-            _parse_picard_metric(aln_sum_metrics, 'PCT_CHIMERAS', local_tmp_dir))
+            _parse_picard_metric(aln_sum_metrics, 'PCT_CHIMERAS', local_tmp_dir)
+        )
 
         dup_metrics = row.get('duplicate_metrics')
         data['duplication'].append(
-            _parse_picard_metric(dup_metrics, 'PERCENT_DUPLICATION', local_tmp_dir))
+            _parse_picard_metric(dup_metrics, 'PERCENT_DUPLICATION', local_tmp_dir)
+        )
 
         is_metrics = row.get('insert_size_metrics')
         data['median_insert_size'].append(
-            _parse_picard_metric(is_metrics, 'MEDIAN_INSERT_SIZE', local_tmp_dir))
+            _parse_picard_metric(is_metrics, 'MEDIAN_INSERT_SIZE', local_tmp_dir)
+        )
 
         wgs_metrics = row.get('wgs_metrics')
         data['mean_coverage'].append(
-            _parse_picard_metric(wgs_metrics, 'MEDIAN_COVERAGE', local_tmp_dir))
+            _parse_picard_metric(wgs_metrics, 'MEDIAN_COVERAGE', local_tmp_dir)
+        )
 
     csv_path = os.path.join(work_bucket, 'sample_qc_metrics.tsv')
     pd.DataFrame.from_dict(data).to_csv(csv_path, sep='\t', index=False)
@@ -165,13 +175,14 @@ def _parse_picard_metrics(
         csv_path,
         key='s',
         types={
-            "s":                  hl.tstr,
-            "freemix":            hl.tfloat32,
-            "pct_chimeras":       hl.tfloat32,
-            "duplication":        hl.tfloat32,
-            "median_insert_size": hl.tint32,
-            "mean_coverage":      hl.tint32,
-        })
+            's': hl.tstr,
+            'freemix': hl.tfloat32,
+            'pct_chimeras': hl.tfloat32,
+            'duplication': hl.tfloat32,
+            'median_insert_size': hl.tint32,
+            'mean_coverage': hl.tint32,
+        },
+    )
     return ht
 
 
@@ -182,7 +193,7 @@ def _parse_picard_metric(fpath, metric_name, local_tmp_dir):
     with open(gs_cache_file(fpath, local_tmp_dir)) as fh:
         idx = None
         for line in fh:
-            if f"\t{metric_name}\t" in line:
+            if f'\t{metric_name}\t' in line:
                 idx = line.split('\t').index(metric_name)
                 continue
             if idx is not None:
@@ -194,6 +205,5 @@ def _parse_picard_metric(fpath, metric_name, local_tmp_dir):
                         val = float(val)
                     except ValueError:
                         pass
-                    pass
                 break
     return val

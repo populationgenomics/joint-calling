@@ -1,18 +1,19 @@
 #!/usr/bin/env python
+
 from os.path import join
 import setuptools
 
-pkg = 'cpg_qc'
+PKG = 'cpg_qc'
 
 setuptools.setup(
-    name=pkg,
+    name=PKG,
     version='0.1.2',
     description='Variant and sample QC, based on Broad\'s gnomad_qc',
     long_description=open('README.md').read(),
-    long_description_content_type="text/markdown",
-    url=f'https://github.com/populationgenomics/{pkg}',
+    long_description_content_type='text/markdown',
+    url=f'https://github.com/populationgenomics/{PKG}',
     license='MIT',
-    packages=[pkg],
+    packages=[PKG],
     include_package_data=True,
     zip_safe=False,
     scripts=[

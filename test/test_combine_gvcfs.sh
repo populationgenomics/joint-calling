@@ -13,4 +13,3 @@ if [ $? -eq 0 ]; then
   test -e ${DIR}/test_run/genomes.mt
   test -e ${DIR}/test_run/genomes.metadata.ht
 fi
-
