@@ -1,17 +1,18 @@
 # Sample and variant QC
 
-A pipeline for post-processing and filtering of population genomic variant calls. 
+A pipeline for post-processing and filtering of population genomic variant calls.
 
-### Installation
+## Installation
 
-```
+```sh
 git clone git@github.com:populationgenomics/cpg-qc.git
 pip install -e cpg-qc
 ```
 
-### Usage example
 
-```
+## Usage example
+
+```sh
 cpg_qc \
   --sample-map gs://playground-au/test/gvcfs_gs.csv \
   --mt gs://playground-au/test/mt/genomes.mt \
@@ -22,7 +23,7 @@ cpg_qc \
 
 If the matrix table specified with `--mt` doesn't exist, you can generate it using the `combine_gvcfs` script, which drives [Hail's vcf_combiner](https://hail.is/docs/0.2/experimental/vcf_combiner.html).
 
-```
+```sh
 combine_gvcfs \
   --sample-map gs://playground-au/test/gvcfs_gs.csv \
   --out-mt gs://playground-au/test/mt/genomes.mt \
@@ -32,7 +33,7 @@ combine_gvcfs \
 
 The `--sample-map` value is a CSV file with a header as follows:
 
-```
+```sh
 sample,population,gvcf,contamination,alignment_summary_metrics,duplicate_metrics,insert_size_metrics,wgs_metrics
 NA19238,YRI,gs://playground-au/gvcf/NA19238.g.vcf.gz,,gs://playground-au/<....>/NA19238.readgroup.alignment_summary_metrics,<...>/NA19238.duplicate_metrics,<...>/NA19238.insert_size_metrics,<...>/NA19238.wgs_metrics
 ```
@@ -40,9 +41,9 @@ NA19238,YRI,gs://playground-au/gvcf/NA19238.g.vcf.gz,,gs://playground-au/<....>/
 The first column is the sample ID. The samples with data in the "population" column are used to train the random forest for population inferral of other samples.
 
 
-### Description
+## Description
 
-The pipeline consists of 3 scripts: 
+The pipeline consists of 3 scripts:
 
 1. `combine_gvcfs` that takes GVCFs specified in the sample map and interatively merges them into a sparse Matrix Table using [Hail's vcf_combiner](https://hail.is/docs/0.2/experimental/vcf_combiner.html);
 2. `sample_qc` that performs sample-level QC using such information as sex, coverage and intra-sample variant numbers/distributions, and flags samples that do not pass filters;
@@ -62,16 +63,18 @@ QC pipeline outline:
 2. Compute sample QC metrics using Hail’s [`sample_qc`](https://hail.is/docs/0.2/methods/genetics.html#hail.methods.sample_qc) module on all autosomal bi-allelic SNVs.
 
 3. Filter outlier samples using the following cutoffs:
-	* Number of SNVs: < 2.4M or > 3.75M
-	* Number of singletons: > 100k
-	* Hom/het ratio: > 3.3
-	
+
+  * Number of SNVs: < 2.4M or > 3.75M
+  * Number of singletons: > 100k
+  * Hom/het ratio: > 3.3
+
 4. Hard filtering using BAM-level metrics was performed when such metrics were available. We removed samples that were outliers for:
-	* Contamination: freemix > 5% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-CheckContamination/*.selfSM`/`FREEMIX`)
-	* Chimeras: > 5% (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.alignment_summary_metrics`/`PCT_CHIMERAS`)
-	* Duplication: > 30% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-MarkDuplicates/*.duplicate_metrics`/`PERCENT_DUPLICATION`)
-	* Median insert size: < 250 (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.insert_size_metrics`/`MEDIAN_INSERT_SIZE`)
-	* Median coverage < 15X (`call-CollectWgsMetrics/*.wgs_metrics`/`MEDIAN_COVERAGE`)
+
+  * Contamination: freemix > 5% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-CheckContamination/*.selfSM`/`FREEMIX`)
+  * Chimeras: > 5% (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.alignment_summary_metrics`/`PCT_CHIMERAS`)
+  * Duplication: > 30% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-MarkDuplicates/*.duplicate_metrics`/`PERCENT_DUPLICATION`)
+  * Median insert size: < 250 (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.insert_size_metrics`/`MEDIAN_INSERT_SIZE`)
+  * Median coverage < 15X (`call-CollectWgsMetrics/*.wgs_metrics`/`MEDIAN_COVERAGE`)
 
 5. Sex inferred for each sample with Hail's [`impute_sex`](https://hail.is/docs/0.2/methods/genetics.html?highlight=impute_sex#hail.methods.impute_sex). Removed samples with sex chromosome aneuploidies or ambiguous sex assignment.
 
@@ -84,9 +87,11 @@ QC pipeline outline:
 9. For the remaining samples, export variants into a VCF.
 
 10. Perform the allele-specific version of GATK Variant Quality Score Recalibration [VQSR](https://gatkforums.broadinstitute.org/gatk/discussion/9622/allele-specific-annotation-and-filtering), using the standard GATK training resources (HapMap, Omni, 1000 Genomes, Mills indels), with the following features:
-	* SNVs:   `AS_FS`, `AS_SOR`, `AS_ReadPosRankSum`, `AS_MQRankSum`, `AS_QD`, `AS_MQ`
-	* Indels: `AS_FS`, `AS_SOR`, `AS_ReadPosRankSum`, `AS_MQRankSum`, `AS_QD`
+
+  * SNVs:   `AS_FS`, `AS_SOR`, `AS_ReadPosRankSum`, `AS_MQRankSum`, `AS_QD`, `AS_MQ`
+  * Indels: `AS_FS`, `AS_SOR`, `AS_ReadPosRankSum`, `AS_MQRankSum`, `AS_QD`
 
 11. Apply variant hard filters:
-	* No sample had a high quality genotype at this variant site (GQ>=20, DP>=10, and AB>=0.2 for heterozygotes) (all fields are populated by GATK)
-	* `InbreedingCoeff` < -0.3 (there was an excess of heterozygotes at the site compared to Hardy-Weinberg expectations) (`InbreedingCoeff` is populated by GATK)
+
+  * No sample had a high quality genotype at this variant site (GQ>=20, DP>=10, and AB>=0.2 for heterozygotes) (all fields are populated by GATK)
+  * `InbreedingCoeff` < -0.3 (there was an excess of heterozygotes at the site compared to Hardy-Weinberg expectations) (`InbreedingCoeff` is populated by GATK)
