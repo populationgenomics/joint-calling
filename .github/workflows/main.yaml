@@ -35,27 +35,27 @@ jobs:
     steps:
       - uses: actions/checkout@main
 
-      - uses: conda-incubator/setup-miniconda@v2
-        with:
-          activate-environment: buildenv
-          channels: cpg,conda-forge,bioconda,defaults
-          channel-priority: true
-          mamba-version: "*"
-          python-version: 3.7
-
-      - name: Setup build env
-        run: mamba install pip conda-build anaconda-client
-
-      - name: Build package
-        run: mamba build conda/$(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
-
-      # Using local build as we didn't push the tarball to anaconda yet
-      # the --use-local flag is not working within an activated env,
-      # so using -c file://${CONDA_PREFIX}/... instead
-      - name: Install package
-        run: |
-          mamba install -c file://${CONDA_PREFIX}/conda-bld/ \
-          $(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
+#      - uses: conda-incubator/setup-miniconda@v2
+#        with:
+#          activate-environment: buildenv
+#          channels: cpg,conda-forge,bioconda,defaults
+#          channel-priority: true
+#          mamba-version: "*"
+#          python-version: 3.7
+#
+#      - name: Setup build env
+#        run: mamba install pip conda-build anaconda-client
+#
+#      - name: Build package
+#        run: mamba build conda/$(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
+#
+#      # Using local build as we didn't push the tarball to anaconda yet
+#      # the --use-local flag is not working within an activated env,
+#      # so using -c file://${CONDA_PREFIX}/... instead
+#      - name: Install package
+#        run: |
+#          mamba install -c file://${CONDA_PREFIX}/conda-bld/ \
+#          $(basename $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
 
       # We only need gcloud to pull gnomad reference file from public buckets,
       # So the service account doesn't need to have any spending allowance
@@ -77,8 +77,8 @@ jobs:
       #     source test_combine_gvcfs.sh
       #     source test_sample_qc.sh
 
-      - name: Upload to anaconda package repository
-        if: "startsWith(github.ref, 'refs/tags/')"
-        run: |
-          anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
-          upload ${CONDA_PREFIX}/conda-bld/**/*.tar.bz2
+#      - name: Upload to anaconda package repository
+#        if: "startsWith(github.ref, 'refs/tags/')"
+#        run: |
+#          anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
+#          upload ${CONDA_PREFIX}/conda-bld/**/*.tar.bz2
