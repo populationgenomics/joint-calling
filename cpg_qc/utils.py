@@ -1,13 +1,16 @@
-import logging
+"""Utility functions for the cpg-qc module"""
+
 import os
 import sys
 import time
+import hashlib
 from os.path import isdir, isfile, exists
 from typing import Any, Callable
+
 import hail as hl
 import click
-import hashlib
 from google.cloud import storage
+
 
 DEFAULT_REF = 'GRCh38'
 
@@ -20,15 +23,16 @@ def init_hail(name: str, local_tmp_dir: str):
     :return:
     """
     timestamp = time.strftime('%Y%m%d-%H%M')
-    hl_log = os.path.join(safe_mkdir(
-        os.path.join(local_tmp_dir, 'log')), f'{name}-{timestamp}.log')
+    hl_log = os.path.join(
+        safe_mkdir(os.path.join(local_tmp_dir, 'log')), f'{name}-{timestamp}.log'
+    )
     hl.init(default_reference=DEFAULT_REF, log=hl_log)
 
 
 def get_validation_callback(
-        ext: str = None,
-        must_exist: bool = False,
-        accompanying_metadata_suffix: str = None,
+    ext: str = None,
+    must_exist: bool = False,
+    accompanying_metadata_suffix: str = None,
 ) -> Callable:
     """
     Get callback for Click parameters validation
@@ -38,7 +42,8 @@ def get_validation_callback(
     with a different suffix also exists (e.g. genomes.mt and genomes.metadata.ht)
     :return: a callback suitable for Click parameter initialization
     """
-    def callback(ctx: click.Context, param: click.Option, value: Any):
+
+    def callback(_: click.Context, param: click.Option, value: Any):
         if value is None:
             return value
         if ext:
@@ -47,19 +52,22 @@ def get_validation_callback(
             if not value.endswith(f'.{ext}'):
                 raise click.BadParameter(
                     f'The argument {param.name} is expected to have '
-                    f'an extension .{ext}, got: {value}')
+                    f'an extension .{ext}, got: {value}'
+                )
         if must_exist:
             if not file_exists(value):
-                raise click.BadParameter(
-                    f'{value} doesn\'t exist or incomplete')
+                raise click.BadParameter(f"{value} doesn't exist or incomplete")
             if accompanying_metadata_suffix:
-                accompanying_metadata_fpath = os.path.splitext(value)[0] + \
-                    accompanying_metadata_suffix
+                accompanying_metadata_fpath = (
+                    os.path.splitext(value)[0] + accompanying_metadata_suffix
+                )
                 if not file_exists(accompanying_metadata_fpath):
                     raise click.BadParameter(
-                        f'An accompanying file {accompanying_metadata_fpath} doesn\'t '
-                        f'exist')
+                        f"An accompanying file {accompanying_metadata_fpath} doesn't "
+                        f'exist'
+                    )
         return value
+
     return callback
 
 
@@ -96,7 +104,9 @@ def gs_cache_file(fpath: str, local_tmp_dir: str = None) -> str:
     :return: file path
     """
     if fpath.startswith('gs://'):
-        fname = os.path.basename(fpath) + '_' + hashlib.md5(fpath.encode()).hexdigest()[:6]
+        fname = (
+            os.path.basename(fpath) + '_' + hashlib.md5(fpath.encode()).hexdigest()[:6]
+        )
         local_fpath = os.path.join(local_tmp_dir, fname)
         if not exists(local_fpath):
             bucket = fpath.replace('gs://', '').split('/')[0]
@@ -115,13 +125,15 @@ def safe_mkdir(dirpath: str, descriptive_name: str = '') -> str:
     Multiprocessing-safely and recursively creates a directory
     """
     if not dirpath:
-        sys.stderr.write(f'Path is empty: {descriptive_name if descriptive_name else ""}\n')
+        sys.stderr.write(
+            f'Path is empty: {descriptive_name if descriptive_name else ""}\n'
+        )
 
     if isdir(dirpath):
         return dirpath
 
     if isfile(dirpath):
-        sys.stderr.write(descriptive_name + ' ' + dirpath + ' is a file.\m')
+        sys.stderr.write(descriptive_name + ' ' + dirpath + ' is a file.\n')
 
     num_tries = 0
     max_tries = 10
@@ -131,7 +143,7 @@ def safe_mkdir(dirpath: str, descriptive_name: str = '') -> str:
         # the directory at the same time. Grr, concurrency.
         try:
             os.makedirs(dirpath)
-        except OSError as e:
+        except OSError:
             if num_tries > max_tries:
                 raise
             num_tries += 1

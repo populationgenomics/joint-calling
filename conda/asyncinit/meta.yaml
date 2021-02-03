@@ -29,10 +29,10 @@ about:
   home: "https://github.com/kchmck/pyasyncinit"
   license: MIT
   license_family: MIT
-  license_file: 
+  license_file:
   summary: "Class decorator to enable async __init__"
-  doc_url: 
-  dev_url: 
+  doc_url:
+  dev_url:
 
 extra:
   recipe-maintainers:
