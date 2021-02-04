@@ -1,5 +1,7 @@
 #!/bin/env python
 from os.path import join, splitext
+from typing import Optional
+
 import click
 import logging
 import pandas as pd
@@ -62,6 +64,8 @@ logger.setLevel('INFO')
               help='number of PCs to compute for ancestry PCA')
 @click.option('--min-pop-prob', 'min_pop_prob', default=0.9,
               help='minimum RF prob for pop assignment')
+@click.option('--target-bed', 'target_bed',
+              help='for exomes, target regions in a BED file format')
 def main(
         mt_path: str,
         out_ht_path: str,
@@ -72,16 +76,20 @@ def main(
         kin_threshold: float,
         n_pcs: int,
         min_pop_prob: float,
+        target_bed: str,
 ):
     utils.init_hail('sample_qc', local_tmp_dir)
-    mt = hl.read_matrix_table(mt_path)
+    mt = hl.read_matrix_table(mt_path).key_rows_by('locus', 'alleles')
     metadata_ht = hl.read_table(splitext(mt_path)[0] + '.metadata.ht')
 
     # `hail_sample_qc_ht` row fields: sample_qc, bi_allelic_sample_qc
     hail_sample_qc_ht = _compute_hail_sample_qc(mt, work_bucket, overwrite)
 
     # `sex_ht` row fields: is_female, chr20_mean_dp, sex_karyotype
-    sex_ht = _infer_sex(mt, work_bucket, overwrite)
+    sex_ht = _infer_sex(
+        mt, work_bucket, overwrite,
+        target_regions=hl.import_bed(target_bed) if target_bed else None
+    )
 
     # `hard_filtered_samples_ht` row fields: hard_filters;
     # also includes only failed samples
@@ -228,12 +236,14 @@ def _infer_sex(
         mt: hl.MatrixTable,
         work_bucket: str,
         overwrite: bool = False,
+        target_regions: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
     Runs gnomad.sample_qc.annotate_sex() to infer sex
     :param mt: input matrix table
     :param work_bucket: bucket to write checkpoints
     :param overwrite: overwrite checkpoints if they exist
+    :param target_regions: if exomes, it should correspond to the regions in the panel
     :return: a Hail table with the following row fields:
         'is_female': bool
         'f_stat': float64
@@ -257,10 +267,12 @@ def _infer_sex(
     ht = annotate_sex(
         mt,
         excluded_intervals=telomeres_and_centromeres.ht(),
+        included_intervals=target_regions,
         aaf_threshold=0.001,
-        f_stat_cutoff=0.5,
+        f_stat_cutoff=0.1,
         gt_expr="LGT",
     )
+
     ht.write(out_ht_path, overwrite=True)
     return ht
 
