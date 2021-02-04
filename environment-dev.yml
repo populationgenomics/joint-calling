@@ -1,9 +1,7 @@
 name: env-dev
 
 channels:
-  - cpg
   - conda-forge
-  - bioconda
 
 dependencies:
   - pre-commit
