@@ -1,5 +1,0 @@
-sample,population,gvcf,contamination,alignment_summary_metrics,duplicate_metrics,insert_size_metrics,wgs_metrics
-NA19238,YRI,data/gvcfs/NA19238.g.vcf.gz,data/picard_files/NA19238.selfSM,data/picard_files/NA19238.alignment_summary_metrics,data/picard_files/NA19238.duplicate_metrics,data/picard_files/NA19238.insert_size_metrics,data/picard_files/NA19238.wgs_metrics
-NA19239,,data/gvcfs/NA19239.g.vcf.gz,data/picard_files/NA19239.selfSM,data/picard_files/NA19239.alignment_summary_metrics,data/picard_files/NA19239.duplicate_metrics,data/picard_files/NA19239.insert_size_metrics,data/picard_files/NA19239.wgs_metrics
-NA19240,,data/gvcfs/NA19240.g.vcf.gz,data/picard_files/NA19240.selfSM,data/picard_files/NA19240.alignment_summary_metrics,data/picard_files/NA19240.duplicate_metrics,data/picard_files/NA19240.insert_size_metrics,data/picard_files/NA19240.wgs_metrics
-NA12878,CEU,data/gvcfs/NA12878.g.vcf.gz,data/picard_files/NA12878.selfSM,data/picard_files/NA12878.alignment_summary_metrics,data/picard_files/NA12878.duplicate_metrics,data/picard_files/NA12878.insert_size_metrics,
