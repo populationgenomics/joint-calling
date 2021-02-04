@@ -1,24 +1,33 @@
- import os
+import os
+import pandas as pd
 
-SAMPLES = 'NA12878 NA12891 NA12892 NA19238 NA19239 NA19240'.split()
-POPS = ['YRI', '', '', 'CEU', '', '']
-PICARD_SUFFICES = [
-    'alignment_summary_metrics',
-    'duplicate_metrics',
-    'insert_size_metrics',
-    'wgs_metrics',
-]
-# We are recycling files for 3 samples to make the toy dataset even smaller
-PICARD_FILES_SAMPLE_MAP = {'NA12878': 'NA19238', 'NA12891': 'NA19239', 'NA12892': 'NA19240'}
+WARP_EXECUTIONS_BUCKET = 'gs://playground-us-central1/cromwell/executions/'
+PICARD_SUFFIX_D = {
+    'contamination': 'selfSM',
+    'alignment_summary_metrics': 'alignment_summary_metrics',
+    'duplicate_metrics': 'duplicate_metrics',
+    'insert_size_metrics': 'insert_size_metrics',
+    'wgs_metrics': 'wgs_metrics',
+}
+
+samples = pd.read_csv('resources/samples.ped', sep='\t')
+
+# Adding population labels for 2/3 of the samples in a group; the rest will
+# be used to test the ancestry inferring methods
+SAMPLE_WITH_POP_LABELS = list(samples.groupby(['Population'])\
+    .apply(lambda x: x.iloc[:int(x['Population'].size / 1.5)])['Individual.ID'])
 
 
 rule all:
     input:
-        'samples.toy.local.csv'
+        all    = 'sample_maps/toy-local.csv',
+        round1 = 'sample_maps/toy-local-round1.csv',
+        round2 = 'sample_maps/toy-local-round2.csv',
+        toy_regions_bed = 'resources/toy_regions.bed'
 
 rule ref_fa_dict:
     output:
-        'resources/Homo_sapiens_assembly38.dict',
+        'work/Homo_sapiens_assembly38.dict',
     params:
         ref_url = 'gs://genomics-public-data/references/hg38/v0',
     shell:
@@ -28,7 +37,7 @@ rule ref_fa_dict:
 
 rule ref_fa_fai:
     output:
-        'resources/Homo_sapiens_assembly38.fasta.fai',
+        'work/Homo_sapiens_assembly38.fasta.fai',
     params:
         ref_url = 'gs://genomics-public-data/references/hg38/v0',
     shell:
@@ -38,84 +47,115 @@ rule ref_fa_fai:
 
 rule ref_fa:
     output:
-        'resources/Homo_sapiens_assembly38.fasta',
+        'work/Homo_sapiens_assembly38.fasta',
     shell:
         'touch {output}'
 
 rule prep_bed:
     output:
-        'resources/toy_regions.bed'
+        'work/toy_regions.bed'
     shell:
         "gsutil cp gs://playground-au/CDS-canonical.bed -"
         " | awk 'BEGIN {{srand()}} {{ if (rand() <= .1 && $1 !~ /alt/"
-        " || $1 ~ /chrY/) print $0}}' > {output}"
+        " || $1 ~ /chrY/ || $1 ~ /chrX/ || $1 ~ /chr20/"
+        ") print $0}}' > {output}"
 
 rule subset_gvcf:
     input:
         regions = rules.prep_bed.output
     output:
-        'work/{sample}.toy_regions.g.vcf.gz'
+        gvcf = 'work/toy_regions/{sample}.g.vcf.gz',
+        tbi = 'work/toy_regions/{sample}.g.vcf.gz.tbi'
+    params:
+        bucket = WARP_EXECUTIONS_BUCKET
     shell:
-         "gsutil cp gs://playground-au/gvcf/{wildcards.sample}.g.vcf.gz -"
-         " | bcftools view -T {input.regions} -Oz -o {output}"
-
-rule tabix_subset_gvcf:
-    input:
-        'work/{sample}.toy_regions.g.vcf.gz'
-    output:
-        'work/{sample}.toy_regions.g.vcf.gz.tbi'
-    shell:
-        'tabix -p vcf {input}'
+         "gsutil cp {params.bucket}/**/{wildcards.sample}.g.vcf.gz -"
+         " | bcftools view -T {input.regions} -Oz -o {output.gvcf} "
+         "&& tabix -p vcf {output.gvcf}"
 
 # Reblocking GVCFs to significantly reduce their size
 rule reblock_gvcf:
     input:
-        gvcf = rules.subset_gvcf.output,
-        tbi = rules.tabix_subset_gvcf.output,
+        gvcf = rules.subset_gvcf.output.gvcf,
+        tbi = rules.subset_gvcf.output.tbi,
         ref_fa = rules.ref_fa.output,
         ref_fa_fai = rules.ref_fa_fai.output,
         ref_fa_dict = rules.ref_fa_dict.output,
     output:
-        gvcf = 'gvcfs/{sample}.toy.g.vcf.gz',
-        tbi = 'gvcfs/{sample}.toy.g.vcf.gz.tbi'
+        gvcf = 'gvcfs/reblocked/{sample}.g.vcf.gz',
+        tbi = 'gvcfs/reblocked/{sample}.g.vcf.gz.tbi'
     shell:
         "gatk ReblockGVCF --drop-low-quals"
         " -R {input.ref_fa}"
         " -V {input.gvcf} -O {output.gvcf}"
 
-rule copy_picard_file:
+rule clean_info_fields:
+    input:
+        gvcf = rules.reblock_gvcf.output.gvcf
+    output:
+        gvcf = 'gvcfs/{sample}.g.vcf.gz',
+        tbi = 'gvcfs/{sample}.g.vcf.gz.tbi',
     params:
-        bucket = 'gs://playground-au/warp/output/WholeGenomeGermlineSingleSample',
-        fname = lambda wildcards: f'{wildcards.sample}.{wildcards.suffix}'
+        to_clean = ','.join(f'INFO/{anno}' for anno in [
+            'AS_RAW_BaseQRankSum',
+            'AS_RAW_MQ',
+            'AS_RAW_MQRankSum',
+            'AS_RAW_ReadPosRankSum',
+            'AS_SB_TABLE',
+            'MQ_DP',
+        ])
+    shell:
+        'bcftools annotate -x "{params.to_clean}" '
+        '{input.gvcf} -Oz -o {output.gvcf} && tabix {output.gvcf}'
+
+rule copy_picard_file:
     output:
         'picard_files/{sample}.{suffix}'
+    params:
+        bucket = WARP_EXECUTIONS_BUCKET,
+        fname = lambda wildcards: f'{wildcards.sample}.{wildcards.suffix}'
     shell:
-        'gsutil cp "{params.bucket}/**/{params.fname}" picard_files/'
+        'gsutil cp "{params.bucket}/**/{params.fname}" picard_files/ || touch {output}'
 
 rule make_csv:
     input:
-        gvcfs = expand(rules.reblock_gvcf.output, sample=SAMPLES),
+        gvcfs = expand(rules.clean_info_fields.output, sample=samples['Individual.ID']),
         picard_files = expand(
             rules.copy_picard_file.output,
-            sample=PICARD_FILES_SAMPLE_MAP.values(),
-            suffix=PICARD_SUFFICES,
+            sample=samples['Individual.ID'],
+            suffix=PICARD_SUFFIX_D.values(),
         )
     output:
-        'samples.toy.local.csv'
+        all    = 'sample_maps/toy-local.csv',
+        round1 = 'sample_maps/toy-local-round1.csv',
+        round2 = 'sample_maps/toy-local-round2.csv',
     run:
         rows = []
-        hdr = ['sample', 'population', 'gvcf'] + PICARD_SUFFICES
-        for sample, gvcf, pop in zip(SAMPLES, input.gvcfs, POPS):
-            row = dict(sample=sample, gvcf=f'data/{gvcf}', population=pop)
-            for picard_suffix in PICARD_SUFFICES:
-                picard_sample = PICARD_FILES_SAMPLE_MAP.get(sample, sample)
-                picard_fpath = f'picard_files/{picard_sample}.{picard_suffix}'
+        hdr = ['sample', 'population', 'gvcf'] + list(PICARD_SUFFIX_D.keys())
+        for sample, pop, gvcf in zip(
+                samples['Individual.ID'],
+                samples['Population'],
+                input.gvcfs
+            ):
+            row = dict(sample=sample, gvcf=f'data/{gvcf}',
+                population=pop if sample in SAMPLE_WITH_POP_LABELS else '')
+            for picard_key, picard_suffix in PICARD_SUFFIX_D.items():
+                picard_fpath = f'picard_files/{sample}.{picard_suffix}'
+                row[picard_key] = ''
                 if os.path.isfile(picard_fpath):
-                    row[picard_suffix] = f'data/{picard_fpath}'
-                else:
-                    row[picard_suffix] = ''
+                    if os.path.getsize(picard_fpath) == 0:
+                        os.remove(picard_fpath)
+                    else:
+                        row[picard_key] = f'data/{picard_fpath}'
             rows.append(row)
-        with open(output[0], 'w') as out:
+        with open(output.all, 'w') as out, open(output.round1, 'w') as out_r1, \
+                open(output.round2, 'w') as out_r2:
             out.write(','.join(hdr) + '\n')
+            out_r1.write(','.join(hdr) + '\n')
+            out_r2.write(','.join(hdr) + '\n')
             for row in rows:
                 out.write(','.join(row[h] for h in hdr) + '\n')
+            for row in rows[:3]:
+                out_r1.write(','.join(row[h] for h in hdr) + '\n')
+            for row in rows[3:]:
+                out_r2.write(','.join(row[h] for h in hdr) + '\n')
