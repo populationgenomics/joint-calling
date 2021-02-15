@@ -1,7 +1,13 @@
+import sys
+import subprocess
 import os
 import pandas as pd
 
-WARP_EXECUTIONS_BUCKET = 'gs://playground-us-central1/cromwell/executions/'
+dataset_name = config['dataset']
+location = config['location']  # local, gcs
+subset_to_toy_regions = config.get('subset_to_toy_regions', False)
+
+WARP_EXECUTIONS_BUCKET = 'gs://playground-us-central1/cromwell/executions/WGSMultipleSamplesFromBam'
 PICARD_SUFFIX_D = {
     'contamination': 'selfSM',
     'alignment_summary_metrics': 'alignment_summary_metrics',
@@ -10,7 +16,7 @@ PICARD_SUFFIX_D = {
     'wgs_metrics': 'wgs_metrics',
 }
 
-samples = pd.read_csv('resources/samples.ped', sep='\t')
+samples = pd.read_csv(f'resources/{dataset_name}-samples.ped', sep='\t')
 
 # Adding population labels for 2/3 of the samples in a group; the rest will
 # be used to test the ancestry inferring methods
@@ -20,9 +26,9 @@ SAMPLE_WITH_POP_LABELS = list(samples.groupby(['Population'])\
 
 rule all:
     input:
-        all    = 'sample_maps/toy-local.csv',
-        round1 = 'sample_maps/toy-local-round1.csv',
-        round2 = 'sample_maps/toy-local-round2.csv',
+        all    = f'sample_maps/{dataset_name}-{location}.csv',
+        round1 = f'sample_maps/{dataset_name}-{location}-round1.csv',
+        round2 = f'sample_maps/{dataset_name}-{location}-round2.csv',
         toy_regions_bed = 'resources/toy_regions.bed'
 
 rule ref_fa_dict:
@@ -117,7 +123,90 @@ rule copy_picard_file:
     shell:
         'gsutil cp "{params.bucket}/**/{params.fname}" picard_files/ || touch {output}'
 
-rule make_csv:
+def write_sample_maps(rows, hdr, output):
+    with open(output.all, 'w') as out, open(output.round1, 'w') as out_r1, \
+            open(output.round2, 'w') as out_r2:
+        out.write(','.join(hdr) + '\n')
+        out_r1.write(','.join(hdr) + '\n')
+        out_r2.write(','.join(hdr) + '\n')
+        for row in rows:
+            out.write(','.join(row[h] for h in hdr) + '\n')
+        for row in rows[:3]:
+            out_r1.write(','.join(row[h] for h in hdr) + '\n')
+        for row in rows[3:]:
+            out_r2.write(','.join(row[h] for h in hdr) + '\n')
+
+def run_cmd(cmd):
+    print(cmd)
+    return subprocess.run(cmd, shell=True)
+
+def run_check_output(cmd, silent=False):
+    if not silent:
+        print(cmd)
+    return subprocess.check_output(cmd, shell=True).decode()
+
+rule find_all_gcs_files:
+    output:
+        paths_txt = protected(f'work/gcs/gcs_paths.txt')
+    params:
+        bucket = WARP_EXECUTIONS_BUCKET
+    run:
+        gvcf_ptrn = f'{params.bucket}/**/call-MergeVCFs/*.g.vcf.gz'
+        run_cmd(f'gsutil ls \'{gvcf_ptrn}\' > {output.paths_txt}')
+        for picard_key, picard_suffix in PICARD_SUFFIX_D.items():
+            picard_ptrn = f'{params.bucket}/**/*.{picard_suffix}'
+            try:
+                run_cmd(f'gsutil ls \'{picard_ptrn}\' >> {output.paths_txt}')
+            except:
+                pass
+
+rule make_csv_gcs:
+    input:
+        gcs_paths_txt = rules.find_all_gcs_files.output.paths_txt
+    output:
+        all    = f'sample_maps/{dataset_name}-gcs.csv',
+        round1 = f'sample_maps/{dataset_name}-gcs-round1.csv',
+        round2 = f'sample_maps/{dataset_name}-gcs-round2.csv',
+    run:
+        rows = []
+        hdr = ['sample', 'population', 'gvcf'] + list(PICARD_SUFFIX_D.keys())
+        for sample, pop in zip(
+                samples['Individual.ID'],
+                samples['Population'],
+            ):
+            try:
+                gvcf_path = run_check_output(
+                    f'grep {sample}.g.vcf.gz {input.gcs_paths_txt} | head -n1',
+                    silent=True
+                ).strip()
+            except:
+                sys.stderr.write(f'{sample}.g.vcf.gz not found')
+                continue
+            else:
+                print(gvcf_path)
+            if gvcf_path == '':
+                sys.stderr.write(f'GVCF for {sample} is empty')
+                continue
+            row = dict(sample=sample, gvcf=gvcf_path,
+                population=pop if sample in SAMPLE_WITH_POP_LABELS else '')
+
+            for picard_key, picard_suffix in PICARD_SUFFIX_D.items():
+                try:
+                    picard_path = run_check_output(
+                        f'grep {sample}.{picard_suffix} {input.gcs_paths_txt} | head -n1',
+                        silent=True
+                    ).strip()
+                except:
+                    picard_path = ''
+                row[picard_key] = ''
+                if picard_path.strip() != '':
+                    row[picard_key] = picard_path
+            rows.append(row)
+        assert rows[0]['gvcf'] != ''
+        print(rows[0])
+        write_sample_maps(rows, hdr, output)
+
+rule make_csv_local:
     input:
         gvcfs = expand(rules.clean_info_fields.output, sample=samples['Individual.ID']),
         picard_files = expand(
@@ -126,9 +215,9 @@ rule make_csv:
             suffix=PICARD_SUFFIX_D.values(),
         )
     output:
-        all    = 'sample_maps/toy-local.csv',
-        round1 = 'sample_maps/toy-local-round1.csv',
-        round2 = 'sample_maps/toy-local-round2.csv',
+        all    = f'sample_maps/{dataset_name}-local.csv',
+        round1 = f'sample_maps/{dataset_name}-local-round1.csv',
+        round2 = f'sample_maps/{dataset_name}-local-round2.csv',
     run:
         rows = []
         hdr = ['sample', 'population', 'gvcf'] + list(PICARD_SUFFIX_D.keys())
@@ -148,14 +237,4 @@ rule make_csv:
                     else:
                         row[picard_key] = f'data/{picard_fpath}'
             rows.append(row)
-        with open(output.all, 'w') as out, open(output.round1, 'w') as out_r1, \
-                open(output.round2, 'w') as out_r2:
-            out.write(','.join(hdr) + '\n')
-            out_r1.write(','.join(hdr) + '\n')
-            out_r2.write(','.join(hdr) + '\n')
-            for row in rows:
-                out.write(','.join(row[h] for h in hdr) + '\n')
-            for row in rows[:3]:
-                out_r1.write(','.join(row[h] for h in hdr) + '\n')
-            for row in rows[3:]:
-                out_r2.write(','.join(row[h] for h in hdr) + '\n')
+        write_sample_maps(rows, hdr, output)
