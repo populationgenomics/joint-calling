@@ -13,22 +13,44 @@ pip install -e cpg-qc
 ## Usage example
 
 ```sh
-cpg_qc \
-  --sample-map gs://playground-au/test/gvcfs_gs.csv \
-  --mt gs://playground-au/test/mt/genomes.mt \
-  --bucket gs://playground-au/test/cpg_qc \
-  --local-tmp-dir test_run \
-  --overwrite
-```
+gcloud config set project fewgenomes
 
-If the matrix table specified with `--mt` doesn't exist, you can generate it using the `combine_gvcfs` script, which drives [Hail's vcf_combiner](https://hail.is/docs/0.2/experimental/vcf_combiner.html).
+hailctl dataproc start combiner \
+  --max-age=4h \
+  --region us-central1 \
+  --zone us-central1-a \
+  --num-preemptible-workers 4
 
-```sh
-combine_gvcfs \
-  --sample-map gs://playground-au/test/gvcfs_gs.csv \
-  --out-mt gs://playground-au/test/mt/genomes.mt \
-  --bucket gs://playground-au/test/combine_gvcfs \
-  --local-tmp-dir test_run
+# Compress dependencies to add them into the dataproc cluster
+mkdir libs
+cp -r cpg_qc $CONDA_PREFIX/lib/python3.7/site-packages/{click,gnomad,google,slack} libs
+cd libs
+zip -r libs *
+cd ..
+
+hailctl dataproc submit combiner \
+  --pyfiles libs/libs.zip \
+  scripts/combine_gvcfs.py \
+  --sample-map    gs://playground-us-central1/fewgenomes/50genomes-gcs-round1.csv \
+  --out-mt        gs://playground-us-central1/fewgenomes/50genomes-round1.mt \
+  --bucket        gs://playground-us-central1/fewgenomes/50genomes/work/round1 \
+  --local-tmp-dir test/run_test/combine/50genomes/round1 &
+
+hailctl dataproc submit combiner \
+  --pyfiles libs/libs.zip \
+  scripts/combine_gvcfs.py \
+  --sample-map    gs://playground-us-central1/fewgenomes/50genomes-gcs-round2.csv \
+  --existing-mt   gs://playground-us-central1/fewgenomes/50genomes-round1.mt \
+  --out-mt        gs://playground-us-central1/fewgenomes/50genomes.mt \
+  --bucket        gs://playground-us-central1/fewgenomes/50genomes/work/round2 \
+  --local-tmp-dir test/run_test/combine/50genomes/round2 &
+
+hailctl dataproc submit combiner \
+  --pyfiles libs/libs.zip \
+  scripts/sample_qc.py \
+  --mt            gs://playground-us-central1/fewgenomes/50genomes.mt \
+  --bucket        gs://playground-us-central1/fewgenomes/50genomes/work/sample_qc \
+  --local-tmp-dir test/run_test/combine/50genomes/sample_qc &
 ```
 
 The `--sample-map` value is a CSV file with a header as follows:
