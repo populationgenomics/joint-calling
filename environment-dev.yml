@@ -7,3 +7,9 @@ dependencies:
   - pre-commit
   - pylint
   - bumpversion
+  - hail
+  - click
+  - pandas
+  - google-cloud-sdk
+  - google-cloud-storage
+  - gnomad
