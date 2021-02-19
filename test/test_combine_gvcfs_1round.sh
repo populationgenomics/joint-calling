@@ -2,7 +2,7 @@
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
-combine_gvcfs \
+combine_gvcfs.py \
   --out-mt        ${DIR}/test_run/round1.mt \
   --sample-map    ${DIR}/data/sample_maps/toy-local-round1.csv \
   --bucket        ${DIR}/test_run/combine_gvcfs_round1/bucket \

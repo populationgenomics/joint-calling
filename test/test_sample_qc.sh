@@ -2,7 +2,7 @@
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
-sample_qc \
+sample_qc.py \
   --mt            ${DIR}/test_run/genomes.mt \
   --out-ht        ${DIR}/test_run/sample_qc.ht \
   --bucket        ${DIR}/test_run/sample_qc/bucket \

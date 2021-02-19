@@ -1,11 +1,13 @@
 #!/usr/bin/env python
+
+"""
+Combine a set of gVCFs and output a MatrixTable and a HailTable with metadata
+"""
+
 import os
-import time
-from typing import List, Optional, Tuple, Sequence
-import click
+from typing import List, Sequence
 import logging
-import pandas as pd
-import uuid
+import click
 import hail as hl
 from hail.experimental.vcf_combiner import vcf_combiner
 
@@ -13,7 +15,7 @@ from cpg_qc.utils import get_validation_callback, file_exists
 from cpg_qc import utils
 from cpg_qc import _version
 
-logger = logging.getLogger("vcf_combiner")
+logger = logging.getLogger('vcf_combiner')
 logger.setLevel('INFO')
 
 DEFAULT_REF = 'GRCh38'
@@ -25,44 +27,67 @@ TARGET_RECORDS = 25_000
 
 @click.command()
 @click.version_option(_version.__version__)
-@click.option('--sample-map', 'sample_map_csv_path', required=True,
-              callback=get_validation_callback(ext='csv', must_exist=True), help=
-              'path to a per-sample data in a CSV file with '
-              'a first line as a header. The only 2 required columns are `sample` '
-              'and `gvcf`, in any order, possibly mixed with other columns.')
-@click.option('--out-mt', 'out_mt_path', required=True,
-              callback=get_validation_callback(ext='mt'), help=
-              'path to write the MatrixTable. Must have an .mt extention. '
-              'Can be a Google Storage URL (i.e. start with `gs://`). '
-              'An accompanying file with a `.metadata.ht` suffix will ne written '
-              'at the same folder or bucket location, containing the same columns '
-              'as the input sample map. This file is needed for further incremental '
-              'extending of the matrix table using new GVCFs.')
-@click.option('--existing-mt', 'existing_mt_path',
-              callback=get_validation_callback(ext='mt', must_exist=True), help=
-              'optional path to an existing MatrixTable. Must have an .mt '
-              'extention. Can be a Google Storage URL (i.e. start with `gs://`). '
-              'If provided, will be read and used as a base to get extended with the '
-              'samples in the input sample map. Can be read-only, as it will not '
-              'be overwritten, instead the result will be written to the new location '
-              'provided with --out-mt. An accompanying `.metadata.ht` file is expected '
-              'to be present at the same folder or bucket location, containing the '
-              'same set of samples, and the same columns as the input sample map')
-@click.option('--bucket', 'work_bucket', required=True, help=
-              'path to folder for intermediate output. '
-              'Can be a Google Storage URL (i.e. start with `gs://`).')
-@click.option('--local-tmp-dir', 'local_tmp_dir', required=True, help=
-              'local directory for temporary files and Hail logs (must be local)')
-@click.option('--reuse', 'reuse', is_flag=True, help=
-              'if an intermediate or a final file exists, reuse it instead of '
-              'rerunning the code that generates it')
+@click.option(
+    '--sample-map',
+    'sample_map_csv_path',
+    required=True,
+    callback=get_validation_callback(ext='csv', must_exist=True),
+    help='path to a per-sample data in a CSV file with '
+    'a first line as a header. The only 2 required columns are `sample` '
+    'and `gvcf`, in any order, possibly mixed with other columns.',
+)
+@click.option(
+    '--out-mt',
+    'out_mt_path',
+    required=True,
+    callback=get_validation_callback(ext='mt'),
+    help='path to write the MatrixTable. Must have an .mt extention. '
+    'Can be a Google Storage URL (i.e. start with `gs://`). '
+    'An accompanying file with a `.metadata.ht` suffix will ne written '
+    'at the same folder or bucket location, containing the same columns '
+    'as the input sample map. This file is needed for further incremental '
+    'extending of the matrix table using new GVCFs.',
+)
+@click.option(
+    '--existing-mt',
+    'existing_mt_path',
+    callback=get_validation_callback(ext='mt', must_exist=True),
+    help='optional path to an existing MatrixTable. Must have an .mt '
+    'extention. Can be a Google Storage URL (i.e. start with `gs://`). '
+    'If provided, will be read and used as a base to get extended with the '
+    'samples in the input sample map. Can be read-only, as it will not '
+    'be overwritten, instead the result will be written to the new location '
+    'provided with --out-mt. An accompanying `.metadata.ht` file is expected '
+    'to be present at the same folder or bucket location, containing the '
+    'same set of samples, and the same columns as the input sample map',
+)
+@click.option(
+    '--bucket',
+    'work_bucket',
+    required=True,
+    help='path to folder for intermediate output. '
+    'Can be a Google Storage URL (i.e. start with `gs://`).',
+)
+@click.option(
+    '--local-tmp-dir',
+    'local_tmp_dir',
+    required=True,
+    help='local directory for temporary files and Hail logs (must be local)',
+)
+@click.option(
+    '--reuse',
+    'reuse',
+    is_flag=True,
+    help='if an intermediate or a final file exists, reuse it instead of '
+    'rerunning the code that generates it',
+)
 def main(
-        sample_map_csv_path: str,
-        out_mt_path: str,
-        existing_mt_path: str,
-        work_bucket: str,
-        local_tmp_dir: str,
-        reuse: bool,
+    sample_map_csv_path: str,
+    out_mt_path: str,
+    existing_mt_path: str,
+    work_bucket: str,
+    local_tmp_dir: str,
+    reuse: bool,
 ):
     """
     Runs the Hail
@@ -83,10 +108,10 @@ def main(
     utils.init_hail('combine_gvcfs', local_tmp_dir)
 
     logger.info(f'Combining new samples')
-    new_metadata_ht = hl.import_table(
-        sample_map_csv_path, delimiter=',', key='sample')
-    new_mt_path = os.path.join(work_bucket, 'new.mt')\
-        if existing_mt_path else out_mt_path
+    new_metadata_ht = hl.import_table(sample_map_csv_path, delimiter=',', key='sample')
+    new_mt_path = (
+        os.path.join(work_bucket, 'new.mt') if existing_mt_path else out_mt_path
+    )
     if reuse and file_exists(new_mt_path):
         logger.info(f'MatrixTable with new samples exists, reusing: {new_mt_path}')
     else:
@@ -94,10 +119,12 @@ def main(
             gvcf_paths=new_metadata_ht.gvcf.collect(),
             out_mt_path=new_mt_path,
             work_bucket=work_bucket,
-            overwrite=True
+            overwrite=True,
         )
-        logger.info(f'Written {new_metadata_ht.count()} new '
-                    f'samples into a MatrixTable {out_mt_path}')
+        logger.info(
+            f'Written {new_metadata_ht.count()} new '
+            f'samples into a MatrixTable {out_mt_path}'
+        )
 
     if existing_mt_path:
         _combine_with_the_existing_mt(
@@ -120,14 +147,16 @@ def main(
 
 
 def _combine_with_the_existing_mt(
-        existing_mt: hl.MatrixTable,
-        new_mt_path: str,  # passing as a path because we are going
-                           # to re-read it with different intervals
-        out_mt_path: str
+    existing_mt: hl.MatrixTable,
+    new_mt_path: str,  # passing as a path because we are going
+    # to re-read it with different intervals
+    out_mt_path: str,
 ):
     existing_mt = existing_mt.drop('gvcf_info')
-    logger.info(f'Combining with the existing matrix table '
-                f'({existing_mt.count_cols()} samples)')
+    logger.info(
+        f'Combining with the existing matrix table '
+        f'({existing_mt.count_cols()} samples)'
+    )
     intervals = vcf_combiner.calculate_new_intervals(
         hl.read_matrix_table(new_mt_path).rows(),
         n=TARGET_RECORDS,
@@ -143,15 +172,15 @@ def chunks(seq, size):
     """
     iterate through a list size elements at a time
     """
-    return (seq[pos:pos + size] for pos in range(0, len(seq), size))
+    return (seq[pos : pos + size] for pos in range(0, len(seq), size))
 
 
 def _combine_multiwrite_chunk(
-        paths: Sequence[str],
-        tmp_dirpath: str,
-        intervals: List[hl.utils.Interval],
-        chunk_i: int,
-        overwrite: bool = False,
+    paths: Sequence[str],
+    tmp_dirpath: str,
+    intervals: List[hl.utils.Interval],
+    chunk_i: int,
+    overwrite: bool = False,
 ):
     """
     Inner part of stage-one combining, including transformation GVCFs
@@ -173,7 +202,7 @@ def _combine_multiwrite_chunk(
 
     # Create a MatrixTable for each single GVCF
     single_mts: List[hl.MatrixTable] = hl.import_gvcfs(
-        [p for p in paths],
+        paths,
         intervals,
         array_elements_required=False,
     )
@@ -190,10 +219,10 @@ def _combine_multiwrite_chunk(
 
 
 def _combine_in_chunks(
-        gvcf_paths: Sequence[str],
-        tmp_dirpath: str,
-        intervals: List[hl.utils.Interval],
-        overwrite: bool = True,
+    gvcf_paths: Sequence[str],
+    tmp_dirpath: str,
+    intervals: List[hl.utils.Interval],
+    overwrite: bool = True,
 ) -> List[str]:
     """
     Stage one of the combiner, responsible for importing GVCFs, transforming
@@ -215,7 +244,7 @@ def _combine_in_chunks(
     multiwrite_chunk_i = 0
     for pos in range(0, len(gvcf_paths), multiwrite_chunk_size):
         combined_mt_paths = _combine_multiwrite_chunk(
-            gvcf_paths[pos:pos + multiwrite_chunk_size],
+            gvcf_paths[pos : pos + multiwrite_chunk_size],
             tmp_dirpath,
             intervals,
             multiwrite_chunk_i,
@@ -227,21 +256,19 @@ def _combine_in_chunks(
 
 
 def combine_gvcfs(
-        gvcf_paths: List[str],
-        out_mt_path: str,
-        work_bucket: str,
-        overwrite: bool = True
+    gvcf_paths: List[str], out_mt_path: str, work_bucket: str, overwrite: bool = True
 ):
     """
     First round of combination: chunking the entire set of new GVCFs
     and merging chunks into small multi-sample MTs. For all chunks,
     the initial set of intervals is used - default genome intervals
     """
-    intervals: List[hl.utils.Interval] = \
-        vcf_combiner.calculate_even_genome_partitioning(
-            reference_genome=DEFAULT_REF,
-            interval_size=vcf_combiner.CombinerConfig.default_genome_interval_size,
-        )
+    intervals: List[
+        hl.utils.Interval
+    ] = vcf_combiner.calculate_even_genome_partitioning(
+        reference_genome=DEFAULT_REF,
+        interval_size=vcf_combiner.CombinerConfig.default_genome_interval_size,
+    )
     tmp_bucket = os.path.join(work_bucket, 'combiner-tmp')
     logger.info('Combining chunks of GVCFs')
     small_chunks_mt_paths = _combine_in_chunks(
@@ -253,7 +280,8 @@ def combine_gvcfs(
 
     logger.info(
         'Recalculating the intervals based on one of the '
-        'smaller-chunk newly combined MTs')
+        'smaller-chunk newly combined MTs'
+    )
     intervals = vcf_combiner.calculate_new_intervals(
         hl.read_matrix_table(small_chunks_mt_paths[0]).rows(),
         n=TARGET_RECORDS,
@@ -267,15 +295,17 @@ def combine_gvcfs(
 
     logger.info('Next round of combining: merging into larger chunks')
     larger_chunk_mts = [
-        vcf_combiner.combine_gvcfs(chunk_of_mts) for chunk_of_mts in
-        chunks(small_chunks_mts, MAX_COMBINE_NUMBER)
+        vcf_combiner.combine_gvcfs(chunk_of_mts)
+        for chunk_of_mts in chunks(small_chunks_mts, MAX_COMBINE_NUMBER)
     ]
     i = 0
     # If this round wasn't enough, start recursively applying this procedure,
     # moving to larger chunks:
     while len(larger_chunk_mts) > 1:
-        logger.info(f'Now the number of chunks is {larger_chunk_mts}, '
-                    f'moving the next level of mering')
+        logger.info(
+            f'Now the number of chunks is {larger_chunk_mts}, '
+            f'moving the next level of mering'
+        )
         tmp_i_bucket = os.path.join(tmp_bucket, f'{i}')
         pad = len(str(len(larger_chunk_mts)))
         larger_chunk_mt_paths = [
@@ -297,8 +327,10 @@ def combine_gvcfs(
             for path in larger_chunk_mt_paths
         ]
         even_larger_chunk_mts = [
-            vcf_combiner.combine_gvcfs(chunk_of_mts) for chunk_of_mts in
-            chunks(with_recalculated_intervals_mts, MAX_COMBINE_NUMBER)
+            vcf_combiner.combine_gvcfs(chunk_of_mts)
+            for chunk_of_mts in chunks(
+                with_recalculated_intervals_mts, MAX_COMBINE_NUMBER
+            )
         ]
         larger_chunk_mts = even_larger_chunk_mts
         i += 1
@@ -307,4 +339,4 @@ def combine_gvcfs(
 
 
 if __name__ == '__main__':
-    main()
+    main()  # pylint: disable=E1120
