@@ -15,20 +15,22 @@ pip install -e cpg-qc
 ```sh
 gcloud config set project fewgenomes
 
-hailctl dataproc start combiner \
+# Start cluster
+hailctl dataproc start cpg-qc \
   --max-age=4h \
   --region us-central1 \
   --zone us-central1-a \
   --num-preemptible-workers 4
 
-# Compress dependencies to add them into the dataproc cluster
+# Compress dependencies to upload them into the dataproc instance
 mkdir libs
 cp -r cpg_qc $CONDA_PREFIX/lib/python3.7/site-packages/{click,gnomad,google,slack} libs
 cd libs
 zip -r libs *
 cd ..
 
-hailctl dataproc submit combiner \
+# Submit combiner job for a first set of samples
+hailctl dataproc submit cpg-qc \
   --pyfiles libs/libs.zip \
   scripts/combine_gvcfs.py \
   --sample-map    gs://playground-us-central1/fewgenomes/50genomes-gcs-round1.csv \
@@ -36,7 +38,8 @@ hailctl dataproc submit combiner \
   --bucket        gs://playground-us-central1/fewgenomes/50genomes/work/round1 \
   --local-tmp-dir test/run_test/combine/50genomes/round1 &
 
-hailctl dataproc submit combiner \
+# Submit combiner job to extend the matrix table with more samples
+hailctl dataproc submit cpg-qc \
   --pyfiles libs/libs.zip \
   scripts/combine_gvcfs.py \
   --sample-map    gs://playground-us-central1/fewgenomes/50genomes-gcs-round2.csv \
@@ -45,7 +48,8 @@ hailctl dataproc submit combiner \
   --bucket        gs://playground-us-central1/fewgenomes/50genomes/work/round2 \
   --local-tmp-dir test/run_test/combine/50genomes/round2 &
 
-hailctl dataproc submit combiner \
+# Submit sample QC on the final combined matrix table
+hailctl dataproc submit cpg-qc \
   --pyfiles libs/libs.zip \
   scripts/sample_qc.py \
   --mt            gs://playground-us-central1/fewgenomes/50genomes.mt \

@@ -28,8 +28,8 @@ requirements:
 
 test:
   commands:
-    - sample_qc --version
-    - combine_gvcfs --version
+    - sample_qc.py --version
+    - combine_gvcfs.py --version
 
 about:
   home: {{ data['url'] }}
