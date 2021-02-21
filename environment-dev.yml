@@ -1,4 +1,4 @@
-name: env-dev
+name: cpg-qc
 
 channels:
   - conda-forge
