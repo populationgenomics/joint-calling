@@ -115,7 +115,7 @@ def main(
     if reuse and file_exists(new_mt_path):
         logger.info(f'MatrixTable with new samples exists, reusing: {new_mt_path}')
     else:
-        combine_gvcfs(
+        combine_gvcfs_standard(
             gvcf_paths=new_metadata_ht.gvcf.collect(),
             out_mt_path=new_mt_path,
             work_bucket=work_bucket,
@@ -255,7 +255,24 @@ def _combine_in_chunks(
     return out_mt_paths
 
 
-def combine_gvcfs(
+def combine_gvcfs_standard(
+    gvcf_paths: List[str], out_mt_path: str, work_bucket: str, overwrite: bool = True
+):
+    """
+    Combine a set of GVCFs in one go
+    """
+    hl.experimental.run_combiner(
+        gvcf_paths,
+        out_file=out_mt_path,
+        reference_genome=utils.DEFAULT_REF,
+        use_genome_default_intervals=True,
+        tmp_path=os.path.join(work_bucket, 'tmp'),
+        key_by_locus_and_alleles=True,
+        overwrite=overwrite,
+    )
+
+
+def combine_gvcfs_in_chunks(
     gvcf_paths: List[str], out_mt_path: str, work_bucket: str, overwrite: bool = True
 ):
     """
