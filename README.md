@@ -6,7 +6,9 @@ A pipeline for post-processing and filtering of population genomic variant calls
 
 ```sh
 git clone git@github.com:populationgenomics/cpg-qc.git
-pip install -e cpg-qc
+cd cpg-qc
+conda env create -f environment-dev.yml
+pip install -e .
 ```
 
 
