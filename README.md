@@ -15,11 +15,15 @@ pip install -e cpg-qc
 ```sh
 gcloud config set project fewgenomes
 
+REGION=us-central1
+#REGION=australia-southeast1
+ZONE=${REGION}-a
+
 # Start cluster
-hailctl dataproc start cpg-qc \
+hailctl dataproc start cpg-qc-cluster \
   --max-age=4h \
-  --region us-central1 \
-  --zone us-central1-a \
+  --region $REGION \
+  --zone $ZONE \
   --num-preemptible-workers 4
 
 # Compress dependencies to upload them into the dataproc instance
@@ -30,31 +34,39 @@ zip -r libs *
 cd ..
 
 # Submit combiner job for a first set of samples
-hailctl dataproc submit cpg-qc \
+hailctl dataproc submit cpg-qc-cluster \
   --pyfiles libs/libs.zip \
   scripts/combine_gvcfs.py \
-  --sample-map    gs://playground-us-central1/fewgenomes/50genomes-gcs-round1.csv \
-  --out-mt        gs://playground-us-central1/fewgenomes/50genomes-round1.mt \
-  --bucket        gs://playground-us-central1/fewgenomes/50genomes/work/round1 \
-  --local-tmp-dir test/run_test/combine/50genomes/round1 &
+  --sample-map    gs://playground-$REGION/fewgenomes/50genomes-gcs-round1.csv \
+  --out-mt        gs://playground-$REGION/fewgenomes/50genomes-round1.mt \
+  --bucket        gs://playground-$REGION/fewgenomes/50genomes/work/round1 \
+  --local-tmp-dir test/run_test/combine/50genomes/round1 \
+  --hail-billing  fewgenomes \
+  &
 
 # Submit combiner job to extend the matrix table with more samples
-hailctl dataproc submit cpg-qc \
+hailctl dataproc submit cpg-qc-cluster \
   --pyfiles libs/libs.zip \
   scripts/combine_gvcfs.py \
-  --sample-map    gs://playground-us-central1/fewgenomes/50genomes-gcs-round2.csv \
-  --existing-mt   gs://playground-us-central1/fewgenomes/50genomes-round1.mt \
-  --out-mt        gs://playground-us-central1/fewgenomes/50genomes.mt \
-  --bucket        gs://playground-us-central1/fewgenomes/50genomes/work/round2 \
-  --local-tmp-dir test/run_test/combine/50genomes/round2 &
+  --sample-map    gs://playground-$REGION/fewgenomes/50genomes-gcs-round2.csv \
+  --existing-mt   gs://playground-$REGION/fewgenomes/50genomes-round1.mt \
+  --out-mt        gs://playground-$REGION/fewgenomes/50genomes.mt \
+  --bucket        gs://playground-$REGION/fewgenomes/50genomes/work/round2 \
+  --local-tmp-dir test/run_test/combine/50genomes/round2 \
+  --hail-billing  fewgenomes \
+  &
 
 # Submit sample QC on the final combined matrix table
-hailctl dataproc submit cpg-qc \
+hailctl dataproc submit cpg-qc-cluster \
   --pyfiles libs/libs.zip \
   scripts/sample_qc.py \
-  --mt            gs://playground-us-central1/fewgenomes/50genomes.mt \
-  --bucket        gs://playground-us-central1/fewgenomes/50genomes/work/sample_qc \
-  --local-tmp-dir test/run_test/combine/50genomes/sample_qc &
+  --mt            gs://playground-$REGION/fewgenomes/50genomes.mt \
+  --bucket        gs://playground-$REGION/fewgenomes/50genomes/work/sample_qc \
+  --local-tmp-dir test/run_test/combine/50genomes/sample_qc \
+  --hail-billing  fewgenomes \
+  &
+
+hailctl dataproc stop cpg-qc
 ```
 
 The `--sample-map` value is a CSV file with a header as follows:
@@ -65,6 +77,18 @@ NA19238,YRI,gs://playground-au/gvcf/NA19238.g.vcf.gz,,gs://playground-au/<....>/
 ```
 
 The first column is the sample ID. The samples with data in the "population" column are used to train the random forest for population inferral of other samples.
+
+To run using Query ServiceBackend, use:
+
+```sh
+python scripts/combine_gvcfs.py \
+  --sample-map    gs://playground-us-central1/fewgenomes/50genomes-gcs-round1.csv \
+  --out-mt        gs://playground-us-central1/fewgenomes/service/50genomes-round1.mt \
+  --bucket        gs://playground-us-central1/fewgenomes/service/50genomes/work/round1 \
+  --local-tmp-dir test/run_test/combine/50genomes/service/round1 \
+  --hail-billing  vladislavsavelyev-trial \
+  &
+```
 
 
 ## Description
@@ -90,17 +114,17 @@ QC pipeline outline:
 
 3. Filter outlier samples using the following cutoffs:
 
-  * Number of SNVs: < 2.4M or > 3.75M
-  * Number of singletons: > 100k
-  * Hom/het ratio: > 3.3
+   * Number of SNVs: < 2.4M or > 3.75M
+   * Number of singletons: > 100k
+   * Hom/het ratio: > 3.3
 
 4. Hard filtering using BAM-level metrics was performed when such metrics were available. We removed samples that were outliers for:
 
-  * Contamination: freemix > 5% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-CheckContamination/*.selfSM`/`FREEMIX`)
-  * Chimeras: > 5% (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.alignment_summary_metrics`/`PCT_CHIMERAS`)
-  * Duplication: > 30% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-MarkDuplicates/*.duplicate_metrics`/`PERCENT_DUPLICATION`)
-  * Median insert size: < 250 (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.insert_size_metrics`/`MEDIAN_INSERT_SIZE`)
-  * Median coverage < 15X (`call-CollectWgsMetrics/*.wgs_metrics`/`MEDIAN_COVERAGE`)
+   * Contamination: freemix > 5% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-CheckContamination/*.selfSM`/`FREEMIX`)
+   * Chimeras: > 5% (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.alignment_summary_metrics`/`PCT_CHIMERAS`)
+   * Duplication: > 30% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-MarkDuplicates/*.duplicate_metrics`/`PERCENT_DUPLICATION`)
+   * Median insert size: < 250 (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.insert_size_metrics`/`MEDIAN_INSERT_SIZE`)
+   * Median coverage < 15X (`call-CollectWgsMetrics/*.wgs_metrics`/`MEDIAN_COVERAGE`)
 
 5. Sex inferred for each sample with Hail's [`impute_sex`](https://hail.is/docs/0.2/methods/genetics.html?highlight=impute_sex#hail.methods.impute_sex). Removed samples with sex chromosome aneuploidies or ambiguous sex assignment.
 
@@ -114,8 +138,8 @@ QC pipeline outline:
 
 10. Perform the allele-specific version of GATK Variant Quality Score Recalibration [VQSR](https://gatkforums.broadinstitute.org/gatk/discussion/9622/allele-specific-annotation-and-filtering), using the standard GATK training resources (HapMap, Omni, 1000 Genomes, Mills indels), with the following features:
 
-  * SNVs:   `AS_FS`, `AS_SOR`, `AS_ReadPosRankSum`, `AS_MQRankSum`, `AS_QD`, `AS_MQ`
-  * Indels: `AS_FS`, `AS_SOR`, `AS_ReadPosRankSum`, `AS_MQRankSum`, `AS_QD`
+   * SNVs:   `AS_FS`, `AS_SOR`, `AS_ReadPosRankSum`, `AS_MQRankSum`, `AS_QD`, `AS_MQ`
+   * Indels: `AS_FS`, `AS_SOR`, `AS_ReadPosRankSum`, `AS_MQRankSum`, `AS_QD`
 
-  * No sample had a high quality genotype at this variant site (GQ>=20, DP>=10, and AB>=0.2 for heterozygotes) (all fields are populated by GATK)
-  * `InbreedingCoeff` < -0.3 (there was an excess of heterozygotes at the site compared to Hardy-Weinberg expectations) (`InbreedingCoeff` is populated by GATK)
+   * No sample had a high quality genotype at this variant site (GQ>=20, DP>=10, and AB>=0.2 for heterozygotes) (all fields are populated by GATK)
+   * `InbreedingCoeff` < -0.3 (there was an excess of heterozygotes at the site compared to Hardy-Weinberg expectations) (`InbreedingCoeff` is populated by GATK)
