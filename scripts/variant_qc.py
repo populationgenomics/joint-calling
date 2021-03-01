@@ -8,7 +8,8 @@ This script takes a path to a matrix table, and then:
 
 import os
 import logging
-import click
+
+# import click
 
 import hail as hl
 import hailtop.batch as hb
@@ -25,8 +26,8 @@ logging.basicConfig(
 logger.setLevel(logging.INFO)
 
 
-@click.command()
-@click.version_option(_version.__version__)
+# @click.command()
+# @click.version_option(_version.__version__)
 # TODO: add args here
 def main_from_click(*args, **kwargs):
     """
@@ -36,7 +37,7 @@ def main_from_click(*args, **kwargs):
 
 
 def main(
-    mt_path, output_dir: str, call_set_name: str, partitions: int, parallel: bool = None
+    mt_path, output_dir: str, file_suffix: str, partitions: int, parallel: bool = None
 ):
     """
     Expects hail service to already be initialised
@@ -46,7 +47,7 @@ def main(
     logger.info(f'Loading matrix table from "{mt_path}"')
     mt = hl.read_matrix_table(mt_path)
 
-    vcf_path = os.path.join(output_dir, f'{call_set_name}.sites.vcf.bgz')
+    vcf_path = os.path.join(output_dir, f'{file_suffix}.sites.vcf.bgz')
     output_path = export_sites_only_vcf(
         mt=mt, output_path=vcf_path, partitions=partitions, parallel=parallel
     )
@@ -55,9 +56,7 @@ def main(
     inputs = {'vcf': output_path}
     print(inputs)
 
-    # maybe create a hail batch job to run this?
-    batch = hb.Batch(name='vqsr-cromwell')
-    return batch
+    return inputs
 
 
 def export_sites_only_vcf(
@@ -81,4 +80,12 @@ def export_sites_only_vcf(
 
 
 if __name__ == '__main__':
-    main_from_click()
+    # main_from_click()
+
+    hl.init(
+        default_reference="GRCh38",
+    )
+    mt_path = "gs://cpg-fewgenomes-main/mt/50genomes.mt"
+    output_dir = "gs://cpg-michael-dev-cromwell/vqsr-testing/"
+
+    main(mt_path=mt_path, output_dir=output_dir, file_suffix="dev", partitions=1)
