@@ -1,0 +1,10 @@
+.git/
+playground
+data
+build
+libs
+tmp
+test/test_run*
+test/data/work
+test/data/gvcfs
+.idea/

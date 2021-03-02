@@ -65,10 +65,49 @@ hailctl dataproc submit cpg-qc-cluster \
   --mt            gs://playground-$REGION/fewgenomes/50genomes.mt \
   --bucket        gs://playground-$REGION/fewgenomes/50genomes/work/sample_qc \
   --local-tmp-dir test/run_test/combine/50genomes/sample_qc \
+  --out-ht        gs://cpg-fewgenomes-main/mt/qc/sample_qc.ht \
   --hail-billing  fewgenomes \
   &
 
 hailctl dataproc stop cpg-qc
+```
+
+```bash
+gcloud config set project fewgenomes
+
+REGION=australia-southeast1
+ZONE=${REGION}-a
+
+# Start cluster
+hailctl dataproc start cpg-qc-cluster \
+  --max-age=4h \
+  --region $REGION \
+  --zone $ZONE \
+  --num-preemptible-workers 4
+
+# Submit combiner job for the full set of samples in the australia region
+hailctl dataproc submit cpg-qc-cluster \
+  --region $REGION \
+  --pyfiles libs/libs.zip \
+  scripts/combine_gvcfs.py \
+  --sample-map    gs://cpg-fewgenomes-temporary/sample-map-au.csv \
+  --out-mt        gs://cpg-fewgenomes-main/mt/50genomes.mt \
+  --bucket        gs://cpg-fewgenomes-temporary/work/combiner/ \
+  --local-tmp-dir test/run_test/combine/50genomes/round1 \
+  --hail-billing  fewgenomes \
+  &
+
+hailctl dataproc submit cpg-qc-cluster \
+  --region $REGION \
+  --pyfiles libs/libs.zip \
+  scripts/sample_qc.py \
+  --mt            gs://cpg-fewgenomes-main/mt/50genomes.mt \
+  --bucket        gs://cpg-fewgenomes-main/mt/qc/sample_qc \
+  --local-tmp-dir test/run_test/combine/50genomes/sample_qc \
+  --out-ht        gs://cpg-fewgenomes-main/mt/qc/sample_qc.ht \
+  --hail-billing  fewgenomes \
+  &
+
 ```
 
 The `--sample-map` value is a CSV file with a header as follows:
