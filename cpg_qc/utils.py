@@ -29,27 +29,6 @@ def init_hail(name: str, local_tmp_dir: str):
     hl.init(default_reference=DEFAULT_REF, log=hl_log)
 
 
-def init_hail_service(
-    name: str, work_bucket: str, hail_billing_project: str, local_tmp_dir: str
-):
-    """
-    Initialize Hail and set up the directory for logs
-    :param name: name to prefix the log file
-    :param local_tmp_dir: local directory to write Hail logs
-    :return:
-    """
-    timestamp = time.strftime('%Y%m%d-%H%M')
-    hl_log = os.path.join(
-        safe_mkdir(os.path.join(local_tmp_dir, 'log')), f'{name}-{timestamp}.log'
-    )
-    hl.init(default_reference=DEFAULT_REF, log=hl_log)
-    hl.context.init_service(
-        default_reference=DEFAULT_REF,
-        bucket=work_bucket,
-        billing_project=hail_billing_project,
-    )
-
-
 def get_validation_callback(
     ext: str = None,
     must_exist: bool = False,

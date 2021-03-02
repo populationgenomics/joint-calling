@@ -33,6 +33,7 @@ cd ..
 
 # Submit combiner job for a first set of samples
 hailctl dataproc submit cpg-qc-cluster \
+  --region australia-southeast1 \
   --pyfiles libs/libs.zip \
   scripts/combine_gvcfs.py \
   --sample-map    gs://cpg-fewgenomes-temporary/cpg-qc/50genomes-gcs-au-round1.csv \
@@ -44,6 +45,7 @@ hailctl dataproc submit cpg-qc-cluster \
 
 # Submit combiner job for a first set of samples
 hailctl dataproc submit cpg-qc-cluster \
+  --region australia-southeast1 \
   --pyfiles libs/libs.zip \
   scripts/combine_gvcfs.py \
   --sample-map    gs://cpg-fewgenomes-temporary/cpg-qc/50genomes-gcs-au-round2.csv \
@@ -56,7 +58,7 @@ hailctl dataproc submit cpg-qc-cluster \
 
 # Submit sample QC on the final combined matrix table
 hailctl dataproc submit cpg-qc-cluster \
-  --region $REGION \
+  --region australia-southeast1 \
   --pyfiles libs/libs.zip \
   scripts/sample_qc.py \
   --mt            gs://cpg-fewgenomes-main/mt/v2/50genomes.mt \
