@@ -103,6 +103,12 @@ logger.setLevel('INFO')
 @click.option(
     '--target-bed', 'target_bed', help='for exomes, target regions in a BED file format'
 )
+@click.option(
+    '--hail-billing',
+    'hail_billing',
+    required=True,
+    help='hail billing account ID',
+)
 def main(
     mt_path: str,
     out_ht_path: str,
@@ -114,6 +120,7 @@ def main(
     n_pcs: int,
     min_pop_prob: float,
     target_bed: str,
+    hail_billing: str,  # pylint: disable=unused-argument
 ):
     """
     Run sample QC on a MatrixTable, hard filter samples and add soft filter labels,
@@ -314,7 +321,7 @@ def _infer_sex(
         excluded_intervals=telomeres_and_centromeres.ht(),
         included_intervals=target_regions,
         aaf_threshold=0.001,
-        f_stat_cutoff=0.1,
+        f_stat_cutoff=0.5,
         gt_expr='LGT',
     )
 
