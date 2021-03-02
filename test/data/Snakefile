@@ -1,3 +1,7 @@
+"""
+Generates sample maps for test runs
+"""
+
 import sys
 import subprocess
 import os

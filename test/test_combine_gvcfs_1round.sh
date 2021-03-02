@@ -1,14 +1,16 @@
 #!/bin/bash
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+timestamp() {
+  date "+%Y%m%d-%H%M%S"
+}
 
-combine_gvcfs.py \
-  --out-mt        ${DIR}/test_run/round1.mt \
-  --sample-map    ${DIR}/data/sample_maps/toy-local-round1.csv \
-  --bucket        ${DIR}/test_run/combine_gvcfs_round1/bucket \
-  --local-tmp-dir ${DIR}/test_run/combine_gvcfs_round1/local
-
-if [ $? -eq 0 ]; then
-  test -e ${DIR}/test_run/round1.mt
-  test -e ${DIR}/test_run/round1.metadata.ht
-fi
+# Submit combiner job for a first set of samples
+hailctl dataproc submit cpg-qc-cluster \
+  --region australia-southeast1 \
+  --pyfiles libs/libs.zip \
+  scripts/combine_gvcfs.py \
+  --sample-map    gs://cpg-fewgenomes-temporary/cpg-qc/50genomes-gcs-au-round1.csv \
+  --out-mt        gs://cpg-fewgenomes-test/cpg-qc/v1/$(timestamp)/50genomes.mt \
+  --bucket        gs://cpg-fewgenomes-temporary/work/vcf-combiner/v1/$(timestamp)/ \
+  --local-tmp-dir ~/tmp/cpg-qc/vcf-combiner/v1/$(timestamp)/ \
+  --hail-billing  fewgenomes
