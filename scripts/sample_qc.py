@@ -320,8 +320,6 @@ def _infer_sex(
         mt,
         excluded_intervals=telomeres_and_centromeres.ht(),
         included_intervals=target_regions,
-        aaf_threshold=0.001,
-        f_stat_cutoff=0.5,
         gt_expr='LGT',
     )
 
