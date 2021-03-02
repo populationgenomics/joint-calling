@@ -1,5 +1,7 @@
 # Sample and variant QC
 
+.
+
 A pipeline for post-processing and filtering of population genomic variant calls.
 
 ## Installation
