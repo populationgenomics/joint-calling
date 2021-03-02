@@ -2,6 +2,7 @@ import sys
 import subprocess
 import os
 import pandas as pd
+import csv
 
 dataset_name = config['dataset']
 location = config['location']  # local, gcs
@@ -135,19 +136,22 @@ rule copy_picard_file:
         'gsutil cp "{params.bucket}/**/{params.fname}" picard_files/ || touch {output}'
 
 def write_sample_maps(rows, hdr, output):
-    with open(output.all, 'w') as out, \
-            open(output.round1, 'w') as out_r1, \
-            open(output.round2, 'w') as out_r2:
-        out.write(','.join(hdr) + '\n')
-        out_r1.write(','.join(hdr) + '\n')
-        out_r2.write(','.join(hdr) + '\n')
+    with open(output.all, 'w', newline='') as out_all, \
+            open(output.round1, 'w', newline='') as out_r1, \
+            open(output.round2, 'w', newline='') as out_r2:
+        csvwriter_all = csv.writer(out_all)
+        csvwriter_r1 = csv.writer(out_r1)
+        csvwriter_r2 = csv.writer(out_r2)
+        csvwriter_all.writerow(hdr)
+        csvwriter_r1.writerow(hdr)
+        csvwriter_r2.writerow(hdr)
         for row in rows:
-            out.write(','.join(row[h] for h in hdr) + '\n')
+            csvwriter_all.writerow(row[h] for h in hdr)
         round1_row_num = int(len(rows) // 1.5)
         for row in rows[:round1_row_num]:
-            out_r1.write(','.join(row[h] for h in hdr) + '\n')
+            csvwriter_r1.writerow(row[h] for h in hdr)
         for row in rows[round1_row_num:]:
-            out_r2.write(','.join(row[h] for h in hdr) + '\n')
+            csvwriter_r2.writerow(row[h] for h in hdr)
 
 def run_cmd(cmd):
     print(cmd)
