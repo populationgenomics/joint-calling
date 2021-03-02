@@ -17,15 +17,11 @@ pip install -e .
 ```sh
 gcloud config set project fewgenomes
 
-REGION=us-central1
-#REGION=australia-southeast1
-ZONE=${REGION}-a
-
 # Start cluster
 hailctl dataproc start cpg-qc-cluster \
   --max-age=4h \
-  --region $REGION \
-  --zone $ZONE \
+  --region australia-southeast1 \
+  --zone australia-southeast1-a \
   --num-preemptible-workers 4
 
 # Compress dependencies to upload them into the dataproc instance
@@ -39,75 +35,38 @@ cd ..
 hailctl dataproc submit cpg-qc-cluster \
   --pyfiles libs/libs.zip \
   scripts/combine_gvcfs.py \
-  --sample-map    gs://playground-$REGION/fewgenomes/50genomes-gcs-round1.csv \
-  --out-mt        gs://playground-$REGION/fewgenomes/50genomes-round1.mt \
-  --bucket        gs://playground-$REGION/fewgenomes/50genomes/work/round1 \
-  --local-tmp-dir test/run_test/combine/50genomes/round1 \
+  --sample-map    gs://cpg-fewgenomes-temporary/cpg-qc/50genomes-gcs-au-round1.csv \
+  --out-mt        gs://cpg-fewgenomes-main/mt/v1/50genomes.mt \
+  --bucket        gs://cpg-fewgenomes-temporary/work/vcf-combiner/v1/ \
+  --local-tmp-dir ~/tmp/cpg-qc/vcf-combiner/v1/ \
   --hail-billing  fewgenomes \
   &
 
-# Submit combiner job to extend the matrix table with more samples
+# Submit combiner job for a first set of samples
 hailctl dataproc submit cpg-qc-cluster \
   --pyfiles libs/libs.zip \
   scripts/combine_gvcfs.py \
-  --sample-map    gs://playground-$REGION/fewgenomes/50genomes-gcs-round2.csv \
-  --existing-mt   gs://playground-$REGION/fewgenomes/50genomes-round1.mt \
-  --out-mt        gs://playground-$REGION/fewgenomes/50genomes.mt \
-  --bucket        gs://playground-$REGION/fewgenomes/50genomes/work/round2 \
-  --local-tmp-dir test/run_test/combine/50genomes/round2 \
+  --sample-map    gs://cpg-fewgenomes-temporary/cpg-qc/50genomes-gcs-au-round2.csv \
+  --existing-mt   gs://cpg-fewgenomes-main/mt/v1/50genomes.mt \
+  --out-mt        gs://cpg-fewgenomes-main/mt/v2/50genomes.mt \
+  --bucket        gs://cpg-fewgenomes-temporary/work/vcf-combiner/v2/ \
+  --local-tmp-dir ~/tmp/cpg-qc/vcf-combiner/v2/ \
   --hail-billing  fewgenomes \
   &
 
 # Submit sample QC on the final combined matrix table
 hailctl dataproc submit cpg-qc-cluster \
-  --pyfiles libs/libs.zip \
-  scripts/sample_qc.py \
-  --mt            gs://playground-$REGION/fewgenomes/50genomes.mt \
-  --bucket        gs://playground-$REGION/fewgenomes/50genomes/work/sample_qc \
-  --local-tmp-dir test/run_test/combine/50genomes/sample_qc \
-  --out-ht        gs://cpg-fewgenomes-main/mt/qc/sample_qc.ht \
-  --hail-billing  fewgenomes \
-  &
-
-hailctl dataproc stop cpg-qc
-```
-
-```bash
-gcloud config set project fewgenomes
-
-REGION=australia-southeast1
-ZONE=${REGION}-a
-
-# Start cluster
-hailctl dataproc start cpg-qc-cluster \
-  --max-age=4h \
-  --region $REGION \
-  --zone $ZONE \
-  --num-preemptible-workers 4
-
-# Submit combiner job for the full set of samples in the australia region
-hailctl dataproc submit cpg-qc-cluster \
-  --region $REGION \
-  --pyfiles libs/libs.zip \
-  scripts/combine_gvcfs.py \
-  --sample-map    gs://cpg-fewgenomes-temporary/sample-map-au.csv \
-  --out-mt        gs://cpg-fewgenomes-main/mt/50genomes.mt \
-  --bucket        gs://cpg-fewgenomes-temporary/work/combiner/ \
-  --local-tmp-dir test/run_test/combine/50genomes/round1 \
-  --hail-billing  fewgenomes \
-  &
-
-hailctl dataproc submit cpg-qc-cluster \
   --region $REGION \
   --pyfiles libs/libs.zip \
   scripts/sample_qc.py \
-  --mt            gs://cpg-fewgenomes-main/mt/50genomes.mt \
-  --bucket        gs://cpg-fewgenomes-main/mt/qc/sample_qc \
-  --local-tmp-dir test/run_test/combine/50genomes/sample_qc \
-  --out-ht        gs://cpg-fewgenomes-main/mt/qc/sample_qc.ht \
+  --mt            gs://cpg-fewgenomes-main/mt/v2/50genomes.mt \
+  --bucket        gs://cpg-fewgenomes-main/mt/v2/qc/sample-qc \
+  --out-ht        gs://cpg-fewgenomes-main/mt/v2/qc/sample-qc.ht \
+  --local-tmp-dir ~/tmp/cpg-qc/sample-qc/v2/ \
   --hail-billing  fewgenomes \
   &
 
+hailctl dataproc stop cpg-qc-cluster
 ```
 
 The `--sample-map` value is a CSV file with a header as follows:
