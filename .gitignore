@@ -26,15 +26,19 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-playground/
 .idea
 .DS_Store
 .ipynb_checkpoints/
-
-hail-*.log
-test_run/
-cromwell-executions/
-data/
-!test/data/
-work/
 .snakemake
+cromwell-executions/
+hail-*.log
+playground/
+*.BAK
+test_run*/
+data/
+work/
+!test/data/
+test/data/picard_files/
+test/data/gvcfs/
+test/data/sample_maps/
+libs/

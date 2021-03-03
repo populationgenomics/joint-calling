@@ -17,8 +17,8 @@ setuptools.setup(
     include_package_data=True,
     zip_safe=False,
     scripts=[
-        join('scripts', 'combine_gvcfs'),
-        join('scripts', 'sample_qc'),
+        join('scripts', 'combine_gvcfs.py'),
+        join('scripts', 'sample_qc.py'),
     ],
     keywords='bioinformatics',
     classifiers=[

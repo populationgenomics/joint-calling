@@ -1,17 +1,22 @@
 #!/bin/bash
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+timestamp() {
+  date "+%Y%m%d-%H%M%S"
+}
 
-sample_qc \
-  --mt            ${DIR}/test_run/genomes.mt \
-  --out-ht        ${DIR}/test_run/sample_qc.ht \
-  --bucket        ${DIR}/test_run/sample_qc/bucket \
-  --local-tmp-dir ${DIR}/test_run/sample_qc/local \
-  --overwrite
+# Submit sample QC on the final combined matrix table
+hailctl dataproc submit cpg-qc-cluster \
+  --region australia-southeast1 \
+  --pyfiles libs/libs.zip \
+  scripts/sample_qc.py \
+  --mt            gs://cpg-fewgenomes-test/cpg-qc/v2/$(timestamp)/50genomes.mt \
+  --bucket        gs://cpg-fewgenomes-test/cpg-qc/v2/$(timestamp)/sample-qc \
+  --out-ht        gs://cpg-fewgenomes-test/cpg-qc/v2/$(timestamp)/sample-qc.ht \
+  --local-tmp-dir ~/tmp/cpg-qc/sample-qc/v2/$(timestamp) \
+  --hail-billing  fewgenomes
 
 if [ $? -eq 0 ]; then
-  test -e ${DIR}/test_run/sample_qc.ht
-  test -e ${DIR}/test_run/sample_qc.tsv
-  cut -f2 ${DIR}/test_run/sample_qc.tsv \
+  gsutil cp gs://cpg-fewgenomes-test/cpg-qc/v2/$(timestamp)/sample-qc.tsv .
+  cut -f2 sample_qc.tsv \
     | head -n2 | tail -n1 | grep -q true || exit 1
 fi

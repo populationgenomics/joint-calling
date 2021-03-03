@@ -1,7 +1,0 @@
-pip
-hail
-gnomad @ git+ssh://git@github.com/broadinstitute/gnomad_methods.git@master#egg=gnomad
-google-cloud-secret-manager
-google-api-python-client
-click
-pandas
