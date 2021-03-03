@@ -5,7 +5,7 @@ A pipeline for post-processing and filtering of population genomic variant calls
 ## Installation
 
 ```sh
-git clone git@github.com:populationgenomics/cpg-qc.git
+git clone git@github.com:populationgenomics/joint-calling-workflow.git
 cd cpg-qc
 conda env create -f environment-dev.yml
 pip install -e .
