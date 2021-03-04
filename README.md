@@ -22,11 +22,17 @@ hailctl dataproc start cpg-qc-cluster \
   --max-age=4h \
   --region australia-southeast1 \
   --zone australia-southeast1-a \
-  --num-preemptible-workers 4
+  --num-preemptible-workers 4 \
+  --packages click,gnomad,google,slackclient,fsspec,sklearn,slack-client
 
 # Compress dependencies to upload them into the dataproc instance
+# We also add gcsfs==0.3.0 to override the existing gcsfs==0.2.2
+# as it required by pandas to read from the GCS. We can't specify
+# gcsfs in the --packages list above as dataproc would complain
+# about duplicated depenedencies. gcsfs==0.2.2 comes from
+# hail/python/hailtop/hailctl/deploy.yaml
 mkdir libs
-cp -r cpg_qc $CONDA_PREFIX/lib/python3.7/site-packages/{click,gnomad,google,slack} libs
+cp -r cpg_qc $CONDA_PREFIX/lib/python3.7/site-packages/gcsfs libs
 cd libs
 zip -r libs *
 cd ..
