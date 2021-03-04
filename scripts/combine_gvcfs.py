@@ -115,37 +115,42 @@ def main(
         local_tmp_dir=local_tmp_dir,
     )
 
-    logger.info(f'Combining new samples')
     new_metadata_ht = hl.import_table(sample_map_csv_path, delimiter=',', key='sample')
-    new_mt_path = (
-        os.path.join(work_bucket, 'new.mt') if existing_mt_path else out_mt_path
-    )
-    if reuse and file_exists(new_mt_path):
-        logger.info(f'MatrixTable with new samples exists, reusing: {new_mt_path}')
-    else:
-        combine_gvcfs(
-            gvcf_paths=new_metadata_ht.gvcf.collect(),
-            out_mt_path=new_mt_path,
-            work_bucket=work_bucket,
-            overwrite=True,
-        )
-        logger.info(
-            f'Written {new_metadata_ht.count()} new '
-            f'samples into a MatrixTable {out_mt_path}'
-        )
 
-    if existing_mt_path:
-        _combine_with_the_existing_mt(
-            existing_mt=hl.read_matrix_table(existing_mt_path),
-            new_mt_path=new_mt_path,
-            out_mt_path=out_mt_path,
+    if reuse and file_exists(existing_mt_path):
+        logger.info(f'MatrixTable exists, reusing: {existing_mt_path}')
+    else:
+        logger.info(f'Combining new samples')
+        new_mt_path = (
+            os.path.join(work_bucket, 'new.mt') if existing_mt_path else out_mt_path
         )
+        if reuse and file_exists(new_mt_path):
+            logger.info(f'MatrixTable with new samples exists, reusing: {new_mt_path}')
+        else:
+            combine_gvcfs(
+                gvcf_paths=new_metadata_ht.gvcf.collect(),
+                out_mt_path=new_mt_path,
+                work_bucket=work_bucket,
+                overwrite=True,
+            )
+            logger.info(
+                f'Written {new_metadata_ht.count()} new '
+                f'samples into a MatrixTable {out_mt_path}'
+            )
+        if existing_mt_path:
+            _combine_with_the_existing_mt(
+                existing_mt=hl.read_matrix_table(existing_mt_path),
+                new_mt_path=new_mt_path,
+                out_mt_path=out_mt_path,
+            )
+
+    # Write metadata
+    if existing_mt_path:
         existing_meta_ht_path = os.path.splitext(existing_mt_path)[0] + '.metadata.ht'
         existing_meta_ht = hl.read_table(existing_meta_ht_path)
         metadata_ht = existing_meta_ht.union(new_metadata_ht)
     else:
         metadata_ht = new_metadata_ht
-
     metadata_ht_path = os.path.splitext(out_mt_path)[0] + '.metadata.ht'
     if reuse and file_exists(metadata_ht_path):
         logger.info(f'Metadata table exists, reusing: {metadata_ht_path}')
