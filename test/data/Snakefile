@@ -10,7 +10,6 @@ import csv
 
 dataset_name = config['dataset']
 location = config['location']  # local, gcs
-subset_to_toy_regions = config.get('subset_to_toy_regions', False)
 
 WARP_EXECUTIONS_BUCKET = (
     'gs://playground-us-central1/cromwell/executions/'
@@ -47,89 +46,6 @@ rule all:
         round2 = f'sample_maps/{dataset_name}-{location}-round2.csv',
         toy_regions_bed = 'work/toy-regions.bed'
 
-rule ref_fa_dict:
-    output:
-        'work/Homo_sapiens_assembly38.dict',
-    params:
-        ref_url = 'gs://genomics-public-data/references/hg38/v0',
-    shell:
-        "gsutil cp {params.ref_url}/Homo_sapiens_assembly38.dict -"
-        " | awk '{{ if ($1 ~ /@HD/ || $2 ~ /^SN:chr[0-9YXM]+$/) print $0}}'"
-        " > {output}"
-
-rule ref_fa_fai:
-    output:
-        'work/Homo_sapiens_assembly38.fasta.fai',
-    params:
-        ref_url = 'gs://genomics-public-data/references/hg38/v0',
-    shell:
-        "gsutil cp {params.ref_url}/Homo_sapiens_assembly38.fasta.fai -"
-        " | awk '{{ if ($1 ~ /^chr[0-9YXM]+$/) print $0}}'"
-        " > {output}"
-
-rule ref_fa:
-    output:
-        'work/Homo_sapiens_assembly38.fasta',
-    shell:
-        'touch {output}'
-
-rule prep_bed:
-    output:
-        'work/toy-regions.bed'
-    shell:
-        "gsutil cp gs://playground-au/CDS-canonical.bed -"
-        " | awk 'BEGIN {{srand()}} {{ if (rand() <= .1 && $1 !~ /alt/"
-        " || $1 ~ /chrY/ || $1 ~ /chrX/ || $1 ~ /chr20/"
-        ") print $0}}' > {output}"
-
-rule subset_gvcf:
-    input:
-        regions = rules.prep_bed.output
-    output:
-        gvcf = 'work/toy_regions/{sample}.g.vcf.gz',
-        tbi = 'work/toy_regions/{sample}.g.vcf.gz.tbi'
-    params:
-        bucket = WARP_EXECUTIONS_BUCKET
-    shell:
-         "gsutil cp {params.bucket}/**/{wildcards.sample}.g.vcf.gz -"
-         " | bcftools view -T {input.regions} -Oz -o {output.gvcf} "
-         "&& tabix -p vcf {output.gvcf}"
-
-# Reblocking GVCFs to significantly reduce their size
-rule reblock_gvcf:
-    input:
-        gvcf = rules.subset_gvcf.output.gvcf,
-        tbi = rules.subset_gvcf.output.tbi,
-        ref_fa = rules.ref_fa.output,
-        ref_fa_fai = rules.ref_fa_fai.output,
-        ref_fa_dict = rules.ref_fa_dict.output,
-    output:
-        gvcf = 'gvcfs/reblocked/{sample}.g.vcf.gz',
-        tbi = 'gvcfs/reblocked/{sample}.g.vcf.gz.tbi'
-    shell:
-        "gatk ReblockGVCF --drop-low-quals"
-        " -R {input.ref_fa}"
-        " -V {input.gvcf} -O {output.gvcf}"
-
-rule clean_info_fields:
-    input:
-        gvcf = rules.reblock_gvcf.output.gvcf
-    output:
-        gvcf = 'gvcfs/{sample}.g.vcf.gz',
-        tbi = 'gvcfs/{sample}.g.vcf.gz.tbi',
-    params:
-        to_clean = ','.join(f'INFO/{anno}' for anno in [
-            'AS_RAW_BaseQRankSum',
-            'AS_RAW_MQ',
-            'AS_RAW_MQRankSum',
-            'AS_RAW_ReadPosRankSum',
-            'AS_SB_TABLE',
-            'MQ_DP',
-        ])
-    shell:
-        'bcftools annotate -x "{params.to_clean}" '
-        '{input.gvcf} -Oz -o {output.gvcf} && tabix {output.gvcf}'
-
 rule copy_picard_file:
     output:
         'picard_files/{sample}.{suffix}'
@@ -137,7 +53,8 @@ rule copy_picard_file:
         bucket = WARP_EXECUTIONS_BUCKET,
         fname = lambda wildcards: f'{wildcards.sample}.{wildcards.suffix}'
     shell:
-        'gsutil cp "{params.bucket}/**/{params.fname}" picard_files/ || touch {output}'
+        'gsutil cp "{params.bucket}/**/{params.fname}" '
+        'picard_files/ || touch {output}'
 
 def write_sample_maps(rows, hdr, output):
     with open(output.all, 'w', newline='') as out_all, \
