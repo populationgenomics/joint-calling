@@ -36,7 +36,7 @@ def get_validation_callback(
 ) -> Callable:
     """
     Get callback for Click parameters validation
-    :param ext: check that the path has the expected extention
+    :param ext: check that the path has the expected extension
     :param must_exist: check that the input file/object/directory exists
     :param accompanying_metadata_suffix: checks that a file at the same location but
     with a different suffix also exists (e.g. genomes.mt and genomes.metadata.ht)
@@ -78,7 +78,7 @@ def file_exists(path: str) -> bool:
         * local directory
         * Google Storage object
         * Google Storage URL representing a *.mt or *.ht Hail data,
-          in which case it will check for the existince of a
+          in which case it will check for the existence of a
           *.mt/_SUCCESS or *.ht/_SUCCESS file.
     :param path: path to the file/directory/object/mt/ht
     :return: True if the object exists
