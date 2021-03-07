@@ -101,7 +101,9 @@ logger.setLevel('INFO')
     help='minimum Random Forest probability for population assignment.',
 )
 @click.option(
-    '--target-bed', 'target_bed', help='for exomes, target regions in a BED file format.'
+    '--target-bed',
+    'target_bed',
+    help='for exomes, target regions in a BED file format.',
 )
 @click.option(
     '--hail-billing',
