@@ -30,34 +30,35 @@ TARGET_RECORDS = 25_000
     'sample_map_csv_path',
     required=True,
     callback=get_validation_callback(ext='csv', must_exist=True),
-    help='path to a per-sample data in a CSV file with '
-    'a first line as a header. The only 2 required columns are `sample` '
-    'and `gvcf`, in any order, possibly mixed with other columns.',
+    help='path to a CSV file with per-sample data, where the '
+    'first line is a header. The only 2 required columns are `sample` '
+    '(the sample name) and `gvcf` (path to sample GVCF file) '
+    'in any order, possibly mixed with other columns.',
 )
 @click.option(
     '--out-mt',
     'out_mt_path',
     required=True,
     callback=get_validation_callback(ext='mt'),
-    help='path to write the MatrixTable. Must have an .mt extention. '
+    help='path to write the MatrixTable. Must have an .mt extension. '
     'Can be a Google Storage URL (i.e. start with `gs://`). '
-    'An accompanying file with a `.metadata.ht` suffix will ne written '
+    'An accompanying file with a `.metadata.ht` suffix will be written '
     'at the same folder or bucket location, containing the same columns '
     'as the input sample map. This file is needed for further incremental '
-    'extending of the matrix table using new GVCFs.',
+    'extending of the MatrixTable using new GVCFs.',
 )
 @click.option(
     '--existing-mt',
     'existing_mt_path',
     callback=get_validation_callback(ext='mt', must_exist=True),
-    help='optional path to an existing MatrixTable. Must have an .mt '
-    'extention. Can be a Google Storage URL (i.e. start with `gs://`). '
+    help='optional path to an existing MatrixTable. Must have an `.mt` '
+    'extension. Can be a Google Storage URL (i.e. start with `gs://`). '
     'If provided, will be read and used as a base to get extended with the '
     'samples in the input sample map. Can be read-only, as it will not '
     'be overwritten, instead the result will be written to the new location '
     'provided with --out-mt. An accompanying `.metadata.ht` file is expected '
     'to be present at the same folder or bucket location, containing the '
-    'same set of samples, and the same columns as the input sample map',
+    'same set of samples, and the same columns as the input sample map.',
 )
 @click.option(
     '--bucket',
@@ -70,20 +71,20 @@ TARGET_RECORDS = 25_000
     '--local-tmp-dir',
     'local_tmp_dir',
     required=True,
-    help='local directory for temporary files and Hail logs (must be local)',
+    help='local directory for temporary files and Hail logs (must be local).',
 )
 @click.option(
     '--reuse',
     'reuse',
     is_flag=True,
     help='if an intermediate or a final file exists, reuse it instead of '
-    'rerunning the code that generates it',
+    'rerunning the code that generates it.',
 )
 @click.option(
     '--hail-billing',
     'hail_billing',
     required=True,
-    help='hail billing account ID',
+    help='Hail billing account ID.',
 )
 def main(
     sample_map_csv_path: str,
@@ -97,14 +98,14 @@ def main(
     """
     Runs the Hail
     [vcf_combiner](https://hail.is/docs/0.2/experimental/vcf_combiner.html)
-    using the GVCFs files specified in a `gvcf` column in the `sample_map_csv`
-    CSV file as input, and generates a multi-sample Matrix Table in a sparse
+    using the GVCF files specified in a `gvcf` column in the `sample_map_csv`
+    CSV file as input, and generates a multi-sample MatrixTable in a sparse
     format, saved as `out_mt_path`. It also generates an accompanying table
     in an HT format with a `.metadata.ht` suffix, with the contents of the
     sample map, which can be used for incremental adding of new samples,
     as well as for running the QC.
 
-    If `existing_mt_path` is provided, uses that matrix table as a base to
+    If `existing_mt_path` is provided, uses that MatrixTable as a base to
     extend with new samples. However, it will not overwrite `existing_mt_path`,
     and instead write the new table to `out_mt_path`. It would also combine
     the accompanying metadata HT tables and write the result with a
@@ -167,7 +168,7 @@ def _combine_with_the_existing_mt(
 ):
     existing_mt = existing_mt.drop('gvcf_info')
     logger.info(
-        f'Combining with the existing matrix table '
+        f'Combining with the existing MatrixTable '
         f'({existing_mt.count_cols()} samples)'
     )
     intervals = vcf_combiner.calculate_new_intervals(
