@@ -1,7 +1,6 @@
 """
 This is a conversion from the ukbiobank WDL workflow to Janis
 """
-
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
@@ -62,12 +61,15 @@ Tabixbgzippedfile_Dev = CommandToolBuilder(
             doc=OutputDocumentation(doc=None),
         )
     ],
-    container="ubuntu:latest",
+    container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
     files_to_create={
         "script.sh": StringFormatter(
-            "\n    gatk IndexFeatureFile -F {JANIS_WDL_TOKEN_1}\n    gsutil cp {JANIS_WDL_TOKEN_1}'.tbi' {JANIS_WDL_TOKEN_1}\n  ",
+            "\n    gatk IndexFeatureFile -F {JANIS_WDL_TOKEN_1}\n    gsutil cp {JANIS_WDL_TOKEN_1}'.tbi' {JANIS_WDL_TOKEN_2}\n  ",
             JANIS_WDL_TOKEN_1=InputSelector(
+                input_to_select="zipped_vcf", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_2=InputSelector(
                 input_to_select="bucket_tabix_path", type_hint=File()
             ),
         )
@@ -115,12 +117,18 @@ Splitintervallist_Dev = CommandToolBuilder(
             doc=OutputDocumentation(doc=None),
         )
     ],
-    container="ubuntu:latest",
+    container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
     files_to_create={
         "script.sh": StringFormatter(
-            "\n    gatk --java-options -Xms3g SplitIntervals \\n      -L {JANIS_WDL_TOKEN_1} -O  scatterDir -scatter {JANIS_WDL_TOKEN_1} -R {JANIS_WDL_TOKEN_1} \\n      -mode BALANCING_WITHOUT_INTERVAL_SUBDIVISION_WITH_OVERFLOW\n   ",
+            "\n    gatk --java-options -Xms3g SplitIntervals \\n      -L {JANIS_WDL_TOKEN_1} -O  scatterDir -scatter {JANIS_WDL_TOKEN_2} -R {JANIS_WDL_TOKEN_3} \\n      -mode BALANCING_WITHOUT_INTERVAL_SUBDIVISION_WITH_OVERFLOW\n   ",
             JANIS_WDL_TOKEN_1=InputSelector(
+                input_to_select="interval_list", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_2=InputSelector(
+                input_to_select="scatter_count", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_3=InputSelector(
                 input_to_select="ref_fasta", type_hint=File()
             ),
         )
@@ -167,22 +175,44 @@ Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
         ToolOutput(
             tag="output_vcf",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="output_vcf_filename", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
         ToolOutput(
             tag="output_vcf_index",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}.tbi",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="output_vcf_filename", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
     ],
-    container="ubuntu:latest",
+    container="gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K",
     version="DEV",
     files_to_create={
         "script.sh": StringFormatter(
-            "\n    set -e\n\n    gatk --java-options -Xms8g \\n      GnarlyGenotyper \\n      -R {JANIS_WDL_TOKEN_1} \\n      -O {JANIS_WDL_TOKEN_1} \\n      -D {JANIS_WDL_TOKEN_1} \\n      --only-output-calls-starting-in-intervals \\n      --keep-all-sites \\n      -V {JANIS_WDL_TOKEN_1} \\n      -L {JANIS_WDL_TOKEN_1}\n  ",
+            "\n    set -e\n\n    gatk --java-options -Xms8g \\n      GnarlyGenotyper \\n      -R {JANIS_WDL_TOKEN_1} \\n      -O {JANIS_WDL_TOKEN_2} \\n      -D {JANIS_WDL_TOKEN_3} \\n      --only-output-calls-starting-in-intervals \\n      --keep-all-sites \\n      -V {JANIS_WDL_TOKEN_4} \\n      -L {JANIS_WDL_TOKEN_5}\n  ",
             JANIS_WDL_TOKEN_1=InputSelector(
+                input_to_select="ref_fasta", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_2=InputSelector(
+                input_to_select="output_vcf_filename", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_3=InputSelector(
+                input_to_select="dbsnp_vcf", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_4=InputSelector(
+                input_to_select="combined_gvcf", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_5=InputSelector(
                 input_to_select="interval", type_hint=File()
             ),
         )
@@ -221,34 +251,63 @@ Hardfilterandmakesitesonlyvcf_Dev = CommandToolBuilder(
         ToolOutput(
             tag="variant_filtered_vcf",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="variant_filtered_vcf_filename",
+                    type_hint=File(),
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
         ToolOutput(
             tag="variant_filtered_vcf_index",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}.tbi",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="variant_filtered_vcf_filename",
+                    type_hint=File(),
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
         ToolOutput(
             tag="sites_only_vcf",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="sites_only_vcf_filename", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
         ToolOutput(
             tag="sites_only_vcf_index",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}.tbi",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="sites_only_vcf_filename", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
     ],
-    container="ubuntu:latest",
+    container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
     files_to_create={
         "script.sh": StringFormatter(
-            "\n    set -euo pipefail\n\n    gatk --java-options -Xms3g \\n      VariantFiltration \\n      --filter-expression 'ExcessHet > {JANIS_WDL_TOKEN_1}' \\n      --filter-name ExcessHet \\n      -O {JANIS_WDL_TOKEN_1} \\n      -V {JANIS_WDL_TOKEN_1}\n\n    gatk --java-options -Xms3g \\n      MakeSitesOnlyVcf \\n      -I {JANIS_WDL_TOKEN_1} \\n      -O {JANIS_WDL_TOKEN_1}\n  ",
+            "\n    set -euo pipefail\n\n    gatk --java-options -Xms3g \\n      VariantFiltration \\n      --filter-expression 'ExcessHet > {JANIS_WDL_TOKEN_1}' \\n      --filter-name ExcessHet \\n      -O {JANIS_WDL_TOKEN_2} \\n      -V {JANIS_WDL_TOKEN_3}\n\n    gatk --java-options -Xms3g \\n      MakeSitesOnlyVcf \\n      -I {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_4}\n  ",
             JANIS_WDL_TOKEN_1=InputSelector(
+                input_to_select="excess_het_threshold", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_2=InputSelector(
+                input_to_select="variant_filtered_vcf_filename", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_3=InputSelector(input_to_select="vcf", type_hint=File()),
+            JANIS_WDL_TOKEN_4=InputSelector(
                 input_to_select="sites_only_vcf_filename", type_hint=File()
             ),
         )
@@ -280,22 +339,35 @@ Gathervcfs_Dev = CommandToolBuilder(
         ToolOutput(
             tag="output_vcf",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="output_vcf_name", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
         ToolOutput(
             tag="output_vcf_index",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}.tbi",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="output_vcf_name", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
     ],
-    container="ubuntu:latest",
+    container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
     files_to_create={
         "script.sh": StringFormatter(
-            "\n    set -euo pipefail\n\n    # --ignore-safety-checks makes a big performance difference so we include it in our invocation.\n    # This argument disables expensive checks that the file headers contain the same set of\n    # genotyped samples and that files are in order by position of first record.\n    gatk --java-options -Xms6g \\n      GatherVcfsCloud \\n      --ignore-safety-checks \\n      --gather-type BLOCK \\n      --input {JANIS_WDL_TOKEN_1} \\n      --output {JANIS_WDL_TOKEN_1}\n\n    tabix {JANIS_WDL_TOKEN_1}\n  ",
+            "\n    set -euo pipefail\n\n    # --ignore-safety-checks makes a big performance difference so we include it in our invocation.\n    # This argument disables expensive checks that the file headers contain the same set of\n    # genotyped samples and that files are in order by position of first record.\n    gatk --java-options -Xms6g \\n      GatherVcfsCloud \\n      --ignore-safety-checks \\n      --gather-type BLOCK \\n      --input {JANIS_WDL_TOKEN_1} \\n      --output {JANIS_WDL_TOKEN_2}\n\n    tabix {JANIS_WDL_TOKEN_2}\n  ",
             JANIS_WDL_TOKEN_1=InputSelector(
+                input_to_select="input_vcfs", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_2=InputSelector(
                 input_to_select="output_vcf_name", type_hint=File()
             ),
         )
@@ -387,19 +459,34 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
         ToolOutput(
             tag="recalibration",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="recalibration_filename", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
         ToolOutput(
             tag="recalibration_index",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}.idx",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="recalibration_filename", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
         ToolOutput(
             tag="tranches",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="tranches_filename", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
     ],
@@ -407,8 +494,44 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
     version="DEV",
     files_to_create={
         "script.sh": StringFormatter(
-            "\n    set -euo pipefail\n\n    MODEL_REPORT={JANIS_WDL_TOKEN_1}\n\n    gatk --java-options -Xms100g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_1} \\n      -O {JANIS_WDL_TOKEN_1} \\n      --tranches-file {JANIS_WDL_TOKEN_1} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_1} \\n      -an {JANIS_WDL_TOKEN_1} \\n      -mode INDEL \\n      {JANIS_WDL_TOKEN_1} \\n      {JANIS_WDL_TOKEN_1} \\n      --max-gaussians {JANIS_WDL_TOKEN_1} \\n      -resource:mills,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_1} \\n      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_1} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {JANIS_WDL_TOKEN_1}\n  ",
+            "\n    set -euo pipefail\n\n    MODEL_REPORT={JANIS_WDL_TOKEN_1}\n\n    gatk --java-options -Xms100g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_3} \\n      --tranches-file {JANIS_WDL_TOKEN_4} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_5} \\n      -an {JANIS_WDL_TOKEN_6} \\n      -mode INDEL \\n      {JANIS_WDL_TOKEN_7} \\n      {JANIS_WDL_TOKEN_8} \\n      --max-gaussians {JANIS_WDL_TOKEN_9} \\n      -resource:mills,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_10} \\n      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_11} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {JANIS_WDL_TOKEN_12}\n  ",
             JANIS_WDL_TOKEN_1=InputSelector(
+                input_to_select="model_report", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_2=InputSelector(
+                input_to_select="sites_only_variant_filtered_vcf",
+                type_hint=File(),
+            ),
+            JANIS_WDL_TOKEN_3=InputSelector(
+                input_to_select="recalibration_filename", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_4=InputSelector(
+                input_to_select="tranches_filename", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_5=InputSelector(
+                input_to_select="recalibration_tranche_values", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_6=InputSelector(
+                input_to_select="recalibration_annotation_values",
+                type_hint=File(),
+            ),
+            JANIS_WDL_TOKEN_7=InputSelector(
+                input_to_select="use_allele_specific_annotations",
+                type_hint=File(),
+            ),
+            JANIS_WDL_TOKEN_8=InputSelector(
+                input_to_select="model_report_arg", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_9=InputSelector(
+                input_to_select="max_gaussians", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_10=InputSelector(
+                input_to_select="mills_resource_vcf", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_11=InputSelector(
+                input_to_select="axiomPoly_resource_vcf", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_12=InputSelector(
                 input_to_select="dbsnp_resource_vcf", type_hint=File()
             ),
         )
@@ -527,16 +650,64 @@ Snpsvariantrecalibratorcreatemodel_Dev = CommandToolBuilder(
         ToolOutput(
             tag="model_report",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="model_report_filename", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         )
     ],
-    container="ubuntu:latest",
+    container="us.gcr.io/broad-gatk/gatk:4.1.4.1",
     version="DEV",
     files_to_create={
         "script.sh": StringFormatter(
-            "\n    set -euo pipefail\n\n    gatk --java-options -Xms{JANIS_WDL_TOKEN_1}g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_1} \\n      -O {JANIS_WDL_TOKEN_1} \\n      --tranches-file {JANIS_WDL_TOKEN_1} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_1} \\n      -an {JANIS_WDL_TOKEN_1} \\n      -mode SNP \\n      {JANIS_WDL_TOKEN_1} \\n      --sample-every-Nth-variant {JANIS_WDL_TOKEN_1} \\n      --output-model {JANIS_WDL_TOKEN_1} \\n      --max-gaussians {JANIS_WDL_TOKEN_1} \\n      -resource:hapmap,known=false,training=true,truth=true,prior=15 {JANIS_WDL_TOKEN_1} \\n      -resource:omni,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_1} \\n      -resource:1000G,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_1} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {JANIS_WDL_TOKEN_1}\n  ",
+            "\n    set -euo pipefail\n\n    gatk --java-options -Xms{JANIS_WDL_TOKEN_1}g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_3} \\n      --tranches-file {JANIS_WDL_TOKEN_4} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_5} \\n      -an {JANIS_WDL_TOKEN_6} \\n      -mode SNP \\n      {JANIS_WDL_TOKEN_7} \\n      --sample-every-Nth-variant {JANIS_WDL_TOKEN_8} \\n      --output-model {JANIS_WDL_TOKEN_9} \\n      --max-gaussians {JANIS_WDL_TOKEN_10} \\n      -resource:hapmap,known=false,training=true,truth=true,prior=15 {JANIS_WDL_TOKEN_11} \\n      -resource:omni,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_12} \\n      -resource:1000G,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_13} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {JANIS_WDL_TOKEN_14}\n  ",
             JANIS_WDL_TOKEN_1=InputSelector(
+                input_to_select="java_mem", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_2=InputSelector(
+                input_to_select="sites_only_variant_filtered_vcf",
+                type_hint=File(),
+            ),
+            JANIS_WDL_TOKEN_3=InputSelector(
+                input_to_select="recalibration_filename", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_4=InputSelector(
+                input_to_select="tranches_filename", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_5=InputSelector(
+                input_to_select="recalibration_tranche_values", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_6=InputSelector(
+                input_to_select="recalibration_annotation_values",
+                type_hint=File(),
+            ),
+            JANIS_WDL_TOKEN_7=InputSelector(
+                input_to_select="use_allele_specific_annotations",
+                type_hint=File(),
+            ),
+            JANIS_WDL_TOKEN_8=InputSelector(
+                input_to_select="downsampleFactor", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_9=InputSelector(
+                input_to_select="model_report_filename", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_10=InputSelector(
+                input_to_select="max_gaussians", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_11=InputSelector(
+                input_to_select="hapmap_resource_vcf", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_12=InputSelector(
+                input_to_select="omni_resource_vcf", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_13=InputSelector(
+                input_to_select="one_thousand_genomes_resource_vcf",
+                type_hint=File(),
+            ),
+            JANIS_WDL_TOKEN_14=InputSelector(
                 input_to_select="dbsnp_resource_vcf", type_hint=File()
             ),
         )
@@ -649,28 +820,86 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
         ToolOutput(
             tag="recalibration",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="recalibration_filename", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
         ToolOutput(
             tag="recalibration_index",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}.idx",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="recalibration_filename", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
         ToolOutput(
             tag="tranches",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="tranches_filename", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
     ],
-    container="ubuntu:latest",
+    container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
     files_to_create={
         "script.sh": StringFormatter(
-            "\n    set -euo pipefail\n\n    MODEL_REPORT={JANIS_WDL_TOKEN_1}\n\n    gatk --java-options -Xms{JANIS_WDL_TOKEN_1}g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_1} \\n      -O {JANIS_WDL_TOKEN_1} \\n      --tranches-file {JANIS_WDL_TOKEN_1} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_1} \\n      -an {JANIS_WDL_TOKEN_1} \\n      -mode SNP \\n      {JANIS_WDL_TOKEN_1} \\n       {JANIS_WDL_TOKEN_1} \\n      --max-gaussians {JANIS_WDL_TOKEN_1} \\n      -resource:hapmap,known=false,training=true,truth=true,prior=15 {JANIS_WDL_TOKEN_1} \\n      -resource:omni,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_1} \\n      -resource:1000G,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_1} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {JANIS_WDL_TOKEN_1}\n  ",
+            "\n    set -euo pipefail\n\n    MODEL_REPORT={JANIS_WDL_TOKEN_1}\n\n    gatk --java-options -Xms{JANIS_WDL_TOKEN_2}g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_3} \\n      -O {JANIS_WDL_TOKEN_4} \\n      --tranches-file {JANIS_WDL_TOKEN_5} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_6} \\n      -an {JANIS_WDL_TOKEN_7} \\n      -mode SNP \\n      {JANIS_WDL_TOKEN_8} \\n       {JANIS_WDL_TOKEN_9} \\n      --max-gaussians {JANIS_WDL_TOKEN_10} \\n      -resource:hapmap,known=false,training=true,truth=true,prior=15 {JANIS_WDL_TOKEN_11} \\n      -resource:omni,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_12} \\n      -resource:1000G,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_13} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {JANIS_WDL_TOKEN_14}\n  ",
             JANIS_WDL_TOKEN_1=InputSelector(
+                input_to_select="model_report", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_2=SubtractOperator(
+                InputSelector(input_to_select="machine_mem", type_hint=File()), 1
+            ),
+            JANIS_WDL_TOKEN_3=InputSelector(
+                input_to_select="sites_only_variant_filtered_vcf",
+                type_hint=File(),
+            ),
+            JANIS_WDL_TOKEN_4=InputSelector(
+                input_to_select="recalibration_filename", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_5=InputSelector(
+                input_to_select="tranches_filename", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_6=InputSelector(
+                input_to_select="recalibration_tranche_values", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_7=InputSelector(
+                input_to_select="recalibration_annotation_values",
+                type_hint=File(),
+            ),
+            JANIS_WDL_TOKEN_8=InputSelector(
+                input_to_select="use_allele_specific_annotations",
+                type_hint=File(),
+            ),
+            JANIS_WDL_TOKEN_9=InputSelector(
+                input_to_select="model_report_arg", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_10=InputSelector(
+                input_to_select="max_gaussians", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_11=InputSelector(
+                input_to_select="hapmap_resource_vcf", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_12=InputSelector(
+                input_to_select="omni_resource_vcf", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_13=InputSelector(
+                input_to_select="one_thousand_genomes_resource_vcf",
+                type_hint=File(),
+            ),
+            JANIS_WDL_TOKEN_14=InputSelector(
                 input_to_select="dbsnp_resource_vcf", type_hint=File()
             ),
         )
@@ -702,77 +931,23 @@ Gathertranches_Dev = CommandToolBuilder(
         ToolOutput(
             tag="out_tranches",
             output_type=File(),
-            selector="None",
-            doc=OutputDocumentation(doc=None),
-        )
-    ],
-    container="ubuntu:latest",
-    version="DEV",
-    files_to_create={
-        "script.sh": StringFormatter(
-            "\n    set -euo pipefail\n\n    tranches_fofn={JANIS_WDL_TOKEN_1}\n\n    # Jose says:\n    # Cromwell will fall over if we have it try to localize tens of thousands of files,\n    # so we manually localize files using gsutil.\n    # Using gsutil also lets us parallelize the localization, which (as far as we can tell)\n    # PAPI doesn't do.\n\n    # This is here to deal with the JES bug where commands may be run twice\n    rm -rf tranches\n    mkdir tranches\n    RETRY_LIMIT=5\n\n    count=0\n    until cat $tranches_fofn | /usr/bin/gsutil -m cp -L cp.log -c -I tranches/; do\n        sleep 1\n        ((count++)) && ((count >= $RETRY_LIMIT)) && break\n    done\n    if [ '$count' -ge '$RETRY_LIMIT' ]; then\n        echo 'Could not copy all the tranches from the cloud' && exit 1\n    fi\n\n    cat $tranches_fofn | rev | cut -d '/' -f 1 | rev | awk '{print 'tranches/' $1}' > inputs.list\n\n    gatk --java-options -Xms6g \\n      GatherTranches \\n      --input inputs.list \\n      --output {JANIS_WDL_TOKEN_1}\n  ",
-            JANIS_WDL_TOKEN_1=InputSelector(
-                input_to_select="output_filename", type_hint=File()
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="output_filename", type_hint=File()
+                ),
             ),
+            doc=OutputDocumentation(doc=None),
         )
-    },
-)
-Collectvariantcallingmetrics_Dev = CommandToolBuilder(
-    tool="CollectVariantCallingMetrics",
-    base_command=["sh", "script.sh"],
-    inputs=[
-        ToolInput(tag="input_vcf", input_type=File(), doc=InputDocumentation(doc=None)),
-        ToolInput(
-            tag="input_vcf_index",
-            input_type=File(),
-            doc=InputDocumentation(doc=None),
-        ),
-        ToolInput(
-            tag="metrics_filename_prefix",
-            input_type=String(),
-            doc=InputDocumentation(doc=None),
-        ),
-        ToolInput(tag="dbsnp_vcf", input_type=File(), doc=InputDocumentation(doc=None)),
-        ToolInput(
-            tag="dbsnp_vcf_index",
-            input_type=File(),
-            doc=InputDocumentation(doc=None),
-        ),
-        ToolInput(
-            tag="interval_list",
-            input_type=File(),
-            doc=InputDocumentation(doc=None),
-        ),
-        ToolInput(tag="ref_dict", input_type=File(), doc=InputDocumentation(doc=None)),
-        ToolInput(tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)),
-        ToolInput(
-            tag="gatk_docker",
-            input_type=String(),
-            default="us.gcr.io/broad-gatk/gatk:4.1.1.0",
-            doc=InputDocumentation(doc=None),
-        ),
     ],
-    outputs=[
-        ToolOutput(
-            tag="detail_metrics_file",
-            output_type=File(),
-            selector="None",
-            doc=OutputDocumentation(doc=None),
-        ),
-        ToolOutput(
-            tag="summary_metrics_file",
-            output_type=File(),
-            selector="None",
-            doc=OutputDocumentation(doc=None),
-        ),
-    ],
-    container="ubuntu:latest",
+    container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
     files_to_create={
         "script.sh": StringFormatter(
-            "\n    set -euo pipefail\n\n    gatk --java-options -Xms6g \\n      CollectVariantCallingMetrics \\n      --INPUT {JANIS_WDL_TOKEN_1} \\n      --DBSNP {JANIS_WDL_TOKEN_1} \\n      --SEQUENCE_DICTIONARY {JANIS_WDL_TOKEN_1} \\n      --OUTPUT {JANIS_WDL_TOKEN_1} \\n      --THREAD_COUNT 8 \\n      --TARGET_INTERVALS {JANIS_WDL_TOKEN_1}\n  ",
-            JANIS_WDL_TOKEN_1=InputSelector(
-                input_to_select="interval_list", type_hint=File()
+            "\n    set -euo pipefail\n\n    tranches_fofn={JANIS_WDL_TOKEN_1}\n\n    # Jose says:\n    # Cromwell will fall over if we have it try to localize tens of thousands of files,\n    # so we manually localize files using gsutil.\n    # Using gsutil also lets us parallelize the localization, which (as far as we can tell)\n    # PAPI doesn't do.\n\n    # This is here to deal with the JES bug where commands may be run twice\n    rm -rf tranches\n    mkdir tranches\n    RETRY_LIMIT=5\n\n    count=0\n    until cat $tranches_fofn | /usr/bin/gsutil -m cp -L cp.log -c -I tranches/; do\n        sleep 1\n        ((count++)) && ((count >= $RETRY_LIMIT)) && break\n    done\n    if [ '$count' -ge '$RETRY_LIMIT' ]; then\n        echo 'Could not copy all the tranches from the cloud' && exit 1\n    fi\n\n    cat $tranches_fofn | rev | cut -d '/' -f 1 | rev | awk '{print 'tranches/' $1}' > inputs.list\n\n    gatk --java-options -Xms6g \\n      GatherTranches \\n      --input inputs.list \\n      --output {JANIS_WDL_TOKEN_2}\n  ",
+            JANIS_WDL_TOKEN_1="JANIS: write_lines([inputs.tranches])",
+            JANIS_WDL_TOKEN_2=InputSelector(
+                input_to_select="output_filename", type_hint=File()
             ),
         )
     },
@@ -849,24 +1024,140 @@ Applyrecalibration_Dev = CommandToolBuilder(
         ToolOutput(
             tag="recalibrated_vcf",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="recalibrated_vcf_filename", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
         ToolOutput(
             tag="recalibrated_vcf_index",
             output_type=File(),
-            selector="None",
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}.tbi",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="recalibrated_vcf_filename", type_hint=File()
+                ),
+            ),
             doc=OutputDocumentation(doc=None),
         ),
     ],
-    container="ubuntu:latest",
+    container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
     files_to_create={
         "script.sh": StringFormatter(
-            "\n    set -euo pipefail\n\n    gatk --java-options -Xms5g \\n      ApplyVQSR \\n      -O tmp.indel.recalibrated.vcf \\n      -V {JANIS_WDL_TOKEN_1} \\n      --recal-file {JANIS_WDL_TOKEN_1} \\n      --tranches-file {JANIS_WDL_TOKEN_1} \\n      --truth-sensitivity-filter-level {JANIS_WDL_TOKEN_1} \\n      --create-output-variant-index true \\n      -mode INDEL {JANIS_WDL_TOKEN_1} \\n\n\n    gatk --java-options -Xms5g \\n      ApplyVQSR \\n      -O {JANIS_WDL_TOKEN_1} \\n      -V tmp.indel.recalibrated.vcf \\n      --recal-file {JANIS_WDL_TOKEN_1} \\n      --tranches-file {JANIS_WDL_TOKEN_1} \\n      --truth-sensitivity-filter-level {JANIS_WDL_TOKEN_1} \\n      --create-output-variant-index true \\n      -mode SNP {JANIS_WDL_TOKEN_1} \\n\n  ",
+            "\n    set -euo pipefail\n\n    gatk --java-options -Xms5g \\n      ApplyVQSR \\n      -O tmp.indel.recalibrated.vcf \\n      -V {JANIS_WDL_TOKEN_1} \\n      --recal-file {JANIS_WDL_TOKEN_2} \\n      --tranches-file {JANIS_WDL_TOKEN_3} \\n      --truth-sensitivity-filter-level {JANIS_WDL_TOKEN_4} \\n      --create-output-variant-index true \\n      -mode INDEL {JANIS_WDL_TOKEN_5} \\n\n\n    gatk --java-options -Xms5g \\n      ApplyVQSR \\n      -O {JANIS_WDL_TOKEN_6} \\n      -V tmp.indel.recalibrated.vcf \\n      --recal-file {JANIS_WDL_TOKEN_7} \\n      --tranches-file {JANIS_WDL_TOKEN_8} \\n      --truth-sensitivity-filter-level {JANIS_WDL_TOKEN_9} \\n      --create-output-variant-index true \\n      -mode SNP {JANIS_WDL_TOKEN_5} \\n\n  ",
             JANIS_WDL_TOKEN_1=InputSelector(
+                input_to_select="input_vcf", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_2=InputSelector(
+                input_to_select="indels_recalibration", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_3=InputSelector(
+                input_to_select="indels_tranches", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_4=InputSelector(
+                input_to_select="indel_filter_level", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_5=InputSelector(
                 input_to_select="use_allele_specific_annotations",
                 type_hint=File(),
+            ),
+            JANIS_WDL_TOKEN_6=InputSelector(
+                input_to_select="recalibrated_vcf_filename", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_7=InputSelector(
+                input_to_select="snps_recalibration", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_8=InputSelector(
+                input_to_select="snps_tranches", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_9=InputSelector(
+                input_to_select="snp_filter_level", type_hint=File()
+            ),
+        )
+    },
+)
+Collectvariantcallingmetrics_Dev = CommandToolBuilder(
+    tool="CollectVariantCallingMetrics",
+    base_command=["sh", "script.sh"],
+    inputs=[
+        ToolInput(tag="input_vcf", input_type=File(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="input_vcf_index",
+            input_type=File(),
+            doc=InputDocumentation(doc=None),
+        ),
+        ToolInput(
+            tag="metrics_filename_prefix",
+            input_type=String(),
+            doc=InputDocumentation(doc=None),
+        ),
+        ToolInput(tag="dbsnp_vcf", input_type=File(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="dbsnp_vcf_index",
+            input_type=File(),
+            doc=InputDocumentation(doc=None),
+        ),
+        ToolInput(
+            tag="interval_list",
+            input_type=File(),
+            doc=InputDocumentation(doc=None),
+        ),
+        ToolInput(tag="ref_dict", input_type=File(), doc=InputDocumentation(doc=None)),
+        ToolInput(tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="gatk_docker",
+            input_type=String(),
+            default="us.gcr.io/broad-gatk/gatk:4.1.1.0",
+            doc=InputDocumentation(doc=None),
+        ),
+    ],
+    outputs=[
+        ToolOutput(
+            tag="detail_metrics_file",
+            output_type=File(),
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}.variant_calling_detail_metrics",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="metrics_filename_prefix", type_hint=File()
+                ),
+            ),
+            doc=OutputDocumentation(doc=None),
+        ),
+        ToolOutput(
+            tag="summary_metrics_file",
+            output_type=File(),
+            selector=StringFormatter(
+                "{JANIS_WDL_TOKEN_1}.variant_calling_summary_metrics",
+                JANIS_WDL_TOKEN_1=InputSelector(
+                    input_to_select="metrics_filename_prefix", type_hint=File()
+                ),
+            ),
+            doc=OutputDocumentation(doc=None),
+        ),
+    ],
+    container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
+    version="DEV",
+    files_to_create={
+        "script.sh": StringFormatter(
+            "\n    set -euo pipefail\n\n    gatk --java-options -Xms6g \\n      CollectVariantCallingMetrics \\n      --INPUT {JANIS_WDL_TOKEN_1} \\n      --DBSNP {JANIS_WDL_TOKEN_2} \\n      --SEQUENCE_DICTIONARY {JANIS_WDL_TOKEN_3} \\n      --OUTPUT {JANIS_WDL_TOKEN_4} \\n      --THREAD_COUNT 8 \\n      --TARGET_INTERVALS {JANIS_WDL_TOKEN_5}\n  ",
+            JANIS_WDL_TOKEN_1=InputSelector(
+                input_to_select="input_vcf", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_2=InputSelector(
+                input_to_select="dbsnp_vcf", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_3=InputSelector(
+                input_to_select="ref_dict", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_4=InputSelector(
+                input_to_select="metrics_filename_prefix", type_hint=File()
+            ),
+            JANIS_WDL_TOKEN_5=InputSelector(
+                input_to_select="interval_list", type_hint=File()
             ),
         )
     },
