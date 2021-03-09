@@ -1,13 +1,16 @@
-"""A function to process uploaded samples"""
+""" This function prepares gCVF's uploaded to GCP, based off sample status
+    logged in AirTable, for joint calling. The upload processor will
+    determine when samples should be added to existing MatrixTables where
+    appropriate. Following a successful run all uploaded files will be
+    moved to archival storage"""
 
 import json
-import google.auth
 from airtable import Airtable
 from google.cloud import secretmanager
 
 
-def get_table(project_config):
-    """Get Table from Airtable"""
+def get_table(project_config: dict) -> Airtable:
+    """Authenticates to Airtable and returns the table specified in the config file."""
 
     # Get the Airtable credentials.
     base_key = project_config.get('baseKey')
@@ -20,14 +23,9 @@ def get_table(project_config):
     return table
 
 
-def get_config():
-    """Retrieve configuration file from secret manager"""
-
-    # secret_id set for testing, TODO: Replace
-    secret_id = 'test-airtable-config'
-
-    # Get project ID value. First output is a credentials object which isn't used.
-    _, project = google.auth.default()
+def get_config(secret_id: str, project: str) -> dict:
+    """Retrieves configuration file from secret manager when provided with a
+    project and it's associated secret ID"""
 
     client = secretmanager.SecretManagerServiceClient()
 
@@ -38,9 +36,3 @@ def get_config():
     project_config = config.get(project)
 
     return project_config
-
-
-if __name__ == '__main__':
-
-    project_configuration = get_config()
-    output_table = get_table(project_configuration)
