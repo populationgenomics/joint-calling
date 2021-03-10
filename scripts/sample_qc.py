@@ -132,6 +132,8 @@ def main(
     mt = hl.read_matrix_table(mt_path).key_rows_by('locus', 'alleles')
     metadata_ht = hl.read_table(splitext(mt_path)[0] + '.metadata.ht')
 
+    mt = _filter_callrate(mt, work_bucket, overwrite)
+
     # `hail_sample_qc_ht` row fields: sample_qc, bi_allelic_sample_qc
     hail_sample_qc_ht = _compute_hail_sample_qc(mt, work_bucket, overwrite)
 
@@ -228,6 +230,37 @@ def main(
         meta_tsv_path=out_ht_path.rstrip('/').replace('.ht', '.tsv'),
         overwrite=overwrite,
     )
+
+
+def _filter_callrate(
+    mt: hl.MatrixTable,
+    work_bucket: str,
+    overwrite: bool = False,
+) -> hl.Table:
+    """
+    Filter non-common variants, and annotate the sample callrate
+    :param mt: input matrix table
+    :param work_bucket: bucket path to write checkpoints
+    :param overwrite: overwrite checkpoints if they exist
+    :return: a new MatrixTable with a callrate column field
+    """
+    logger.info('Sample QC')
+    out_mt_path = join(work_bucket, 'high_callrate_common_biallelic_snps.mt')
+    if not overwrite and file_exists(out_mt_path):
+        return hl.read_matrix_table(out_mt_path)
+
+    logger.info('Filtering to bi-allelic, high-callrate, common SNPs for sample QC...')
+    mt = mt.filter_rows(
+        (hl.len(mt.alleles) == 2)
+        & hl.is_snp(mt.alleles[0], mt.alleles[1])
+        & (hl.agg.mean(mt.LGT.n_alt_alleles()) / 2 > 0.001)
+        & (hl.agg.fraction(hl.is_defined(mt.LGT)) > 0.99)
+    )
+    mt = mt.annotate_cols(
+        callrate=hl.agg.fraction(hl.is_defined(mt.LGT))
+    ).naive_coalesce(5000)
+    mt.write(out_mt_path, overwrite=overwrite)
+    return mt
 
 
 def _compute_hail_sample_qc(
