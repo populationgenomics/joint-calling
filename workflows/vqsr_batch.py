@@ -1,5 +1,7 @@
-import hailtop.batch as hb
+import math, os
 from typing import Union, Optional, List
+
+import hailtop.batch as hb
 
 
 def main(
@@ -35,7 +37,6 @@ def main(
     indel_VQSR_downsampleFactor: int,
     vcf_count: int,
     do_tabix: bool,
-    unpadded_intervals: Optional[List[str]],
     dbsnp_resource_vcf: Optional[str] = None,
     dbsnp_resource_vcf_index: Optional[str] = None,
     excess_het_threshold: Optional[float] = 54.69,
@@ -43,6 +44,7 @@ def main(
     unboundedScatterCount: Optional[int] = None,
     scatterCount: Optional[int] = None,
     SplitIntervalList_sample_names_unique_done: Optional[bool] = True,
+    unpadded_intervals: Optional[List[str]] = None,
     SNPsVariantRecalibratorScattered_machine_mem_gb: Optional[int] = 60,
     is_small_callset: Optional[bool] = False,
     ApplyRecalibration_use_allele_specific_annotations: Optional[bool] = True,
@@ -119,7 +121,7 @@ def main(
                     a
                     for a in [
                         "TabixBGzippedFile.bucket_tabix_output",
-                        "(combined_gvcf + '.tbi')",
+                        '(combined_gvcf + ".tbi")',
                     ]
                     if a is not None
                 ],
@@ -324,14 +326,19 @@ def add_TabixBGzippedFile_step(
         else (zipped_vcf_path + ".tbi")
     )
     j.image(container)
+    j.memory(f"1.0G")
+    j.storage(f"200G")
+
     j.command(
         f"""gatk IndexFeatureFile -F {zipped_vcf}
-    gsutil cp {zipped_vcf}'.tbi' {bucket_tabix_path}
-"""
+    gsutil cp {zipped_vcf}'.tbi' {bucket_tabix_path}"""
     )
 
-    j.command('ln "{bucket_tabix_path}" {j.bucket_tabix_output}')
-    j.memory("4Gb")
+    j.command(
+        'ln "{value}" {dest}'.format(
+            value=bucket_tabix_path, dest=j.bucket_tabix_output
+        )
+    )
 
     return j
 
@@ -349,15 +356,21 @@ def add_SplitIntervalList_step(
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
 ):
     j = b.new_job("SplitIntervalList")
-
     j.image(container)
+    j.memory(f"3.49246125G")
+    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+
     j.command(
-        f"""gatk --java-options -Xms3g SplitIntervals \n      -L {interval_list} -O  scatterDir -scatter {scatter_count} -R {ref_fasta} \n      -mode BALANCING_WITHOUT_INTERVAL_SUBDIVISION_WITH_OVERFLOW
-"""
+        f"""gatk --java-options -Xms3g SplitIntervals \\
+      -L {interval_list} -O  scatterDir -scatter {scatter_count} -R {ref_fasta} \\
+      -mode BALANCING_WITHOUT_INTERVAL_SUBDIVISION_WITH_OVERFLOW"""
     )
 
-    j.command('ln "scatterDir/*")')
-    j.memory("4Gb")
+    j.command(
+        'ln "{value}" {dest}'.format(
+            value="scatterDir/*", dest=j.output_intervals
+        )
+    )
 
     return j
 
@@ -373,16 +386,39 @@ def add_GnarlyGenotyperOnVcf_step(
     ref_dict,
     dbsnp_vcf,
     gatk_docker="gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K",
+    disk_size=None,
     container="gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K",
 ):
     j = b.new_job("GnarlyGenotyperOnVcf")
-
+    disk_size = (
+        disk_size
+        if disk_size is not None
+        else math.ceil(
+            (
+                (
+                    (os.stat(combined_gvcf).st_size / 1000 * 0.001024)
+                    + (os.stat(ref_fasta).st_size / 1000 * 0.001024)
+                )
+                + ((os.stat(dbsnp_vcf).st_size / 1000 * 0.001024) * 3)
+            )
+        )
+    )
     j.image(container)
+    j.memory(f"24.214398G")
+    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+
     j.command(
         f"""set -e
 
-    gatk --java-options -Xms8g \n      GnarlyGenotyper \n      -R {ref_fasta} \n      -O {output_vcf_filename} \n      -D {dbsnp_vcf} \n      --only-output-calls-starting-in-intervals \n      --keep-all-sites \n      -V {combined_gvcf} \n      -L {interval}
-"""
+    gatk --java-options -Xms8g \\
+      GnarlyGenotyper \\
+      -R {ref_fasta} \\
+      -O {output_vcf_filename} \\
+      -D {dbsnp_vcf} \\
+      --only-output-calls-starting-in-intervals \\
+      --keep-all-sites \\
+      -V {combined_gvcf} \\
+      -L {interval}"""
     )
 
     j.command(
@@ -395,7 +431,6 @@ def add_GnarlyGenotyperOnVcf_step(
             value=f"{output_vcf_filename}.tbi", dest=j.output_vcf_index
         )
     )
-    j.memory("4Gb")
 
     return j
 
@@ -412,15 +447,24 @@ def add_HardFilterAndMakeSitesOnlyVcf_step(
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
 ):
     j = b.new_job("HardFilterAndMakeSitesOnlyVcf")
-
     j.image(container)
+    j.memory(f"3.49246125G")
+    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+
     j.command(
         f"""set -euo pipefail
 
-    gatk --java-options -Xms3g \n      VariantFiltration \n      --filter-expression 'ExcessHet > {excess_het_threshold}' \n      --filter-name ExcessHet \n      -O {variant_filtered_vcf_filename} \n      -V {vcf}
+    gatk --java-options -Xms3g \\
+      VariantFiltration \\
+      --filter-expression 'ExcessHet > {excess_het_threshold}' \\
+      --filter-name ExcessHet \\
+      -O {variant_filtered_vcf_filename} \\
+      -V {vcf}
 
-    gatk --java-options -Xms3g \n      MakeSitesOnlyVcf \n      -I {variant_filtered_vcf_filename} \n      -O {sites_only_vcf_filename}
-"""
+    gatk --java-options -Xms3g \\
+      MakeSitesOnlyVcf \\
+      -I {variant_filtered_vcf_filename} \\
+      -O {sites_only_vcf_filename}"""
     )
 
     j.command(
@@ -444,7 +488,6 @@ def add_HardFilterAndMakeSitesOnlyVcf_step(
             value=f"{sites_only_vcf_filename}.tbi", dest=j.sites_only_vcf_index
         )
     )
-    j.memory("4Gb")
 
     return j
 
@@ -458,18 +501,24 @@ def add_SitesOnlyGatherVcf_step(
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
 ):
     j = b.new_job("SitesOnlyGatherVcf")
-
     j.image(container)
+    j.memory(f"6.519261G")
+    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+
     j.command(
         f"""set -euo pipefail
 
     # --ignore-safety-checks makes a big performance difference so we include it in our invocation.
     # This argument disables expensive checks that the file headers contain the same set of
     # genotyped samples and that files are in order by position of first record.
-    gatk --java-options -Xms6g \n      GatherVcfsCloud \n      --ignore-safety-checks \n      --gather-type BLOCK \n      --input {input_vcfs} \n      --output {output_vcf_name}
+    gatk --java-options -Xms6g \\
+      GatherVcfsCloud \\
+      --ignore-safety-checks \\
+      --gather-type BLOCK \\
+      --input {input_vcfs} \\
+      --output {output_vcf_name}
 
-    tabix {output_vcf_name}
-"""
+    tabix {output_vcf_name}"""
     )
 
     j.command(
@@ -482,7 +531,6 @@ def add_SitesOnlyGatherVcf_step(
             value=f"{output_vcf_name}.tbi", dest=j.output_vcf_index
         )
     )
-    j.memory("4Gb")
 
     return j
 
@@ -491,7 +539,6 @@ def add_IndelsVariantRecalibrator_step(
     b,
     recalibration_filename,
     tranches_filename,
-    model_report,
     recalibration_tranche_values,
     recalibration_annotation_values,
     sites_only_variant_filtered_vcf,
@@ -504,19 +551,45 @@ def add_IndelsVariantRecalibrator_step(
     dbsnp_resource_vcf_index,
     use_allele_specific_annotations,
     disk_size,
+    model_report=None,
     max_gaussians=4,
+    model_report_arg=None,
     container="ubuntu:latest",
 ):
     j = b.new_job("IndelsVariantRecalibrator")
-
+    model_report_arg = (
+        model_report_arg
+        if model_report_arg is not None
+        else (
+            "--input-model $MODEL_REPORT --output-tranches-for-scatter"
+            if model_report is not None
+            else ""
+        )
+    )
     j.image(container)
+    j.memory(f"104.0G")
+    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+
     j.command(
         f"""set -euo pipefail
 
     MODEL_REPORT={model_report}
 
-    gatk --java-options -Xms100g \n      VariantRecalibrator \n      -V {sites_only_variant_filtered_vcf} \n      -O {recalibration_filename} \n      --tranches-file {tranches_filename} \n      --trust-all-polymorphic \n      -tranche {recalibration_tranche_values} \n      -an {recalibration_annotation_values} \n      -mode INDEL \n      {use_allele_specific_annotations} \n      {model_report_arg} \n      --max-gaussians {max_gaussians} \n      -resource:mills,known=false,training=true,truth=true,prior=12 {mills_resource_vcf} \n      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {axiomPoly_resource_vcf} \n      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf}
-"""
+    gatk --java-options -Xms100g \\
+      VariantRecalibrator \\
+      -V {sites_only_variant_filtered_vcf} \\
+      -O {recalibration_filename} \\
+      --tranches-file {tranches_filename} \\
+      --trust-all-polymorphic \\
+      -tranche {recalibration_tranche_values} \\
+      -an {recalibration_annotation_values} \\
+      -mode INDEL \\
+      {use_allele_specific_annotations} \\
+      {model_report_arg} \\
+      --max-gaussians {max_gaussians} \\
+      -resource:mills,known=false,training=true,truth=true,prior=12 {mills_resource_vcf} \\
+      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {axiomPoly_resource_vcf} \\
+      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf}"""
     )
 
     j.command(
@@ -534,7 +607,6 @@ def add_IndelsVariantRecalibrator_step(
             value=f"{tranches_filename}", dest=j.tranches
         )
     )
-    j.memory("4Gb")
 
     return j
 
@@ -565,13 +637,30 @@ def add_SNPsVariantRecalibratorCreateModel_step(
     container="us.gcr.io/broad-gatk/gatk:4.1.4.1",
 ):
     j = b.new_job("SNPsVariantRecalibratorCreateModel")
-
     j.image(container)
+    j.memory(f"104.0G")
+    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+
     j.command(
         f"""set -euo pipefail
 
-    gatk --java-options -Xms{java_mem}g \n      VariantRecalibrator \n      -V {sites_only_variant_filtered_vcf} \n      -O {recalibration_filename} \n      --tranches-file {tranches_filename} \n      --trust-all-polymorphic \n      -tranche {recalibration_tranche_values} \n      -an {recalibration_annotation_values} \n      -mode SNP \n      {use_allele_specific_annotations} \n      --sample-every-Nth-variant {downsampleFactor} \n      --output-model {model_report_filename} \n      --max-gaussians {max_gaussians} \n      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf} \n      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf} \n      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf} \n      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf}
-"""
+    gatk --java-options -Xms{java_mem}g \\
+      VariantRecalibrator \\
+      -V {sites_only_variant_filtered_vcf} \\
+      -O {recalibration_filename} \\
+      --tranches-file {tranches_filename} \\
+      --trust-all-polymorphic \\
+      -tranche {recalibration_tranche_values} \\
+      -an {recalibration_annotation_values} \\
+      -mode SNP \\
+      {use_allele_specific_annotations} \\
+      --sample-every-Nth-variant {downsampleFactor} \\
+      --output-model {model_report_filename} \\
+      --max-gaussians {max_gaussians} \\
+      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf} \\
+      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf} \\
+      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf} \\
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf}"""
     )
 
     j.command(
@@ -579,7 +668,6 @@ def add_SNPsVariantRecalibratorCreateModel_step(
             value=f"{model_report_filename}", dest=j.model_report
         )
     )
-    j.memory("4Gb")
 
     return j
 
@@ -588,7 +676,6 @@ def add_SNPsVariantRecalibratorScattered_step(
     b,
     recalibration_filename,
     tranches_filename,
-    model_report,
     recalibration_tranche_values,
     recalibration_annotation_values,
     sites_only_variant_filtered_vcf,
@@ -602,22 +689,82 @@ def add_SNPsVariantRecalibratorScattered_step(
     one_thousand_genomes_resource_vcf_index,
     dbsnp_resource_vcf_index,
     disk_size,
-    machine_mem_gb,
     use_allele_specific_annotations,
+    model_report=None,
     max_gaussians=6,
     gatk_docker="us.gcr.io/broad-gatk/gatk:4.1.1.0",
+    machine_mem_gb=None,
+    auto_mem=None,
+    machine_mem=None,
+    model_report_arg=None,
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
 ):
     j = b.new_job("SNPsVariantRecalibratorScattered")
-
+    auto_mem = (
+        auto_mem
+        if auto_mem is not None
+        else math.ceil(
+            (
+                2
+                * (
+                    os.stat(
+                        [
+                            "sites_only_variant_filtered_vcf",
+                            "hapmap_resource_vcf",
+                            "omni_resource_vcf",
+                            "one_thousand_genomes_resource_vcf",
+                            "dbsnp_resource_vcf",
+                        ]
+                    ).st_size
+                    / 1000
+                    * 0.001024
+                )
+            )
+        )
+    )
+    machine_mem = (
+        machine_mem
+        if machine_mem is not None
+        else [
+            a
+            for a in ["machine_mem_gb", "(7 if (auto_mem < 7) else auto_mem)"]
+            if a is not None
+        ]
+    )
+    model_report_arg = (
+        model_report_arg
+        if model_report_arg is not None
+        else (
+            "--input-model $MODEL_REPORT --output-tranches-for-scatter"
+            if model_report is not None
+            else ""
+        )
+    )
     j.image(container)
+    j.memory(f"{machine_mem} GiBG")
+    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+
     j.command(
         f"""set -euo pipefail
 
     MODEL_REPORT={model_report}
 
-    gatk --java-options -Xms{{(machine_mem - 1)}}g \n      VariantRecalibrator \n      -V {sites_only_variant_filtered_vcf} \n      -O {recalibration_filename} \n      --tranches-file {tranches_filename} \n      --trust-all-polymorphic \n      -tranche {recalibration_tranche_values} \n      -an {recalibration_annotation_values} \n      -mode SNP \n      {use_allele_specific_annotations} \n       {model_report_arg} \n      --max-gaussians {max_gaussians} \n      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf} \n      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf} \n      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf} \n      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf}
-"""
+    gatk --java-options -Xms{{(machine_mem - 1)}}g \\
+      VariantRecalibrator \\
+      -V {sites_only_variant_filtered_vcf} \\
+      -O {recalibration_filename} \\
+      --tranches-file {tranches_filename} \\
+      --trust-all-polymorphic \\
+      -tranche {recalibration_tranche_values} \\
+      -an {recalibration_annotation_values} \\
+      -mode SNP \\
+      {use_allele_specific_annotations} \\
+       {model_report_arg} \\
+      --max-gaussians {max_gaussians} \\
+      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf} \\
+      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf} \\
+      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf} \\
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf}"""
     )
 
     j.command(
@@ -635,7 +782,6 @@ def add_SNPsVariantRecalibratorScattered_step(
             value=f"{tranches_filename}", dest=j.tranches
         )
     )
-    j.memory("4Gb")
 
     return j
 
@@ -649,8 +795,10 @@ def add_SNPGatherTranches_step(
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
 ):
     j = b.new_job("SNPGatherTranches")
-
     j.image(container)
+    j.memory(f"6.519261G")
+    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+
     j.command(
         f"""set -euo pipefail
 
@@ -678,8 +826,10 @@ def add_SNPGatherTranches_step(
 
     cat $tranches_fofn | rev | cut -d '/' -f 1 | rev | awk '{{print 'tranches/' $1}}' > inputs.list
 
-    gatk --java-options -Xms6g \n      GatherTranches \n      --input inputs.list \n      --output {output_filename}
-"""
+    gatk --java-options -Xms6g \\
+      GatherTranches \\
+      --input inputs.list \\
+      --output {output_filename}"""
     )
 
     j.command(
@@ -687,7 +837,6 @@ def add_SNPGatherTranches_step(
             value=f"{output_filename}", dest=j.out_tranches
         )
     )
-    j.memory("4Gb")
 
     return j
 
@@ -711,14 +860,33 @@ def add_ApplyRecalibration_step(
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
 ):
     j = b.new_job("ApplyRecalibration")
-
     j.image(container)
+    j.memory(f"7.0G")
+    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+
     j.command(
         f"""set -euo pipefail
 
-    gatk --java-options -Xms5g \n      ApplyVQSR \n      -O tmp.indel.recalibrated.vcf \n      -V {input_vcf} \n      --recal-file {indels_recalibration} \n      --tranches-file {indels_tranches} \n      --truth-sensitivity-filter-level {indel_filter_level} \n      --create-output-variant-index true \n      -mode INDEL {use_allele_specific_annotations} \n
+    gatk --java-options -Xms5g \\
+      ApplyVQSR \\
+      -O tmp.indel.recalibrated.vcf \\
+      -V {input_vcf} \\
+      --recal-file {indels_recalibration} \\
+      --tranches-file {indels_tranches} \\
+      --truth-sensitivity-filter-level {indel_filter_level} \\
+      --create-output-variant-index true \\
+      -mode INDEL {use_allele_specific_annotations} \\
 
-    gatk --java-options -Xms5g \n      ApplyVQSR \n      -O {recalibrated_vcf_filename} \n      -V tmp.indel.recalibrated.vcf \n      --recal-file {snps_recalibration} \n      --tranches-file {snps_tranches} \n      --truth-sensitivity-filter-level {snp_filter_level} \n      --create-output-variant-index true \n      -mode SNP {use_allele_specific_annotations} \n
+
+    gatk --java-options -Xms5g \\
+      ApplyVQSR \\
+      -O {recalibrated_vcf_filename} \\
+      -V tmp.indel.recalibrated.vcf \\
+      --recal-file {snps_recalibration} \\
+      --tranches-file {snps_tranches} \\
+      --truth-sensitivity-filter-level {snp_filter_level} \\
+      --create-output-variant-index true \\
+      -mode SNP {use_allele_specific_annotations} \\
 """
     )
 
@@ -733,7 +901,6 @@ def add_ApplyRecalibration_step(
             dest=j.recalibrated_vcf_index,
         )
     )
-    j.memory("4Gb")
 
     return j
 
@@ -752,13 +919,21 @@ def add_CollectMetricsSharded_step(
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
 ):
     j = b.new_job("CollectMetricsSharded")
-
     j.image(container)
+    j.memory(f"6.9849225G")
+    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+
     j.command(
         f"""set -euo pipefail
 
-    gatk --java-options -Xms6g \n      CollectVariantCallingMetrics \n      --INPUT {input_vcf} \n      --DBSNP {dbsnp_vcf} \n      --SEQUENCE_DICTIONARY {ref_dict} \n      --OUTPUT {metrics_filename_prefix} \n      --THREAD_COUNT 8 \n      --TARGET_INTERVALS {interval_list}
-"""
+    gatk --java-options -Xms6g \\
+      CollectVariantCallingMetrics \\
+      --INPUT {input_vcf} \\
+      --DBSNP {dbsnp_vcf} \\
+      --SEQUENCE_DICTIONARY {ref_dict} \\
+      --OUTPUT {metrics_filename_prefix} \\
+      --THREAD_COUNT 8 \\
+      --TARGET_INTERVALS {interval_list}"""
     )
 
     j.command(
@@ -773,7 +948,6 @@ def add_CollectMetricsSharded_step(
             dest=j.summary_metrics_file,
         )
     )
-    j.memory("4Gb")
 
     return j
 
@@ -787,18 +961,24 @@ def add_FinalGatherVcf_step(
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
 ):
     j = b.new_job("FinalGatherVcf")
-
     j.image(container)
+    j.memory(f"6.519261G")
+    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+
     j.command(
         f"""set -euo pipefail
 
     # --ignore-safety-checks makes a big performance difference so we include it in our invocation.
     # This argument disables expensive checks that the file headers contain the same set of
     # genotyped samples and that files are in order by position of first record.
-    gatk --java-options -Xms6g \n      GatherVcfsCloud \n      --ignore-safety-checks \n      --gather-type BLOCK \n      --input {input_vcfs} \n      --output {output_vcf_name}
+    gatk --java-options -Xms6g \\
+      GatherVcfsCloud \\
+      --ignore-safety-checks \\
+      --gather-type BLOCK \\
+      --input {input_vcfs} \\
+      --output {output_vcf_name}
 
-    tabix {output_vcf_name}
-"""
+    tabix {output_vcf_name}"""
     )
 
     j.command(
@@ -811,7 +991,6 @@ def add_FinalGatherVcf_step(
             value=f"{output_vcf_name}.tbi", dest=j.output_vcf_index
         )
     )
-    j.memory("4Gb")
 
     return j
 
@@ -830,13 +1009,21 @@ def add_CollectMetricsOnFullVcf_step(
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
 ):
     j = b.new_job("CollectMetricsOnFullVcf")
-
     j.image(container)
+    j.memory(f"6.9849225G")
+    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+
     j.command(
         f"""set -euo pipefail
 
-    gatk --java-options -Xms6g \n      CollectVariantCallingMetrics \n      --INPUT {input_vcf} \n      --DBSNP {dbsnp_vcf} \n      --SEQUENCE_DICTIONARY {ref_dict} \n      --OUTPUT {metrics_filename_prefix} \n      --THREAD_COUNT 8 \n      --TARGET_INTERVALS {interval_list}
-"""
+    gatk --java-options -Xms6g \\
+      CollectVariantCallingMetrics \\
+      --INPUT {input_vcf} \\
+      --DBSNP {dbsnp_vcf} \\
+      --SEQUENCE_DICTIONARY {ref_dict} \\
+      --OUTPUT {metrics_filename_prefix} \\
+      --THREAD_COUNT 8 \\
+      --TARGET_INTERVALS {interval_list}"""
     )
 
     j.command(
@@ -851,9 +1038,39 @@ def add_CollectMetricsOnFullVcf_step(
             dest=j.summary_metrics_file,
         )
     )
-    j.memory("4Gb")
 
     return j
+
+
+def apply_secondary_file_format_to_filename(
+    filepath: Optional[str], secondary_file: str
+):
+    """
+    This is actually clever, you can probably trust this to do what you want.
+    :param filepath: Filename to base
+    :param secondary_file: CWL secondary format (Remove 1 extension for each leading ^.
+    """
+    if not filepath:
+        return None
+
+    fixed_sec = secondary_file.lstrip("^")
+    leading = len(secondary_file) - len(fixed_sec)
+    if leading <= 0:
+        return filepath + fixed_sec
+
+    basepath = ""
+    filename = filepath
+    if "/" in filename:
+        idx = len(filepath) - filepath[::-1].index("/")
+        basepath = filepath[:idx]
+        filename = filepath[idx:]
+
+    split = filename.split(".")
+
+    newfname = filename + fixed_sec
+    if len(split) > 1:
+        newfname = ".".join(split[: -min(leading, len(split) - 1)]) + fixed_sec
+    return basepath + newfname
 
 
 if __name__ == "__main__":
@@ -890,5 +1107,4 @@ if __name__ == "__main__":
         indel_VQSR_downsampleFactor=None,
         vcf_count=None,
         do_tabix=None,
-        unpadded_intervals=None,
     )

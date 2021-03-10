@@ -27,8 +27,7 @@ Tabixbgzippedfile_Dev = CommandToolBuilder(
             tag="localized_tabix_path",
             input_type=String(),
             default=AddOperator(
-                InputSelector(input_to_select="zipped_vcf", type_hint=File()),
-                ".tbi",
+                InputSelector(input_to_select="zipped_vcf"), ".tbi"
             ),
             doc=InputDocumentation(doc=None),
         ),
@@ -36,10 +35,7 @@ Tabixbgzippedfile_Dev = CommandToolBuilder(
             tag="bucket_tabix_path",
             input_type=String(),
             default=AddOperator(
-                InputSelector(
-                    input_to_select="zipped_vcf_path", type_hint=File()
-                ),
-                ".tbi",
+                InputSelector(input_to_select="zipped_vcf_path"), ".tbi"
             ),
             doc=InputDocumentation(doc=None),
         ),
@@ -54,24 +50,19 @@ Tabixbgzippedfile_Dev = CommandToolBuilder(
         ToolOutput(
             tag="bucket_tabix_output",
             output_type=String(),
-            selector=InputSelector(
-                input_to_select="bucket_tabix_path", type_hint=File()
-            ),
+            selector=InputSelector(input_to_select="bucket_tabix_path"),
             doc=OutputDocumentation(doc=None),
         )
     ],
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
     memory=1.0,
+    disk=200,
     files_to_create={
         "script.sh": StringFormatter(
             "\n    gatk IndexFeatureFile -F {JANIS_WDL_TOKEN_1}\n    gsutil cp {JANIS_WDL_TOKEN_1}'.tbi' {JANIS_WDL_TOKEN_2}\n  ",
-            JANIS_WDL_TOKEN_1=InputSelector(
-                input_to_select="zipped_vcf", type_hint=File()
-            ),
-            JANIS_WDL_TOKEN_2=InputSelector(
-                input_to_select="bucket_tabix_path", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_1=InputSelector(input_to_select="zipped_vcf"),
+            JANIS_WDL_TOKEN_2=InputSelector(input_to_select="bucket_tabix_path"),
         )
     },
 )
@@ -128,18 +119,16 @@ Splitintervallist_Dev = CommandToolBuilder(
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
     memory=3.49246125,
+    disk=AddOperator(
+        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        " HDD",
+    ),
     files_to_create={
         "script.sh": StringFormatter(
             "\n    gatk --java-options -Xms3g SplitIntervals \\n      -L {JANIS_WDL_TOKEN_1} -O  scatterDir -scatter {JANIS_WDL_TOKEN_2} -R {JANIS_WDL_TOKEN_3} \\n      -mode BALANCING_WITHOUT_INTERVAL_SUBDIVISION_WITH_OVERFLOW\n   ",
-            JANIS_WDL_TOKEN_1=InputSelector(
-                input_to_select="interval_list", type_hint=File()
-            ),
-            JANIS_WDL_TOKEN_2=InputSelector(
-                input_to_select="scatter_count", type_hint=File()
-            ),
-            JANIS_WDL_TOKEN_3=InputSelector(
-                input_to_select="ref_fasta", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_1=InputSelector(input_to_select="interval_list"),
+            JANIS_WDL_TOKEN_2=InputSelector(input_to_select="scatter_count"),
+            JANIS_WDL_TOKEN_3=InputSelector(input_to_select="ref_fasta"),
         )
     },
 )
@@ -185,6 +174,38 @@ Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
             default="gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K",
             doc=InputDocumentation(doc=None),
         ),
+        ToolInput(
+            tag="disk_size",
+            input_type=Int(),
+            default=CeilOperator(
+                AddOperator(
+                    AddOperator(
+                        MultiplyOperator(
+                            FileSizeOperator(
+                                InputSelector(input_to_select="combined_gvcf")
+                            ),
+                            0.001024,
+                        ),
+                        MultiplyOperator(
+                            FileSizeOperator(
+                                InputSelector(input_to_select="ref_fasta")
+                            ),
+                            0.001024,
+                        ),
+                    ),
+                    MultiplyOperator(
+                        MultiplyOperator(
+                            FileSizeOperator(
+                                InputSelector(input_to_select="dbsnp_vcf")
+                            ),
+                            0.001024,
+                        ),
+                        3,
+                    ),
+                )
+            ),
+            doc=InputDocumentation(doc=None),
+        ),
     ],
     outputs=[
         ToolOutput(
@@ -193,7 +214,7 @@ Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="output_vcf_filename", type_hint=File()
+                    input_to_select="output_vcf_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -204,7 +225,7 @@ Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}.tbi",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="output_vcf_filename", type_hint=File()
+                    input_to_select="output_vcf_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -214,24 +235,20 @@ Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
     version="DEV",
     cpus=2,
     memory=24.214398,
+    disk=AddOperator(
+        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        " HDD",
+    ),
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -e\n\n    gatk --java-options -Xms8g \\n      GnarlyGenotyper \\n      -R {JANIS_WDL_TOKEN_1} \\n      -O {JANIS_WDL_TOKEN_2} \\n      -D {JANIS_WDL_TOKEN_3} \\n      --only-output-calls-starting-in-intervals \\n      --keep-all-sites \\n      -V {JANIS_WDL_TOKEN_4} \\n      -L {JANIS_WDL_TOKEN_5}\n  ",
-            JANIS_WDL_TOKEN_1=InputSelector(
-                input_to_select="ref_fasta", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_1=InputSelector(input_to_select="ref_fasta"),
             JANIS_WDL_TOKEN_2=InputSelector(
-                input_to_select="output_vcf_filename", type_hint=File()
+                input_to_select="output_vcf_filename"
             ),
-            JANIS_WDL_TOKEN_3=InputSelector(
-                input_to_select="dbsnp_vcf", type_hint=File()
-            ),
-            JANIS_WDL_TOKEN_4=InputSelector(
-                input_to_select="combined_gvcf", type_hint=File()
-            ),
-            JANIS_WDL_TOKEN_5=InputSelector(
-                input_to_select="interval", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_3=InputSelector(input_to_select="dbsnp_vcf"),
+            JANIS_WDL_TOKEN_4=InputSelector(input_to_select="combined_gvcf"),
+            JANIS_WDL_TOKEN_5=InputSelector(input_to_select="interval"),
         )
     },
 )
@@ -275,8 +292,7 @@ Hardfilterandmakesitesonlyvcf_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="variant_filtered_vcf_filename",
-                    type_hint=File(),
+                    input_to_select="variant_filtered_vcf_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -287,8 +303,7 @@ Hardfilterandmakesitesonlyvcf_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}.tbi",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="variant_filtered_vcf_filename",
-                    type_hint=File(),
+                    input_to_select="variant_filtered_vcf_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -299,7 +314,7 @@ Hardfilterandmakesitesonlyvcf_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="sites_only_vcf_filename", type_hint=File()
+                    input_to_select="sites_only_vcf_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -310,7 +325,7 @@ Hardfilterandmakesitesonlyvcf_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}.tbi",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="sites_only_vcf_filename", type_hint=File()
+                    input_to_select="sites_only_vcf_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -320,20 +335,22 @@ Hardfilterandmakesitesonlyvcf_Dev = CommandToolBuilder(
     version="DEV",
     cpus=1,
     memory=3.49246125,
+    disk=AddOperator(
+        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        " HDD",
+    ),
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    gatk --java-options -Xms3g \\n      VariantFiltration \\n      --filter-expression 'ExcessHet > {JANIS_WDL_TOKEN_1}' \\n      --filter-name ExcessHet \\n      -O {JANIS_WDL_TOKEN_2} \\n      -V {JANIS_WDL_TOKEN_3}\n\n    gatk --java-options -Xms3g \\n      MakeSitesOnlyVcf \\n      -I {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_4}\n  ",
             JANIS_WDL_TOKEN_1=InputSelector(
-                input_to_select="excess_het_threshold", type_hint=File()
+                input_to_select="excess_het_threshold"
             ),
             JANIS_WDL_TOKEN_2=InputSelector(
-                input_to_select="variant_filtered_vcf_filename", type_hint=File()
+                input_to_select="variant_filtered_vcf_filename"
             ),
-            JANIS_WDL_TOKEN_3=InputSelector(
-                input_to_select="vcf", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_3=InputSelector(input_to_select="vcf"),
             JANIS_WDL_TOKEN_4=InputSelector(
-                input_to_select="sites_only_vcf_filename", type_hint=File()
+                input_to_select="sites_only_vcf_filename"
             ),
         )
     },
@@ -369,7 +386,7 @@ Gathervcfs_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="output_vcf_name", type_hint=File()
+                    input_to_select="output_vcf_name"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -380,7 +397,7 @@ Gathervcfs_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}.tbi",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="output_vcf_name", type_hint=File()
+                    input_to_select="output_vcf_name"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -390,15 +407,15 @@ Gathervcfs_Dev = CommandToolBuilder(
     version="DEV",
     cpus=1,
     memory=6.519261,
+    disk=AddOperator(
+        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        " HDD",
+    ),
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    # --ignore-safety-checks makes a big performance difference so we include it in our invocation.\n    # This argument disables expensive checks that the file headers contain the same set of\n    # genotyped samples and that files are in order by position of first record.\n    gatk --java-options -Xms6g \\n      GatherVcfsCloud \\n      --ignore-safety-checks \\n      --gather-type BLOCK \\n      --input {JANIS_WDL_TOKEN_1} \\n      --output {JANIS_WDL_TOKEN_2}\n\n    tabix {JANIS_WDL_TOKEN_2}\n  ",
-            JANIS_WDL_TOKEN_1=InputSelector(
-                input_to_select="input_vcfs", type_hint=File()
-            ),
-            JANIS_WDL_TOKEN_2=InputSelector(
-                input_to_select="output_vcf_name", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_1=InputSelector(input_to_select="input_vcfs"),
+            JANIS_WDL_TOKEN_2=InputSelector(input_to_select="output_vcf_name"),
         )
     },
 )
@@ -485,6 +502,16 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
         ToolInput(
             tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)
         ),
+        ToolInput(
+            tag="model_report_arg",
+            input_type=String(),
+            default=If(
+                IsDefined(InputSelector(input_to_select="model_report")),
+                "--input-model $MODEL_REPORT --output-tranches-for-scatter",
+                "",
+            ),
+            doc=InputDocumentation(doc=None),
+        ),
     ],
     outputs=[
         ToolOutput(
@@ -493,7 +520,7 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="recalibration_filename", type_hint=File()
+                    input_to_select="recalibration_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -504,7 +531,7 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}.idx",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="recalibration_filename", type_hint=File()
+                    input_to_select="recalibration_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -515,7 +542,7 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="tranches_filename", type_hint=File()
+                    input_to_select="tranches_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -525,47 +552,40 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
     version="DEV",
     cpus=2,
     memory=104.0,
+    disk=AddOperator(
+        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        " HDD",
+    ),
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    MODEL_REPORT={JANIS_WDL_TOKEN_1}\n\n    gatk --java-options -Xms100g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_3} \\n      --tranches-file {JANIS_WDL_TOKEN_4} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_5} \\n      -an {JANIS_WDL_TOKEN_6} \\n      -mode INDEL \\n      {JANIS_WDL_TOKEN_7} \\n      {JANIS_WDL_TOKEN_8} \\n      --max-gaussians {JANIS_WDL_TOKEN_9} \\n      -resource:mills,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_10} \\n      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_11} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {JANIS_WDL_TOKEN_12}\n  ",
-            JANIS_WDL_TOKEN_1=InputSelector(
-                input_to_select="model_report", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_1=InputSelector(input_to_select="model_report"),
             JANIS_WDL_TOKEN_2=InputSelector(
-                input_to_select="sites_only_variant_filtered_vcf",
-                type_hint=File(),
+                input_to_select="sites_only_variant_filtered_vcf"
             ),
             JANIS_WDL_TOKEN_3=InputSelector(
-                input_to_select="recalibration_filename", type_hint=File()
+                input_to_select="recalibration_filename"
             ),
-            JANIS_WDL_TOKEN_4=InputSelector(
-                input_to_select="tranches_filename", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_4=InputSelector(input_to_select="tranches_filename"),
             JANIS_WDL_TOKEN_5=InputSelector(
-                input_to_select="recalibration_tranche_values", type_hint=File()
+                input_to_select="recalibration_tranche_values"
             ),
             JANIS_WDL_TOKEN_6=InputSelector(
-                input_to_select="recalibration_annotation_values",
-                type_hint=File(),
+                input_to_select="recalibration_annotation_values"
             ),
             JANIS_WDL_TOKEN_7=InputSelector(
-                input_to_select="use_allele_specific_annotations",
-                type_hint=File(),
+                input_to_select="use_allele_specific_annotations"
             ),
-            JANIS_WDL_TOKEN_8=InputSelector(
-                input_to_select="model_report_arg", type_hint=File()
-            ),
-            JANIS_WDL_TOKEN_9=InputSelector(
-                input_to_select="max_gaussians", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_8=InputSelector(input_to_select="model_report_arg"),
+            JANIS_WDL_TOKEN_9=InputSelector(input_to_select="max_gaussians"),
             JANIS_WDL_TOKEN_10=InputSelector(
-                input_to_select="mills_resource_vcf", type_hint=File()
+                input_to_select="mills_resource_vcf"
             ),
             JANIS_WDL_TOKEN_11=InputSelector(
-                input_to_select="axiomPoly_resource_vcf", type_hint=File()
+                input_to_select="axiomPoly_resource_vcf"
             ),
             JANIS_WDL_TOKEN_12=InputSelector(
-                input_to_select="dbsnp_resource_vcf", type_hint=File()
+                input_to_select="dbsnp_resource_vcf"
             ),
         )
     },
@@ -688,7 +708,7 @@ Snpsvariantrecalibratorcreatemodel_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="model_report_filename", type_hint=File()
+                    input_to_select="model_report_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -698,54 +718,44 @@ Snpsvariantrecalibratorcreatemodel_Dev = CommandToolBuilder(
     version="DEV",
     cpus=2,
     memory=104.0,
+    disk=AddOperator(
+        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        " HDD",
+    ),
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    gatk --java-options -Xms{JANIS_WDL_TOKEN_1}g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_3} \\n      --tranches-file {JANIS_WDL_TOKEN_4} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_5} \\n      -an {JANIS_WDL_TOKEN_6} \\n      -mode SNP \\n      {JANIS_WDL_TOKEN_7} \\n      --sample-every-Nth-variant {JANIS_WDL_TOKEN_8} \\n      --output-model {JANIS_WDL_TOKEN_9} \\n      --max-gaussians {JANIS_WDL_TOKEN_10} \\n      -resource:hapmap,known=false,training=true,truth=true,prior=15 {JANIS_WDL_TOKEN_11} \\n      -resource:omni,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_12} \\n      -resource:1000G,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_13} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {JANIS_WDL_TOKEN_14}\n  ",
-            JANIS_WDL_TOKEN_1=InputSelector(
-                input_to_select="java_mem", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_1=InputSelector(input_to_select="java_mem"),
             JANIS_WDL_TOKEN_2=InputSelector(
-                input_to_select="sites_only_variant_filtered_vcf",
-                type_hint=File(),
+                input_to_select="sites_only_variant_filtered_vcf"
             ),
             JANIS_WDL_TOKEN_3=InputSelector(
-                input_to_select="recalibration_filename", type_hint=File()
+                input_to_select="recalibration_filename"
             ),
-            JANIS_WDL_TOKEN_4=InputSelector(
-                input_to_select="tranches_filename", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_4=InputSelector(input_to_select="tranches_filename"),
             JANIS_WDL_TOKEN_5=InputSelector(
-                input_to_select="recalibration_tranche_values", type_hint=File()
+                input_to_select="recalibration_tranche_values"
             ),
             JANIS_WDL_TOKEN_6=InputSelector(
-                input_to_select="recalibration_annotation_values",
-                type_hint=File(),
+                input_to_select="recalibration_annotation_values"
             ),
             JANIS_WDL_TOKEN_7=InputSelector(
-                input_to_select="use_allele_specific_annotations",
-                type_hint=File(),
+                input_to_select="use_allele_specific_annotations"
             ),
-            JANIS_WDL_TOKEN_8=InputSelector(
-                input_to_select="downsampleFactor", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_8=InputSelector(input_to_select="downsampleFactor"),
             JANIS_WDL_TOKEN_9=InputSelector(
-                input_to_select="model_report_filename", type_hint=File()
+                input_to_select="model_report_filename"
             ),
-            JANIS_WDL_TOKEN_10=InputSelector(
-                input_to_select="max_gaussians", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_10=InputSelector(input_to_select="max_gaussians"),
             JANIS_WDL_TOKEN_11=InputSelector(
-                input_to_select="hapmap_resource_vcf", type_hint=File()
+                input_to_select="hapmap_resource_vcf"
             ),
-            JANIS_WDL_TOKEN_12=InputSelector(
-                input_to_select="omni_resource_vcf", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_12=InputSelector(input_to_select="omni_resource_vcf"),
             JANIS_WDL_TOKEN_13=InputSelector(
-                input_to_select="one_thousand_genomes_resource_vcf",
-                type_hint=File(),
+                input_to_select="one_thousand_genomes_resource_vcf"
             ),
             JANIS_WDL_TOKEN_14=InputSelector(
-                input_to_select="dbsnp_resource_vcf", type_hint=File()
+                input_to_select="dbsnp_resource_vcf"
             ),
         )
     },
@@ -856,6 +866,63 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
             input_type=Boolean(),
             doc=InputDocumentation(doc=None),
         ),
+        ToolInput(
+            tag="auto_mem",
+            input_type=Int(),
+            default=CeilOperator(
+                MultiplyOperator(
+                    2,
+                    MultiplyOperator(
+                        FileSizeOperator(
+                            [
+                                InputSelector(
+                                    input_to_select="sites_only_variant_filtered_vcf"
+                                ),
+                                InputSelector(
+                                    input_to_select="hapmap_resource_vcf"
+                                ),
+                                InputSelector(
+                                    input_to_select="omni_resource_vcf"
+                                ),
+                                InputSelector(
+                                    input_to_select="one_thousand_genomes_resource_vcf"
+                                ),
+                                InputSelector(
+                                    input_to_select="dbsnp_resource_vcf"
+                                ),
+                            ]
+                        ),
+                        0.001024,
+                    ),
+                )
+            ),
+            doc=InputDocumentation(doc=None),
+        ),
+        ToolInput(
+            tag="machine_mem",
+            input_type=Int(),
+            default=FilterNullOperator(
+                [
+                    InputSelector(input_to_select="machine_mem_gb"),
+                    If(
+                        LtOperator(InputSelector(input_to_select="auto_mem"), 7),
+                        7,
+                        InputSelector(input_to_select="auto_mem"),
+                    ),
+                ]
+            ),
+            doc=InputDocumentation(doc=None),
+        ),
+        ToolInput(
+            tag="model_report_arg",
+            input_type=String(),
+            default=If(
+                IsDefined(InputSelector(input_to_select="model_report")),
+                "--input-model $MODEL_REPORT --output-tranches-for-scatter",
+                "",
+            ),
+            doc=InputDocumentation(doc=None),
+        ),
     ],
     outputs=[
         ToolOutput(
@@ -864,7 +931,7 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="recalibration_filename", type_hint=File()
+                    input_to_select="recalibration_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -875,7 +942,7 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}.idx",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="recalibration_filename", type_hint=File()
+                    input_to_select="recalibration_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -886,7 +953,7 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="tranches_filename", type_hint=File()
+                    input_to_select="tranches_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -897,58 +964,46 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
     cpus=2,
     memory=StringFormatter(
         "{JANIS_WDL_TOKEN_1} GiB",
-        JANIS_WDL_TOKEN_1=InputSelector(
-            input_to_select="machine_mem", type_hint=File()
-        ),
+        JANIS_WDL_TOKEN_1=InputSelector(input_to_select="machine_mem"),
+    ),
+    disk=AddOperator(
+        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        " HDD",
     ),
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    MODEL_REPORT={JANIS_WDL_TOKEN_1}\n\n    gatk --java-options -Xms{JANIS_WDL_TOKEN_2}g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_3} \\n      -O {JANIS_WDL_TOKEN_4} \\n      --tranches-file {JANIS_WDL_TOKEN_5} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_6} \\n      -an {JANIS_WDL_TOKEN_7} \\n      -mode SNP \\n      {JANIS_WDL_TOKEN_8} \\n       {JANIS_WDL_TOKEN_9} \\n      --max-gaussians {JANIS_WDL_TOKEN_10} \\n      -resource:hapmap,known=false,training=true,truth=true,prior=15 {JANIS_WDL_TOKEN_11} \\n      -resource:omni,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_12} \\n      -resource:1000G,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_13} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {JANIS_WDL_TOKEN_14}\n  ",
-            JANIS_WDL_TOKEN_1=InputSelector(
-                input_to_select="model_report", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_1=InputSelector(input_to_select="model_report"),
             JANIS_WDL_TOKEN_2=SubtractOperator(
-                InputSelector(input_to_select="machine_mem", type_hint=File()), 1
+                InputSelector(input_to_select="machine_mem"), 1
             ),
             JANIS_WDL_TOKEN_3=InputSelector(
-                input_to_select="sites_only_variant_filtered_vcf",
-                type_hint=File(),
+                input_to_select="sites_only_variant_filtered_vcf"
             ),
             JANIS_WDL_TOKEN_4=InputSelector(
-                input_to_select="recalibration_filename", type_hint=File()
+                input_to_select="recalibration_filename"
             ),
-            JANIS_WDL_TOKEN_5=InputSelector(
-                input_to_select="tranches_filename", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_5=InputSelector(input_to_select="tranches_filename"),
             JANIS_WDL_TOKEN_6=InputSelector(
-                input_to_select="recalibration_tranche_values", type_hint=File()
+                input_to_select="recalibration_tranche_values"
             ),
             JANIS_WDL_TOKEN_7=InputSelector(
-                input_to_select="recalibration_annotation_values",
-                type_hint=File(),
+                input_to_select="recalibration_annotation_values"
             ),
             JANIS_WDL_TOKEN_8=InputSelector(
-                input_to_select="use_allele_specific_annotations",
-                type_hint=File(),
+                input_to_select="use_allele_specific_annotations"
             ),
-            JANIS_WDL_TOKEN_9=InputSelector(
-                input_to_select="model_report_arg", type_hint=File()
-            ),
-            JANIS_WDL_TOKEN_10=InputSelector(
-                input_to_select="max_gaussians", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_9=InputSelector(input_to_select="model_report_arg"),
+            JANIS_WDL_TOKEN_10=InputSelector(input_to_select="max_gaussians"),
             JANIS_WDL_TOKEN_11=InputSelector(
-                input_to_select="hapmap_resource_vcf", type_hint=File()
+                input_to_select="hapmap_resource_vcf"
             ),
-            JANIS_WDL_TOKEN_12=InputSelector(
-                input_to_select="omni_resource_vcf", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_12=InputSelector(input_to_select="omni_resource_vcf"),
             JANIS_WDL_TOKEN_13=InputSelector(
-                input_to_select="one_thousand_genomes_resource_vcf",
-                type_hint=File(),
+                input_to_select="one_thousand_genomes_resource_vcf"
             ),
             JANIS_WDL_TOKEN_14=InputSelector(
-                input_to_select="dbsnp_resource_vcf", type_hint=File()
+                input_to_select="dbsnp_resource_vcf"
             ),
         )
     },
@@ -984,7 +1039,7 @@ Gathertranches_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="output_filename", type_hint=File()
+                    input_to_select="output_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -994,13 +1049,15 @@ Gathertranches_Dev = CommandToolBuilder(
     version="DEV",
     cpus=2,
     memory=6.519261,
+    disk=AddOperator(
+        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        " HDD",
+    ),
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    tranches_fofn={JANIS_WDL_TOKEN_1}\n\n    # Jose says:\n    # Cromwell will fall over if we have it try to localize tens of thousands of files,\n    # so we manually localize files using gsutil.\n    # Using gsutil also lets us parallelize the localization, which (as far as we can tell)\n    # PAPI doesn't do.\n\n    # This is here to deal with the JES bug where commands may be run twice\n    rm -rf tranches\n    mkdir tranches\n    RETRY_LIMIT=5\n\n    count=0\n    until cat $tranches_fofn | /usr/bin/gsutil -m cp -L cp.log -c -I tranches/; do\n        sleep 1\n        ((count++)) && ((count >= $RETRY_LIMIT)) && break\n    done\n    if [ '$count' -ge '$RETRY_LIMIT' ]; then\n        echo 'Could not copy all the tranches from the cloud' && exit 1\n    fi\n\n    cat $tranches_fofn | rev | cut -d '/' -f 1 | rev | awk '{print 'tranches/' $1}' > inputs.list\n\n    gatk --java-options -Xms6g \\n      GatherTranches \\n      --input inputs.list \\n      --output {JANIS_WDL_TOKEN_2}\n  ",
             JANIS_WDL_TOKEN_1="JANIS: write_lines([inputs.tranches])",
-            JANIS_WDL_TOKEN_2=InputSelector(
-                input_to_select="output_filename", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_2=InputSelector(input_to_select="output_filename"),
         )
     },
 )
@@ -1085,7 +1142,7 @@ Applyrecalibration_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="recalibrated_vcf_filename", type_hint=File()
+                    input_to_select="recalibrated_vcf_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -1096,7 +1153,7 @@ Applyrecalibration_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}.tbi",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="recalibrated_vcf_filename", type_hint=File()
+                    input_to_select="recalibrated_vcf_filename"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -1106,37 +1163,28 @@ Applyrecalibration_Dev = CommandToolBuilder(
     version="DEV",
     cpus=1,
     memory=7.0,
+    disk=AddOperator(
+        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        " HDD",
+    ),
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    gatk --java-options -Xms5g \\n      ApplyVQSR \\n      -O tmp.indel.recalibrated.vcf \\n      -V {JANIS_WDL_TOKEN_1} \\n      --recal-file {JANIS_WDL_TOKEN_2} \\n      --tranches-file {JANIS_WDL_TOKEN_3} \\n      --truth-sensitivity-filter-level {JANIS_WDL_TOKEN_4} \\n      --create-output-variant-index true \\n      -mode INDEL {JANIS_WDL_TOKEN_5} \\n\n\n    gatk --java-options -Xms5g \\n      ApplyVQSR \\n      -O {JANIS_WDL_TOKEN_6} \\n      -V tmp.indel.recalibrated.vcf \\n      --recal-file {JANIS_WDL_TOKEN_7} \\n      --tranches-file {JANIS_WDL_TOKEN_8} \\n      --truth-sensitivity-filter-level {JANIS_WDL_TOKEN_9} \\n      --create-output-variant-index true \\n      -mode SNP {JANIS_WDL_TOKEN_5} \\n\n  ",
-            JANIS_WDL_TOKEN_1=InputSelector(
-                input_to_select="input_vcf", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_1=InputSelector(input_to_select="input_vcf"),
             JANIS_WDL_TOKEN_2=InputSelector(
-                input_to_select="indels_recalibration", type_hint=File()
+                input_to_select="indels_recalibration"
             ),
-            JANIS_WDL_TOKEN_3=InputSelector(
-                input_to_select="indels_tranches", type_hint=File()
-            ),
-            JANIS_WDL_TOKEN_4=InputSelector(
-                input_to_select="indel_filter_level", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_3=InputSelector(input_to_select="indels_tranches"),
+            JANIS_WDL_TOKEN_4=InputSelector(input_to_select="indel_filter_level"),
             JANIS_WDL_TOKEN_5=InputSelector(
-                input_to_select="use_allele_specific_annotations",
-                type_hint=File(),
+                input_to_select="use_allele_specific_annotations"
             ),
             JANIS_WDL_TOKEN_6=InputSelector(
-                input_to_select="recalibrated_vcf_filename", type_hint=File()
+                input_to_select="recalibrated_vcf_filename"
             ),
-            JANIS_WDL_TOKEN_7=InputSelector(
-                input_to_select="snps_recalibration", type_hint=File()
-            ),
-            JANIS_WDL_TOKEN_8=InputSelector(
-                input_to_select="snps_tranches", type_hint=File()
-            ),
-            JANIS_WDL_TOKEN_9=InputSelector(
-                input_to_select="snp_filter_level", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_7=InputSelector(input_to_select="snps_recalibration"),
+            JANIS_WDL_TOKEN_8=InputSelector(input_to_select="snps_tranches"),
+            JANIS_WDL_TOKEN_9=InputSelector(input_to_select="snp_filter_level"),
         )
     },
 )
@@ -1190,7 +1238,7 @@ Collectvariantcallingmetrics_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}.variant_calling_detail_metrics",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="metrics_filename_prefix", type_hint=File()
+                    input_to_select="metrics_filename_prefix"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -1201,7 +1249,7 @@ Collectvariantcallingmetrics_Dev = CommandToolBuilder(
             selector=StringFormatter(
                 "{JANIS_WDL_TOKEN_1}.variant_calling_summary_metrics",
                 JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="metrics_filename_prefix", type_hint=File()
+                    input_to_select="metrics_filename_prefix"
                 ),
             ),
             doc=OutputDocumentation(doc=None),
@@ -1211,24 +1259,20 @@ Collectvariantcallingmetrics_Dev = CommandToolBuilder(
     version="DEV",
     cpus=2,
     memory=6.9849225,
+    disk=AddOperator(
+        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        " HDD",
+    ),
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    gatk --java-options -Xms6g \\n      CollectVariantCallingMetrics \\n      --INPUT {JANIS_WDL_TOKEN_1} \\n      --DBSNP {JANIS_WDL_TOKEN_2} \\n      --SEQUENCE_DICTIONARY {JANIS_WDL_TOKEN_3} \\n      --OUTPUT {JANIS_WDL_TOKEN_4} \\n      --THREAD_COUNT 8 \\n      --TARGET_INTERVALS {JANIS_WDL_TOKEN_5}\n  ",
-            JANIS_WDL_TOKEN_1=InputSelector(
-                input_to_select="input_vcf", type_hint=File()
-            ),
-            JANIS_WDL_TOKEN_2=InputSelector(
-                input_to_select="dbsnp_vcf", type_hint=File()
-            ),
-            JANIS_WDL_TOKEN_3=InputSelector(
-                input_to_select="ref_dict", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_1=InputSelector(input_to_select="input_vcf"),
+            JANIS_WDL_TOKEN_2=InputSelector(input_to_select="dbsnp_vcf"),
+            JANIS_WDL_TOKEN_3=InputSelector(input_to_select="ref_dict"),
             JANIS_WDL_TOKEN_4=InputSelector(
-                input_to_select="metrics_filename_prefix", type_hint=File()
+                input_to_select="metrics_filename_prefix"
             ),
-            JANIS_WDL_TOKEN_5=InputSelector(
-                input_to_select="interval_list", type_hint=File()
-            ),
+            JANIS_WDL_TOKEN_5=InputSelector(input_to_select="interval_list"),
         )
     },
 )
@@ -1446,6 +1490,7 @@ Variantcallingofthefuture.input(
 Variantcallingofthefuture.input(
     "unpadded_intervals",
     Array(t=File(), optional=True),
+    # default=Variantcallingofthefuture.SplitIntervalList.output_intervals,
 )
 
 Variantcallingofthefuture.input(
