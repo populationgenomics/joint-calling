@@ -38,3 +38,5 @@ data/
 !test/data/
 work/
 .snakemake
+libs/
+venv/
