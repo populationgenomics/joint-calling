@@ -1,6 +1,3 @@
-"""
-This is a conversion from the ukbiobank WDL workflow to Janis
-"""
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
@@ -39,7 +36,9 @@ Tabixbgzippedfile_Dev = CommandToolBuilder(
             tag="bucket_tabix_path",
             input_type=String(),
             default=AddOperator(
-                InputSelector(input_to_select="zipped_vcf_path", type_hint=File()),
+                InputSelector(
+                    input_to_select="zipped_vcf_path", type_hint=File()
+                ),
                 ".tbi",
             ),
             doc=InputDocumentation(doc=None),
@@ -63,6 +62,7 @@ Tabixbgzippedfile_Dev = CommandToolBuilder(
     ],
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
+    memory=1.0,
     files_to_create={
         "script.sh": StringFormatter(
             "\n    gatk IndexFeatureFile -F {JANIS_WDL_TOKEN_1}\n    gsutil cp {JANIS_WDL_TOKEN_1}'.tbi' {JANIS_WDL_TOKEN_2}\n  ",
@@ -89,19 +89,27 @@ Splitintervallist_Dev = CommandToolBuilder(
             input_type=Int(),
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="ref_fasta", input_type=File(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="ref_fasta", input_type=File(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="ref_fasta_index",
             input_type=File(),
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="ref_dict", input_type=File(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="ref_dict", input_type=File(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="sample_names_unique_done",
             input_type=Boolean(),
-            doc=InputDocumentation(doc=None, quality=InputQualityType.configuration),
+            doc=InputDocumentation(
+                doc=None, quality=InputQualityType.configuration
+            ),
         ),
-        ToolInput(tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="gatk_docker",
             input_type=String(),
@@ -119,6 +127,7 @@ Splitintervallist_Dev = CommandToolBuilder(
     ],
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
+    memory=3.49246125,
     files_to_create={
         "script.sh": StringFormatter(
             "\n    gatk --java-options -Xms3g SplitIntervals \\n      -L {JANIS_WDL_TOKEN_1} -O  scatterDir -scatter {JANIS_WDL_TOKEN_2} -R {JANIS_WDL_TOKEN_3} \\n      -mode BALANCING_WITHOUT_INTERVAL_SUBDIVISION_WITH_OVERFLOW\n   ",
@@ -148,19 +157,25 @@ Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
             input_type=File(),
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="interval", input_type=File(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="interval", input_type=File(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="output_vcf_filename",
             input_type=String(),
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="ref_fasta", input_type=File(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="ref_fasta", input_type=File(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="ref_fasta_index",
             input_type=File(),
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="ref_dict", input_type=File(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="ref_dict", input_type=File(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="dbsnp_vcf", input_type=String(), doc=InputDocumentation(doc=None)
         ),
@@ -197,6 +212,8 @@ Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
     ],
     container="gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K",
     version="DEV",
+    cpus=2,
+    memory=24.214398,
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -e\n\n    gatk --java-options -Xms8g \\n      GnarlyGenotyper \\n      -R {JANIS_WDL_TOKEN_1} \\n      -O {JANIS_WDL_TOKEN_2} \\n      -D {JANIS_WDL_TOKEN_3} \\n      --only-output-calls-starting-in-intervals \\n      --keep-all-sites \\n      -V {JANIS_WDL_TOKEN_4} \\n      -L {JANIS_WDL_TOKEN_5}\n  ",
@@ -223,7 +240,9 @@ Hardfilterandmakesitesonlyvcf_Dev = CommandToolBuilder(
     base_command=["sh", "script.sh"],
     inputs=[
         ToolInput(tag="vcf", input_type=File(), doc=InputDocumentation(doc=None)),
-        ToolInput(tag="vcf_index", input_type=File(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="vcf_index", input_type=File(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="excess_het_threshold",
             input_type=Float(),
@@ -239,7 +258,9 @@ Hardfilterandmakesitesonlyvcf_Dev = CommandToolBuilder(
             input_type=String(),
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="gatk_docker",
             input_type=String(),
@@ -297,6 +318,8 @@ Hardfilterandmakesitesonlyvcf_Dev = CommandToolBuilder(
     ],
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
+    cpus=1,
+    memory=3.49246125,
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    gatk --java-options -Xms3g \\n      VariantFiltration \\n      --filter-expression 'ExcessHet > {JANIS_WDL_TOKEN_1}' \\n      --filter-name ExcessHet \\n      -O {JANIS_WDL_TOKEN_2} \\n      -V {JANIS_WDL_TOKEN_3}\n\n    gatk --java-options -Xms3g \\n      MakeSitesOnlyVcf \\n      -I {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_4}\n  ",
@@ -306,7 +329,9 @@ Hardfilterandmakesitesonlyvcf_Dev = CommandToolBuilder(
             JANIS_WDL_TOKEN_2=InputSelector(
                 input_to_select="variant_filtered_vcf_filename", type_hint=File()
             ),
-            JANIS_WDL_TOKEN_3=InputSelector(input_to_select="vcf", type_hint=File()),
+            JANIS_WDL_TOKEN_3=InputSelector(
+                input_to_select="vcf", type_hint=File()
+            ),
             JANIS_WDL_TOKEN_4=InputSelector(
                 input_to_select="sites_only_vcf_filename", type_hint=File()
             ),
@@ -327,7 +352,9 @@ Gathervcfs_Dev = CommandToolBuilder(
             input_type=String(),
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="gatk_docker",
             input_type=String(),
@@ -361,6 +388,8 @@ Gathervcfs_Dev = CommandToolBuilder(
     ],
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
+    cpus=1,
+    memory=6.519261,
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    # --ignore-safety-checks makes a big performance difference so we include it in our invocation.\n    # This argument disables expensive checks that the file headers contain the same set of\n    # genotyped samples and that files are in order by position of first record.\n    gatk --java-options -Xms6g \\n      GatherVcfsCloud \\n      --ignore-safety-checks \\n      --gather-type BLOCK \\n      --input {JANIS_WDL_TOKEN_1} \\n      --output {JANIS_WDL_TOKEN_2}\n\n    tabix {JANIS_WDL_TOKEN_2}\n  ",
@@ -453,7 +482,9 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
             default=4,
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)
+        ),
     ],
     outputs=[
         ToolOutput(
@@ -492,6 +523,8 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
     ],
     container="ubuntu:latest",
     version="DEV",
+    cpus=2,
+    memory=104.0,
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    MODEL_REPORT={JANIS_WDL_TOKEN_1}\n\n    gatk --java-options -Xms100g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_3} \\n      --tranches-file {JANIS_WDL_TOKEN_4} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_5} \\n      -an {JANIS_WDL_TOKEN_6} \\n      -mode INDEL \\n      {JANIS_WDL_TOKEN_7} \\n      {JANIS_WDL_TOKEN_8} \\n      --max-gaussians {JANIS_WDL_TOKEN_9} \\n      -resource:mills,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_10} \\n      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_11} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {JANIS_WDL_TOKEN_12}\n  ",
@@ -633,7 +666,9 @@ Snpsvariantrecalibratorcreatemodel_Dev = CommandToolBuilder(
             default=100,
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="use_allele_specific_annotations",
             input_type=Boolean(),
@@ -661,6 +696,8 @@ Snpsvariantrecalibratorcreatemodel_Dev = CommandToolBuilder(
     ],
     container="us.gcr.io/broad-gatk/gatk:4.1.4.1",
     version="DEV",
+    cpus=2,
+    memory=104.0,
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    gatk --java-options -Xms{JANIS_WDL_TOKEN_1}g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_3} \\n      --tranches-file {JANIS_WDL_TOKEN_4} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_5} \\n      -an {JANIS_WDL_TOKEN_6} \\n      -mode SNP \\n      {JANIS_WDL_TOKEN_7} \\n      --sample-every-Nth-variant {JANIS_WDL_TOKEN_8} \\n      --output-model {JANIS_WDL_TOKEN_9} \\n      --max-gaussians {JANIS_WDL_TOKEN_10} \\n      -resource:hapmap,known=false,training=true,truth=true,prior=15 {JANIS_WDL_TOKEN_11} \\n      -resource:omni,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_12} \\n      -resource:1000G,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_13} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {JANIS_WDL_TOKEN_14}\n  ",
@@ -798,7 +835,9 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
             default=6,
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="gatk_docker",
             input_type=String(),
@@ -808,7 +847,9 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
         ToolInput(
             tag="machine_mem_gb",
             input_type=Int(optional=True),
-            doc=InputDocumentation(doc=None, quality=InputQualityType.configuration),
+            doc=InputDocumentation(
+                doc=None, quality=InputQualityType.configuration
+            ),
         ),
         ToolInput(
             tag="use_allele_specific_annotations",
@@ -853,6 +894,13 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
     ],
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
+    cpus=2,
+    memory=StringFormatter(
+        "{JANIS_WDL_TOKEN_1} GiB",
+        JANIS_WDL_TOKEN_1=InputSelector(
+            input_to_select="machine_mem", type_hint=File()
+        ),
+    ),
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    MODEL_REPORT={JANIS_WDL_TOKEN_1}\n\n    gatk --java-options -Xms{JANIS_WDL_TOKEN_2}g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_3} \\n      -O {JANIS_WDL_TOKEN_4} \\n      --tranches-file {JANIS_WDL_TOKEN_5} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_6} \\n      -an {JANIS_WDL_TOKEN_7} \\n      -mode SNP \\n      {JANIS_WDL_TOKEN_8} \\n       {JANIS_WDL_TOKEN_9} \\n      --max-gaussians {JANIS_WDL_TOKEN_10} \\n      -resource:hapmap,known=false,training=true,truth=true,prior=15 {JANIS_WDL_TOKEN_11} \\n      -resource:omni,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_12} \\n      -resource:1000G,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_13} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {JANIS_WDL_TOKEN_14}\n  ",
@@ -919,7 +967,9 @@ Gathertranches_Dev = CommandToolBuilder(
             input_type=String(),
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="gatk_docker",
             input_type=String(),
@@ -942,6 +992,8 @@ Gathertranches_Dev = CommandToolBuilder(
     ],
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
+    cpus=2,
+    memory=6.519261,
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    tranches_fofn={JANIS_WDL_TOKEN_1}\n\n    # Jose says:\n    # Cromwell will fall over if we have it try to localize tens of thousands of files,\n    # so we manually localize files using gsutil.\n    # Using gsutil also lets us parallelize the localization, which (as far as we can tell)\n    # PAPI doesn't do.\n\n    # This is here to deal with the JES bug where commands may be run twice\n    rm -rf tranches\n    mkdir tranches\n    RETRY_LIMIT=5\n\n    count=0\n    until cat $tranches_fofn | /usr/bin/gsutil -m cp -L cp.log -c -I tranches/; do\n        sleep 1\n        ((count++)) && ((count >= $RETRY_LIMIT)) && break\n    done\n    if [ '$count' -ge '$RETRY_LIMIT' ]; then\n        echo 'Could not copy all the tranches from the cloud' && exit 1\n    fi\n\n    cat $tranches_fofn | rev | cut -d '/' -f 1 | rev | awk '{print 'tranches/' $1}' > inputs.list\n\n    gatk --java-options -Xms6g \\n      GatherTranches \\n      --input inputs.list \\n      --output {JANIS_WDL_TOKEN_2}\n  ",
@@ -961,7 +1013,9 @@ Applyrecalibration_Dev = CommandToolBuilder(
             input_type=String(),
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="input_vcf", input_type=File(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="input_vcf", input_type=File(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="input_vcf_index",
             input_type=File(),
@@ -1010,9 +1064,13 @@ Applyrecalibration_Dev = CommandToolBuilder(
         ToolInput(
             tag="use_allele_specific_annotations",
             input_type=Boolean(),
-            doc=InputDocumentation(doc=None, quality=InputQualityType.configuration),
+            doc=InputDocumentation(
+                doc=None, quality=InputQualityType.configuration
+            ),
         ),
-        ToolInput(tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="gatk_docker",
             input_type=String(),
@@ -1046,6 +1104,8 @@ Applyrecalibration_Dev = CommandToolBuilder(
     ],
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
+    cpus=1,
+    memory=7.0,
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    gatk --java-options -Xms5g \\n      ApplyVQSR \\n      -O tmp.indel.recalibrated.vcf \\n      -V {JANIS_WDL_TOKEN_1} \\n      --recal-file {JANIS_WDL_TOKEN_2} \\n      --tranches-file {JANIS_WDL_TOKEN_3} \\n      --truth-sensitivity-filter-level {JANIS_WDL_TOKEN_4} \\n      --create-output-variant-index true \\n      -mode INDEL {JANIS_WDL_TOKEN_5} \\n\n\n    gatk --java-options -Xms5g \\n      ApplyVQSR \\n      -O {JANIS_WDL_TOKEN_6} \\n      -V tmp.indel.recalibrated.vcf \\n      --recal-file {JANIS_WDL_TOKEN_7} \\n      --tranches-file {JANIS_WDL_TOKEN_8} \\n      --truth-sensitivity-filter-level {JANIS_WDL_TOKEN_9} \\n      --create-output-variant-index true \\n      -mode SNP {JANIS_WDL_TOKEN_5} \\n\n  ",
@@ -1084,7 +1144,9 @@ Collectvariantcallingmetrics_Dev = CommandToolBuilder(
     tool="CollectVariantCallingMetrics",
     base_command=["sh", "script.sh"],
     inputs=[
-        ToolInput(tag="input_vcf", input_type=File(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="input_vcf", input_type=File(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="input_vcf_index",
             input_type=File(),
@@ -1095,7 +1157,9 @@ Collectvariantcallingmetrics_Dev = CommandToolBuilder(
             input_type=String(),
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="dbsnp_vcf", input_type=File(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="dbsnp_vcf", input_type=File(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="dbsnp_vcf_index",
             input_type=File(),
@@ -1106,8 +1170,12 @@ Collectvariantcallingmetrics_Dev = CommandToolBuilder(
             input_type=File(),
             doc=InputDocumentation(doc=None),
         ),
-        ToolInput(tag="ref_dict", input_type=File(), doc=InputDocumentation(doc=None)),
-        ToolInput(tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)),
+        ToolInput(
+            tag="ref_dict", input_type=File(), doc=InputDocumentation(doc=None)
+        ),
+        ToolInput(
+            tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)
+        ),
         ToolInput(
             tag="gatk_docker",
             input_type=String(),
@@ -1141,6 +1209,8 @@ Collectvariantcallingmetrics_Dev = CommandToolBuilder(
     ],
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     version="DEV",
+    cpus=2,
+    memory=6.9849225,
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    gatk --java-options -Xms6g \\n      CollectVariantCallingMetrics \\n      --INPUT {JANIS_WDL_TOKEN_1} \\n      --DBSNP {JANIS_WDL_TOKEN_2} \\n      --SEQUENCE_DICTIONARY {JANIS_WDL_TOKEN_3} \\n      --OUTPUT {JANIS_WDL_TOKEN_4} \\n      --THREAD_COUNT 8 \\n      --TARGET_INTERVALS {JANIS_WDL_TOKEN_5}\n  ",
@@ -1446,7 +1516,9 @@ Variantcallingofthefuture.step(
         ref_dict=Variantcallingofthefuture.ref_dict,
         dbsnp_vcf=Variantcallingofthefuture.dbsnp_vcf,
     ),
-    foreach=RangeOperator(LengthOperator(Variantcallingofthefuture.unpadded_intervals)),
+    foreach=RangeOperator(
+        LengthOperator(Variantcallingofthefuture.unpadded_intervals)
+    ),
 )
 
 
@@ -1472,7 +1544,9 @@ Variantcallingofthefuture.step(
         ),
         disk_size=Variantcallingofthefuture.medium_disk,
     ),
-    foreach=RangeOperator(LengthOperator(Variantcallingofthefuture.unpadded_intervals)),
+    foreach=RangeOperator(
+        LengthOperator(Variantcallingofthefuture.unpadded_intervals)
+    ),
 )
 
 
@@ -1597,7 +1671,9 @@ Variantcallingofthefuture.step(
 Variantcallingofthefuture.step(
     "SNPGatherTranches",
     Gathertranches_Dev(
-        tranches=[Variantcallingofthefuture.SNPsVariantRecalibratorScattered.tranches],
+        tranches=[
+            Variantcallingofthefuture.SNPsVariantRecalibratorScattered.tranches
+        ],
         output_filename=AddOperator(
             Variantcallingofthefuture.callset_name, ".snps.gathered.tranches"
         ),
@@ -1671,8 +1747,12 @@ Variantcallingofthefuture.step(
 Variantcallingofthefuture.step(
     "FinalGatherVcf",
     Gathervcfs_Dev(
-        input_vcfs=[Variantcallingofthefuture.ApplyRecalibration.recalibrated_vcf],
-        output_vcf_name=AddOperator(Variantcallingofthefuture.callset_name, ".vcf.gz"),
+        input_vcfs=[
+            Variantcallingofthefuture.ApplyRecalibration.recalibrated_vcf
+        ],
+        output_vcf_name=AddOperator(
+            Variantcallingofthefuture.callset_name, ".vcf.gz"
+        ),
         disk_size=Variantcallingofthefuture.huge_disk,
     ),
     when=Variantcallingofthefuture.is_small_callset,
@@ -1693,12 +1773,3 @@ Variantcallingofthefuture.step(
     ),
     when=Variantcallingofthefuture.is_small_callset,
 )
-
-
-if __name__ == "__main__":
-    # or "cwl"
-    from janis_core.translations.hailbatch import HailBatchTranslator
-
-    tool = Variantcallingofthefuture()  # .translate("wdl")
-    s = HailBatchTranslator.translate_workflow(tool)
-    print(s)
