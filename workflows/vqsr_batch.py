@@ -707,17 +707,27 @@ def add_SNPsVariantRecalibratorScattered_step(
             (
                 2
                 * (
-                    os.stat(
-                        [
-                            "sites_only_variant_filtered_vcf",
-                            "hapmap_resource_vcf",
-                            "omni_resource_vcf",
-                            "one_thousand_genomes_resource_vcf",
-                            "dbsnp_resource_vcf",
-                        ]
-                    ).st_size
-                    / 1000
-                    * 0.001024
+                    None
+                    * (
+                        (
+                            (
+                                (
+                                    (
+                                        0
+                                        + os.stat(
+                                            sites_only_variant_filtered_vcf
+                                        ).st_size
+                                        / 1000
+                                    )
+                                    + os.stat(hapmap_resource_vcf).st_size / 1000
+                                )
+                                + os.stat(omni_resource_vcf).st_size / 1000
+                            )
+                            + os.stat(one_thousand_genomes_resource_vcf).st_size
+                            / 1000
+                        )
+                        + os.stat(dbsnp_resource_vcf).st_size / 1000
+                    )
                 )
             )
         )

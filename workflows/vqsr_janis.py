@@ -873,26 +873,43 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
                 MultiplyOperator(
                     2,
                     MultiplyOperator(
-                        FileSizeOperator(
-                            [
-                                InputSelector(
-                                    input_to_select="sites_only_variant_filtered_vcf"
+                        None,
+                        AddOperator(
+                            AddOperator(
+                                AddOperator(
+                                    AddOperator(
+                                        AddOperator(
+                                            0,
+                                            FileSizeOperator(
+                                                InputSelector(
+                                                    input_to_select="sites_only_variant_filtered_vcf"
+                                                )
+                                            ),
+                                        ),
+                                        FileSizeOperator(
+                                            InputSelector(
+                                                input_to_select="hapmap_resource_vcf"
+                                            )
+                                        ),
+                                    ),
+                                    FileSizeOperator(
+                                        InputSelector(
+                                            input_to_select="omni_resource_vcf"
+                                        )
+                                    ),
                                 ),
-                                InputSelector(
-                                    input_to_select="hapmap_resource_vcf"
+                                FileSizeOperator(
+                                    InputSelector(
+                                        input_to_select="one_thousand_genomes_resource_vcf"
+                                    )
                                 ),
-                                InputSelector(
-                                    input_to_select="omni_resource_vcf"
-                                ),
-                                InputSelector(
-                                    input_to_select="one_thousand_genomes_resource_vcf"
-                                ),
+                            ),
+                            FileSizeOperator(
                                 InputSelector(
                                     input_to_select="dbsnp_resource_vcf"
-                                ),
-                            ]
+                                )
+                            ),
                         ),
-                        0.001024,
                     ),
                 )
             ),
@@ -1490,7 +1507,6 @@ Variantcallingofthefuture.input(
 Variantcallingofthefuture.input(
     "unpadded_intervals",
     Array(t=File(), optional=True),
-    # default=Variantcallingofthefuture.SplitIntervalList.output_intervals,
 )
 
 Variantcallingofthefuture.input(
