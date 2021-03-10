@@ -5,8 +5,8 @@ A pipeline for post-processing and filtering of population genomic variant calls
 ## Installation
 
 ```sh
-git clone git@github.com:populationgenomics/joint-calling-workflow.git
-cd cpg-qc
+git clone git@github.com:populationgenomics/joint-calling.git
+cd joint-calling
 conda env create -f environment-dev.yml
 pip install -e .
 ```
@@ -18,7 +18,7 @@ pip install -e .
 gcloud config set project fewgenomes
 
 # Start cluster
-hailctl dataproc start cpg-qc-cluster \
+hailctl dataproc start joint-calling-cluster \
   --max-age=8h \
   --region australia-southeast1 \
   --zone australia-southeast1-a \
@@ -40,42 +40,42 @@ cd ..
 STAMP1=$(date +"%Y-%m-%d_%H-%M-%S")
 
 # Submit combiner job for a first set of samples
-hailctl dataproc submit cpg-qc-cluster \
+hailctl dataproc submit joint-calling-cluster \
   --region australia-southeast1 \
   --pyfiles libs/libs.zip \
   scripts/combine_gvcfs.py \
-  --sample-map    gs://cpg-fewgenomes-temporary/cpg-qc/50genomes-gcs-au-round1.csv \
+  --sample-map    gs://cpg-fewgenomes-temporary/joint-calling/50genomes-gcs-au-round1.csv \
   --out-mt        gs://cpg-fewgenomes-main/${STAMP1}/50genomes.mt \
   --bucket        gs://cpg-fewgenomes-temporary/work/vcf-combiner/${STAMP1}/ \
-  --local-tmp-dir ~/tmp/cpg-qc/vcf-combiner/${STAMP1}/ \
+  --local-tmp-dir ~/tmp/joint-calling/vcf-combiner/${STAMP1}/ \
   --hail-billing  fewgenomes
 
 STAMP2=$(date +"%Y-%m-%d_%H-%M-%S")
 
 # Submit combiner job for a first set of samples
-hailctl dataproc submit cpg-qc-cluster \
+hailctl dataproc submit joint-calling-cluster \
   --region australia-southeast1 \
   --pyfiles libs/libs.zip \
   scripts/combine_gvcfs.py \
-  --sample-map    gs://cpg-fewgenomes-temporary/cpg-qc/50genomes-gcs-au-round2.csv \
+  --sample-map    gs://cpg-fewgenomes-temporary/joint-calling/50genomes-gcs-au-round2.csv \
   --existing-mt   gs://cpg-fewgenomes-main/${STAMP1}/50genomes.mt \
   --out-mt        gs://cpg-fewgenomes-main/${STAMP2}/50genomes.mt \
   --bucket        gs://cpg-fewgenomes-temporary/work/vcf-combiner/${STAMP2}/ \
-  --local-tmp-dir ~/tmp/cpg-qc/vcf-combiner/${STAMP2}/ \
+  --local-tmp-dir ~/tmp/joint-calling/vcf-combiner/${STAMP2}/ \
   --hail-billing  fewgenomes
 
 # Submit sample QC on the final combined matrix table
-hailctl dataproc submit cpg-qc-cluster \
+hailctl dataproc submit joint-calling-cluster \
   --region australia-southeast1 \
   --pyfiles libs/libs.zip \
   scripts/sample_qc.py \
   --mt            gs://cpg-fewgenomes-main/${STAMP2}/50genomes.mt \
   --bucket        gs://cpg-fewgenomes-main/${STAMP2}/qc/sample-qc \
   --out-ht        gs://cpg-fewgenomes-main/${STAMP2}/qc/sample-qc.ht \
-  --local-tmp-dir ~/tmp/cpg-qc/sample-qc/${STAMP2}/ \
+  --local-tmp-dir ~/tmp/joint-calling/sample-qc/${STAMP2}/ \
   --hail-billing  fewgenomes
 
-hailctl dataproc stop cpg-qc-cluster --region australia-southeast1
+hailctl dataproc stop joint-calling-cluster --region australia-southeast1
 ```
 
 The `--sample-map` value is a CSV file with a header as follows:

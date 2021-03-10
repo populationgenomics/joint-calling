@@ -11,11 +11,11 @@ import click
 import hail as hl
 from hail.experimental.vcf_combiner import vcf_combiner
 
-from cpg_qc.utils import get_validation_callback, file_exists
-from cpg_qc import utils
-from cpg_qc import _version
+from joint_calling.utils import get_validation_callback, file_exists
+from joint_calling import utils
+from joint_calling import _version
 
-logger = logging.getLogger('vcf_combiner')
+logger = logging.getLogger('combine_gvcfs')
 logger.setLevel('INFO')
 
 DEFAULT_REF = 'GRCh38'
