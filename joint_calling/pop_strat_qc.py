@@ -18,7 +18,7 @@ from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.annotations import get_adj_expr
 
-logger = logging.getLogger('cpg_qc_pca')
+logger = logging.getLogger('sample_qc_pca')
 
 
 def make_mt_for_pca(

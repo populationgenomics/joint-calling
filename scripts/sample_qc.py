@@ -18,11 +18,11 @@ from gnomad.utils.annotations import bi_allelic_expr
 from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.filtering import add_filters_expr
 
-from cpg_qc.utils import file_exists, get_validation_callback
-from cpg_qc import hard_filtering, pop_strat_qc, utils
-from cpg_qc import _version
+from joint_calling.utils import file_exists, get_validation_callback
+from joint_calling import hard_filtering, pop_strat_qc, utils
+from joint_calling import _version
 
-logger = logging.getLogger('cpg_qc')
+logger = logging.getLogger('joint_calling')
 logger.setLevel('INFO')
 
 

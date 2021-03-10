@@ -8,10 +8,10 @@ import logging
 import pandas as pd
 import hail as hl
 
-from cpg_qc.utils import gs_cache_file, file_exists
+from joint_calling.utils import gs_cache_file, file_exists
 
 
-logger = logging.getLogger('cpg_qc_hard_filtering')
+logger = logging.getLogger('sample_qc_hard_filtering')
 
 
 def compute_hard_filters(
