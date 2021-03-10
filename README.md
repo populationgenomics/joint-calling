@@ -19,11 +19,11 @@ gcloud config set project fewgenomes
 
 # Start cluster
 hailctl dataproc start cpg-qc-cluster \
-  --max-age=4h \
+  --max-age=8h \
   --region australia-southeast1 \
   --zone australia-southeast1-a \
   --num-preemptible-workers 4 \
-  --packages click,gnomad,google,slackclient,fsspec,sklearn,slack-client
+  --packages click,gnomad,google,slackclient,fsspec,sklearn
 
 # Compress dependencies to upload them into the dataproc instance
 # We also add gcsfs==0.3.0 to override the existing gcsfs==0.2.2
@@ -32,10 +32,12 @@ hailctl dataproc start cpg-qc-cluster \
 # about duplicated depenedencies. gcsfs==0.2.2 comes from
 # hail/python/hailtop/hailctl/deploy.yaml
 mkdir libs
-cp -r cpg_qc $CONDA_PREFIX/lib/python3.7/site-packages/gcsfs libs
+cp -r cpg_qc $CONDA_PREFIX/lib/python3.7/site-packages/{gcsfs,gnomad} libs
 cd libs
 zip -r libs *
 cd ..
+
+STAMP1=$(date +"%Y-%m-%d_%H-%M-%S")
 
 # Submit combiner job for a first set of samples
 hailctl dataproc submit cpg-qc-cluster \
@@ -43,11 +45,12 @@ hailctl dataproc submit cpg-qc-cluster \
   --pyfiles libs/libs.zip \
   scripts/combine_gvcfs.py \
   --sample-map    gs://cpg-fewgenomes-temporary/cpg-qc/50genomes-gcs-au-round1.csv \
-  --out-mt        gs://cpg-fewgenomes-main/mt/v1/50genomes.mt \
-  --bucket        gs://cpg-fewgenomes-temporary/work/vcf-combiner/v1/ \
-  --local-tmp-dir ~/tmp/cpg-qc/vcf-combiner/v1/ \
-  --hail-billing  fewgenomes \
-  &
+  --out-mt        gs://cpg-fewgenomes-main/${STAMP1}/50genomes.mt \
+  --bucket        gs://cpg-fewgenomes-temporary/work/vcf-combiner/${STAMP1}/ \
+  --local-tmp-dir ~/tmp/cpg-qc/vcf-combiner/${STAMP1}/ \
+  --hail-billing  fewgenomes
+
+STAMP2=$(date +"%Y-%m-%d_%H-%M-%S")
 
 # Submit combiner job for a first set of samples
 hailctl dataproc submit cpg-qc-cluster \
@@ -55,26 +58,24 @@ hailctl dataproc submit cpg-qc-cluster \
   --pyfiles libs/libs.zip \
   scripts/combine_gvcfs.py \
   --sample-map    gs://cpg-fewgenomes-temporary/cpg-qc/50genomes-gcs-au-round2.csv \
-  --existing-mt   gs://cpg-fewgenomes-main/mt/v1/50genomes.mt \
-  --out-mt        gs://cpg-fewgenomes-main/mt/v2/50genomes.mt \
-  --bucket        gs://cpg-fewgenomes-temporary/work/vcf-combiner/v2/ \
-  --local-tmp-dir ~/tmp/cpg-qc/vcf-combiner/v2/ \
-  --hail-billing  fewgenomes \
-  &
+  --existing-mt   gs://cpg-fewgenomes-main/${STAMP1}/50genomes.mt \
+  --out-mt        gs://cpg-fewgenomes-main/${STAMP2}/50genomes.mt \
+  --bucket        gs://cpg-fewgenomes-temporary/work/vcf-combiner/${STAMP2}/ \
+  --local-tmp-dir ~/tmp/cpg-qc/vcf-combiner/${STAMP2}/ \
+  --hail-billing  fewgenomes
 
 # Submit sample QC on the final combined matrix table
 hailctl dataproc submit cpg-qc-cluster \
   --region australia-southeast1 \
   --pyfiles libs/libs.zip \
   scripts/sample_qc.py \
-  --mt            gs://cpg-fewgenomes-main/mt/v2/50genomes.mt \
-  --bucket        gs://cpg-fewgenomes-main/mt/v2/qc/sample-qc \
-  --out-ht        gs://cpg-fewgenomes-main/mt/v2/qc/sample-qc.ht \
-  --local-tmp-dir ~/tmp/cpg-qc/sample-qc/v2/ \
-  --hail-billing  fewgenomes \
-  &
+  --mt            gs://cpg-fewgenomes-main/${STAMP2}/50genomes.mt \
+  --bucket        gs://cpg-fewgenomes-main/${STAMP2}/qc/sample-qc \
+  --out-ht        gs://cpg-fewgenomes-main/${STAMP2}/qc/sample-qc.ht \
+  --local-tmp-dir ~/tmp/cpg-qc/sample-qc/${STAMP2}/ \
+  --hail-billing  fewgenomes
 
-hailctl dataproc stop cpg-qc-cluster
+hailctl dataproc stop cpg-qc-cluster --region australia-southeast1
 ```
 
 The `--sample-map` value is a CSV file with a header as follows:
