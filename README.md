@@ -23,7 +23,7 @@ hailctl dataproc start joint-calling-cluster \
   --region australia-southeast1 \
   --zone australia-southeast1-a \
   --num-preemptible-workers 4 \
-  --packages click,gnomad,google,slackclient,fsspec,sklearn
+  --packages click,cpg-gnomad,google,slackclient,fsspec,sklearn,gcsfs
 
 # Compress dependencies to upload them into the dataproc instance
 # We also add gcsfs==0.3.0 to override the existing gcsfs==0.2.2
@@ -32,7 +32,7 @@ hailctl dataproc start joint-calling-cluster \
 # about duplicated depenedencies. gcsfs==0.2.2 comes from
 # hail/python/hailtop/hailctl/deploy.yaml
 mkdir libs
-cp -r cpg_qc $CONDA_PREFIX/lib/python3.7/site-packages/{gcsfs,gnomad} libs
+cp -r joint_calling ../gnomad_methods/gnomad $CONDA_PREFIX/lib/python3.7/site-packages/gcsfs libs
 cd libs
 zip -r libs *
 cd ..
@@ -74,6 +74,16 @@ hailctl dataproc submit joint-calling-cluster \
   --out-ht        gs://cpg-fewgenomes-main/${STAMP2}/qc/sample-qc.ht \
   --local-tmp-dir ~/tmp/joint-calling/sample-qc/${STAMP2}/ \
   --hail-billing  fewgenomes
+
+# Variant QC
+hailctl dataproc submit cpg-qc-cluster \
+  --region australia-southeast1 \
+  --pyfiles libs/libs.zip \
+  scripts/variant_qc.py \
+  --mt      gs://cpg-fewgenomes-main/2021-03-09_05-07-11/50genomes.mt/ \
+  --bucket  gs://cpg-fewgenomes-test/vqsr-testing/ \
+  --local-tmp-dir ~/tmp/joint-calling/sample-qc/2021-03-09_05-07-11/ \
+  --hail-billing fewgenomes
 
 hailctl dataproc stop joint-calling-cluster --region australia-southeast1
 ```
