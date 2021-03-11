@@ -1,121 +1,181 @@
- import os
+"""
+Generates sample maps for test runs
+"""
 
-SAMPLES = 'NA12878 NA12891 NA12892 NA19238 NA19239 NA19240'.split()
-POPS = ['YRI', '', '', 'CEU', '', '']
-PICARD_SUFFICES = [
-    'alignment_summary_metrics',
-    'duplicate_metrics',
-    'insert_size_metrics',
-    'wgs_metrics',
-]
-# We are recycling files for 3 samples to make the toy dataset even smaller
-PICARD_FILES_SAMPLE_MAP = {'NA12878': 'NA19238', 'NA12891': 'NA19239', 'NA12892': 'NA19240'}
+import sys
+import subprocess
+import os
+import pandas as pd
+import csv
+
+dataset_name = config['dataset']
+location = config['location']  # local, gcs
+
+WARP_EXECUTIONS_BUCKET = (
+    'gs://playground-us-central1/cromwell/executions/'
+    'WGSMultipleSamplesFromBam'
+)
+PICARD_SUFFIX_D = {
+    'contamination': 'selfSM',
+    'alignment_summary_metrics': 'alignment_summary_metrics',
+    'duplicate_metrics': 'duplicate_metrics',
+    'insert_size_metrics': 'insert_size_metrics',
+    'wgs_metrics': 'wgs_metrics',
+}
+
+samples_url = (
+    f'https://raw.githubusercontent.com/populationgenomics/'
+    f'fewgenomes/main/datasets/{dataset_name}/samples.ped'
+)
+try:
+    samples = pd.read_csv(samples_url, sep='\t')
+except:
+    sys.stderr.write(f'Could not read from {samples_url}')
+    raise
+
+# Adding population labels for 2/3 of the samples in a group; the rest will
+# be used to test the ancestry inferring methods
+SAMPLE_WITH_POP_LABELS = list(samples.groupby(['Population'])\
+    .apply(lambda x: x.iloc[:int(x['Population'].size / 1.5)])['Individual.ID'])
 
 
 rule all:
     input:
-        'samples.toy.local.csv'
-
-rule ref_fa_dict:
-    output:
-        'resources/Homo_sapiens_assembly38.dict',
-    params:
-        ref_url = 'gs://genomics-public-data/references/hg38/v0',
-    shell:
-        "gsutil cp {params.ref_url}/Homo_sapiens_assembly38.dict -"
-        " | awk '{{ if ($1 ~ /@HD/ || $2 ~ /^SN:chr[0-9YXM]+$/) print $0}}'"
-        " > {output}"
-
-rule ref_fa_fai:
-    output:
-        'resources/Homo_sapiens_assembly38.fasta.fai',
-    params:
-        ref_url = 'gs://genomics-public-data/references/hg38/v0',
-    shell:
-        "gsutil cp {params.ref_url}/Homo_sapiens_assembly38.fasta.fai -"
-        " | awk '{{ if ($1 ~ /^chr[0-9YXM]+$/) print $0}}'"
-        " > {output}"
-
-rule ref_fa:
-    output:
-        'resources/Homo_sapiens_assembly38.fasta',
-    shell:
-        'touch {output}'
-
-rule prep_bed:
-    output:
-        'resources/toy_regions.bed'
-    shell:
-        "gsutil cp gs://playground-au/CDS-canonical.bed -"
-        " | awk 'BEGIN {{srand()}} {{ if (rand() <= .1 && $1 !~ /alt/"
-        " || $1 ~ /chrY/) print $0}}' > {output}"
-
-rule subset_gvcf:
-    input:
-        regions = rules.prep_bed.output
-    output:
-        'work/{sample}.toy_regions.g.vcf.gz'
-    shell:
-         "gsutil cp gs://playground-au/gvcf/{wildcards.sample}.g.vcf.gz -"
-         " | bcftools view -T {input.regions} -Oz -o {output}"
-
-rule tabix_subset_gvcf:
-    input:
-        'work/{sample}.toy_regions.g.vcf.gz'
-    output:
-        'work/{sample}.toy_regions.g.vcf.gz.tbi'
-    shell:
-        'tabix -p vcf {input}'
-
-# Reblocking GVCFs to significantly reduce their size
-rule reblock_gvcf:
-    input:
-        gvcf = rules.subset_gvcf.output,
-        tbi = rules.tabix_subset_gvcf.output,
-        ref_fa = rules.ref_fa.output,
-        ref_fa_fai = rules.ref_fa_fai.output,
-        ref_fa_dict = rules.ref_fa_dict.output,
-    output:
-        gvcf = 'gvcfs/{sample}.toy.g.vcf.gz',
-        tbi = 'gvcfs/{sample}.toy.g.vcf.gz.tbi'
-    shell:
-        "gatk ReblockGVCF --drop-low-quals"
-        " -R {input.ref_fa}"
-        " -V {input.gvcf} -O {output.gvcf}"
+        all    = f'sample_maps/{dataset_name}-{location}.csv',
+        round1 = f'sample_maps/{dataset_name}-{location}-round1.csv',
+        round2 = f'sample_maps/{dataset_name}-{location}-round2.csv',
+        toy_regions_bed = 'work/toy-regions.bed'
 
 rule copy_picard_file:
-    params:
-        bucket = 'gs://playground-au/warp/output/WholeGenomeGermlineSingleSample',
-        fname = lambda wildcards: f'{wildcards.sample}.{wildcards.suffix}'
     output:
         'picard_files/{sample}.{suffix}'
+    params:
+        bucket = WARP_EXECUTIONS_BUCKET,
+        fname = lambda wildcards: f'{wildcards.sample}.{wildcards.suffix}'
     shell:
-        'gsutil cp "{params.bucket}/**/{params.fname}" picard_files/'
+        'gsutil cp "{params.bucket}/**/{params.fname}" '
+        'picard_files/ || touch {output}'
 
-rule make_csv:
+def write_sample_maps(rows, hdr, output):
+    with open(output.all, 'w', newline='') as out_all, \
+            open(output.round1, 'w', newline='') as out_r1, \
+            open(output.round2, 'w', newline='') as out_r2:
+        csvwriter_all = csv.writer(out_all)
+        csvwriter_r1 = csv.writer(out_r1)
+        csvwriter_r2 = csv.writer(out_r2)
+        csvwriter_all.writerow(hdr)
+        csvwriter_r1.writerow(hdr)
+        csvwriter_r2.writerow(hdr)
+        for row in rows:
+            csvwriter_all.writerow(row[h] for h in hdr)
+        round1_row_num = int(len(rows) // 1.5)
+        for row in rows[:round1_row_num]:
+            csvwriter_r1.writerow(row[h] for h in hdr)
+        for row in rows[round1_row_num:]:
+            csvwriter_r2.writerow(row[h] for h in hdr)
+
+def run_cmd(cmd):
+    print(cmd)
+    return subprocess.run(cmd, shell=True)
+
+def run_check_output(cmd, silent=False):
+    if not silent:
+        print(cmd)
+    return subprocess.check_output(cmd, shell=True).decode()
+
+rule find_all_gvcf_gcs_files:
+    output:
+        paths_txt = protected(f'work/gcs-paths/gvcf.txt')
+    params:
+        bucket = WARP_EXECUTIONS_BUCKET
+    run:
+        gvcf_ptrn = f'{params.bucket}/**/call-MergeVCFs/*.g.vcf.gz'
+        run_cmd(f'gsutil ls \'{gvcf_ptrn}\' > {output.paths_txt}')
+
+rule find_all_picard_gcs_files:
+    output:
+        paths_txt = protected('work/gcs-paths/{picard_key}.txt')
+    params:
+        bucket = WARP_EXECUTIONS_BUCKET
+    run:
+        picard_ptrn = f'{params.bucket}/**/*.{wildcards.picard_key}'
+        run_cmd(f'gsutil ls \'{picard_ptrn}\' >> {output.paths_txt}')
+
+rule make_csv_gcs:
     input:
-        gvcfs = expand(rules.reblock_gvcf.output, sample=SAMPLES),
-        picard_files = expand(
-            rules.copy_picard_file.output,
-            sample=PICARD_FILES_SAMPLE_MAP.values(),
-            suffix=PICARD_SUFFICES,
+        gvcfs_gcs_paths_txt = rules.find_all_gvcf_gcs_files.output.paths_txt,
+        picard_gcs_paths_txts = expand(
+            rules.find_all_picard_gcs_files.output.paths_txt,
+            picard_key=PICARD_SUFFIX_D.keys()
         )
     output:
-        'samples.toy.local.csv'
+        all    = f'sample_maps/{dataset_name}-gcs.csv',
+        round1 = f'sample_maps/{dataset_name}-gcs-round1.csv',
+        round2 = f'sample_maps/{dataset_name}-gcs-round2.csv',
     run:
         rows = []
-        hdr = ['sample', 'population', 'gvcf'] + PICARD_SUFFICES
-        for sample, gvcf, pop in zip(SAMPLES, input.gvcfs, POPS):
-            row = dict(sample=sample, gvcf=f'data/{gvcf}', population=pop)
-            for picard_suffix in PICARD_SUFFICES:
-                picard_sample = PICARD_FILES_SAMPLE_MAP.get(sample, sample)
-                picard_fpath = f'picard_files/{picard_sample}.{picard_suffix}'
-                if os.path.isfile(picard_fpath):
-                    row[picard_suffix] = f'data/{picard_fpath}'
-                else:
-                    row[picard_suffix] = ''
+        hdr = ['sample', 'population', 'gvcf'] + list(PICARD_SUFFIX_D.keys())
+        for sample, pop in zip(
+                samples['Individual.ID'],
+                samples['Population'],
+            ):
+            try:
+                gvcf_path = run_check_output(
+                    f'grep {sample}.g.vcf.gz {input.gvcfs_gcs_paths_txt} | head -n1',
+                    silent=True
+                ).strip()
+            except:
+                sys.stderr.write(f'{sample}.g.vcf.gz not found')
+                continue
+            if gvcf_path == '':
+                sys.stderr.write(f'GVCF for {sample} is empty')
+                continue
+            row = dict(sample=sample, gvcf=gvcf_path,
+                population=pop if sample in SAMPLE_WITH_POP_LABELS else '')
+
+            for picard_key, picard_suffix in PICARD_SUFFIX_D.items():
+                gcs_paths_txt = rules.find_all_picard_gcs_files.output.paths_txt\
+                    .replace('{picard_key}', picard_key)
+                picard_path = run_check_output(
+                    f'grep {sample}.{picard_suffix} {gcs_paths_txt} | head -n1',
+                    silent=True
+                ).strip()
+                row[picard_key] = ''
+                if picard_path.strip() != '':
+                    row[picard_key] = picard_path
             rows.append(row)
-        with open(output[0], 'w') as out:
-            out.write(','.join(hdr) + '\n')
-            for row in rows:
-                out.write(','.join(row[h] for h in hdr) + '\n')
+        assert rows[0]['gvcf'] != ''
+        write_sample_maps(rows, hdr, output)
+
+rule make_csv_local:
+    input:
+        gvcfs = expand(rules.clean_info_fields.output, sample=samples['Individual.ID']),
+        picard_files = expand(
+            rules.copy_picard_file.output,
+            sample=samples['Individual.ID'],
+            suffix=PICARD_SUFFIX_D.values(),
+        )
+    output:
+        all    = f'sample_maps/{dataset_name}-local.csv',
+        round1 = f'sample_maps/{dataset_name}-local-round1.csv',
+        round2 = f'sample_maps/{dataset_name}-local-round2.csv',
+    run:
+        rows = []
+        hdr = ['sample', 'population', 'gvcf'] + list(PICARD_SUFFIX_D.keys())
+        for sample, pop, gvcf in zip(
+                samples['Individual.ID'],
+                samples['Population'],
+                input.gvcfs
+            ):
+            row = dict(sample=sample, gvcf=f'data/{gvcf}',
+                population=pop if sample in SAMPLE_WITH_POP_LABELS else '')
+            for picard_key, picard_suffix in PICARD_SUFFIX_D.items():
+                picard_fpath = f'picard_files/{sample}.{picard_suffix}'
+                row[picard_key] = ''
+                if os.path.isfile(picard_fpath):
+                    if os.path.getsize(picard_fpath) == 0:
+                        os.remove(picard_fpath)
+                    else:
+                        row[picard_key] = f'data/{picard_fpath}'
+            rows.append(row)
+        write_sample_maps(rows, hdr, output)
