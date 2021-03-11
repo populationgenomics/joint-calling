@@ -389,7 +389,7 @@ def _compute_sample_rankings(
             hl.len(hard_filtered_samples_ht[ht.key].hard_filters) > 0, False
         ),
     )
-    if use_qc_metrics_filters:
+    if use_qc_metrics_filters and regressed_metrics_ht is not None:
         ht = ht.annotate(
             filtered=hl.cond(
                 ht.filtered,

@@ -236,7 +236,7 @@ def _filter_callrate(
     mt: hl.MatrixTable,
     work_bucket: str,
     overwrite: bool = False,
-) -> hl.Table:
+) -> hl.MatrixTable:
     """
     Filter non-common variants, and annotate the sample callrate
     :param mt: input matrix table
