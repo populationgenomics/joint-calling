@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-from janis_bioinformatics.data_types import VcfTabix, Fasta
+from janis_bioinformatics.data_types import VcfTabix, CompressedVcf, Fasta, Vcf
 from janis_bioinformatics.tools.htslib import Tabix_1_9
 
 from janis_core import *
@@ -19,62 +19,6 @@ class FastaFaiDict(Fasta):
     def secondary_files() -> Optional[List[str]]:
         return ["^.dict", ".fai"]
 
-Tabixbgzippedfile_Dev = CommandToolBuilder(
-    tool="TabixBGzippedFile",
-    base_command=["sh", "script.sh"],
-    inputs=[
-        ToolInput(
-            tag="zipped_vcf", input_type=File(), doc=InputDocumentation(doc=None)
-        ),
-        ToolInput(
-            tag="zipped_vcf_path",
-            input_type=String(),
-            doc=InputDocumentation(doc=None),
-        ),
-        ToolInput(
-            tag="localized_tabix_path",
-            input_type=String(),
-            default=AddOperator(
-                InputSelector(input_to_select="zipped_vcf"), ".tbi"
-            ),
-            doc=InputDocumentation(doc=None),
-        ),
-        ToolInput(
-            tag="bucket_tabix_path",
-            input_type=String(),
-            default=AddOperator(
-                InputSelector(input_to_select="zipped_vcf_path"), ".tbi"
-            ),
-            doc=InputDocumentation(doc=None),
-        ),
-        ToolInput(
-            tag="gatk_docker",
-            input_type=String(),
-            default="us.gcr.io/broad-gatk/gatk:4.1.1.0",
-            doc=InputDocumentation(doc=None),
-        ),
-    ],
-    outputs=[
-        ToolOutput(
-            tag="bucket_tabix_output",
-            output_type=String(),
-            selector=InputSelector(input_to_select="bucket_tabix_path"),
-            doc=OutputDocumentation(doc=None),
-        )
-    ],
-    container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
-    version="DEV",
-    memory=1.0,
-    disk=200,
-    files_to_create={
-        "script.sh": StringFormatter(
-            "\n    gatk IndexFeatureFile -F {JANIS_WDL_TOKEN_1}\n    gsutil cp {JANIS_WDL_TOKEN_1}'.tbi' {JANIS_WDL_TOKEN_2}\n  ",
-            JANIS_WDL_TOKEN_1=InputSelector(input_to_select="zipped_vcf"),
-            JANIS_WDL_TOKEN_2=InputSelector(input_to_select="bucket_tabix_path"),
-        )
-    },
-)
-
 Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
     tool="GnarlyGenotyperOnVcf",
     base_command=["sh", "script.sh"],
@@ -82,11 +26,6 @@ Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
         ToolInput(
             tag="combined_gvcf",
             input_type=VcfTabix(),
-            doc=InputDocumentation(doc=None),
-        ),
-        ToolInput(
-            tag="combined_gvcf_index",
-            input_type=File(),
             doc=InputDocumentation(doc=None),
         ),
         ToolInput(
@@ -109,7 +48,7 @@ Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
             tag="ref_dict", input_type=File(), doc=InputDocumentation(doc=None)
         ),
         ToolInput(
-            tag="dbsnp_vcf", input_type=String(), doc=InputDocumentation(doc=None)
+            tag="dbsnp_vcf", input_type=File(), doc=InputDocumentation(doc=None)
         ),
         ToolInput(
             tag="gatk_docker",
@@ -186,9 +125,6 @@ Hardfilterandmakesitesonlyvcf_Dev = CommandToolBuilder(
     base_command=["sh", "script.sh"],
     inputs=[
         ToolInput(tag="vcf", input_type=File(), doc=InputDocumentation(doc=None)),
-        ToolInput(
-            tag="vcf_index", input_type=File(), doc=InputDocumentation(doc=None)
-        ),
         ToolInput(
             tag="excess_het_threshold",
             input_type=Float(),
@@ -1231,7 +1167,7 @@ Variantcallingofthefuture.input(
 
 Variantcallingofthefuture.input(
     "combined_gvcf",
-    File(),
+    CompressedVcf(),
 )
 
 Variantcallingofthefuture.input(
@@ -1242,116 +1178,139 @@ Variantcallingofthefuture.input(
 Variantcallingofthefuture.input(
     "ref_fasta",
     FastaFaiDict(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta",
 )
 
 Variantcallingofthefuture.input(
     "ref_fasta_index",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.fai",
 )
 
 Variantcallingofthefuture.input(
     "ref_dict",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dict",
 )
 
 Variantcallingofthefuture.input(
     "dbsnp_vcf",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf",
 )
 
 Variantcallingofthefuture.input(
     "dbsnp_vcf_index",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf.idx",
 )
 
 Variantcallingofthefuture.input(
     "small_disk",
     Int(),
+    default=100,
 )
 
 Variantcallingofthefuture.input(
     "medium_disk",
     Int(),
+    default=200,
 )
 
 Variantcallingofthefuture.input(
     "huge_disk",
     Int(),
+    default=2000,
 )
 
 Variantcallingofthefuture.input(
     "snp_recalibration_tranche_values",
     Array(t=String()),
+    default=["100.0", "99.95", "99.9", "99.8", "99.6", "99.5", "99.4", "99.3", "99.0", "98.0", "97.0", "90.0" ],
 )
 
 Variantcallingofthefuture.input(
     "snp_recalibration_annotation_values",
     Array(t=String()),
+    default=["AS_QD", "AS_MQRankSum", "AS_ReadPosRankSum", "AS_FS", "AS_SOR", "AS_MQ"],
 )
 
 Variantcallingofthefuture.input(
     "indel_recalibration_tranche_values",
     Array(t=String()),
+    default=["100.0", "99.95", "99.9", "99.5", "99.0", "97.0", "96.0", "95.0", "94.0", "93.5", "93.0", "92.0", "91.0", "90.0"],
 )
 
 Variantcallingofthefuture.input(
     "indel_recalibration_annotation_values",
     Array(t=String()),
+    default=["AS_FS", "AS_SOR", "AS_ReadPosRankSum", "AS_MQRankSum", "AS_QD"],
 )
 
 Variantcallingofthefuture.input(
     "eval_interval_list",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/exome_evaluation_regions.v1.interval_list",
 )
 
 Variantcallingofthefuture.input(
     "hapmap_resource_vcf",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/hapmap_3.3.hg38.vcf.gz",
 )
 
 Variantcallingofthefuture.input(
     "hapmap_resource_vcf_index",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/hapmap_3.3.hg38.vcf.gz.tbi",
 )
 
 Variantcallingofthefuture.input(
     "omni_resource_vcf",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/1000G_omni2.5.hg38.vcf.gz",
 )
 
 Variantcallingofthefuture.input(
     "omni_resource_vcf_index",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/1000G_omni2.5.hg38.vcf.gz.tbi",
 )
 
 Variantcallingofthefuture.input(
     "one_thousand_genomes_resource_vcf",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/1000G_phase1.snps.high_confidence.hg38.vcf.gz",
 )
 
 Variantcallingofthefuture.input(
     "one_thousand_genomes_resource_vcf_index",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/1000G_phase1.snps.high_confidence.hg38.vcf.gz.tbi",
 )
 
 Variantcallingofthefuture.input(
     "mills_resource_vcf",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz",
 )
 
 Variantcallingofthefuture.input(
     "mills_resource_vcf_index",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz.tbi",
 )
 
 Variantcallingofthefuture.input(
     "axiomPoly_resource_vcf",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz"
 )
 
 Variantcallingofthefuture.input(
     "axiomPoly_resource_vcf_index",
     File(),
+    default="gs://gcp-public-data--broad-references/hg38/v0/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz.tbi"
 )
 
 Variantcallingofthefuture.input(
@@ -1375,21 +1334,25 @@ Variantcallingofthefuture.input(
 Variantcallingofthefuture.input(
     "snp_filter_level",
     Float(),
+    default=99.7,
 )
 
 Variantcallingofthefuture.input(
     "indel_filter_level",
     Float(),
+    default=99.0,
 )
 
 Variantcallingofthefuture.input(
     "SNP_VQSR_downsampleFactor",
     Int(),
+    default=75,
 )
 
 Variantcallingofthefuture.input(
     "indel_VQSR_downsampleFactor",
     Int(),
+    default=10,
 )
 
 Variantcallingofthefuture.input(
@@ -1401,11 +1364,7 @@ Variantcallingofthefuture.input(
 Variantcallingofthefuture.input(
     "vcf_count",
     Int(),
-)
-
-Variantcallingofthefuture.input(
-    "do_tabix",
-    Boolean(),
+    default=30,
 )
 
 Variantcallingofthefuture.input(
@@ -1425,18 +1384,13 @@ Variantcallingofthefuture.input(
 )
 
 Variantcallingofthefuture.input(
-    "SplitIntervalList_sample_names_unique_done",
-    Boolean(optional=True),
-    default=True,
-)
-
-Variantcallingofthefuture.input(
     "unpadded_intervals",
     Array(t=File(), optional=True),
+    default="gs://broad-references-private/HybSelOligos/xgen_plus_spikein/white_album_exome_calling_regions.v1.interval_list",
 )
 
 Variantcallingofthefuture.input(
-    "SNPsVariantRecalibratorScattered_machine_mem_gb",
+    "apply_recalibration_machine_mem_gb",
     Int(optional=True),
     default=60,
 )
@@ -1447,37 +1401,17 @@ Variantcallingofthefuture.input(
     default=False,
 )
 
-Variantcallingofthefuture.input(
-    "ApplyRecalibration_use_allele_specific_annotations",
-    Boolean(optional=True),
-    default=True,
-)
-
-
-Tabix_1_9()
-
 Variantcallingofthefuture.step(
     "TabixBGzippedFile",
-    Tabixbgzippedfile_Dev(
-        zipped_vcf=Variantcallingofthefuture.combined_gvcf,
-        zipped_vcf_path=Variantcallingofthefuture.combined_gvcf,
-    ),
-    when=Variantcallingofthefuture.do_tabix,
+    Tabix_1_9(
+        inp=Variantcallingofthefuture.combined_gvcf
+    )
 )
-
-
-
 
 Variantcallingofthefuture.step(
     "GnarlyGenotyperOnVcf",
     Gnarlygenotyperonvcf_Dev(
-        combined_gvcf=Variantcallingofthefuture.combined_gvcf,
-        combined_gvcf_index=FilterNullOperator(
-            [
-                Variantcallingofthefuture.TabixBGzippedFile.bucket_tabix_output,
-                AddOperator(Variantcallingofthefuture.combined_gvcf, ".tbi"),
-            ]
-        ),
+        combined_gvcf=Variantcallingofthefuture.TabixBGzippedFile.out.as_type(VcfTabix),
         interval=IndexOperator(
             Variantcallingofthefuture.unpadded_intervals, ForEachSelector()
         ),
@@ -1503,7 +1437,6 @@ Variantcallingofthefuture.step(
     "HardFilterAndMakeSitesOnlyVcf",
     Hardfilterandmakesitesonlyvcf_Dev(
         vcf=Variantcallingofthefuture.GnarlyGenotyperOnVcf.output_vcf,
-        vcf_index=None, # Variantcallingofthefuture.GnarlyGenotyperOnVcf.output_vcf_index,
         excess_het_threshold=Variantcallingofthefuture.excess_het_threshold,
         variant_filtered_vcf_filename=AddOperator(
             AddOperator(
@@ -1634,7 +1567,7 @@ Variantcallingofthefuture.step(
         dbsnp_resource_vcf=Variantcallingofthefuture.dbsnp_resource_vcf,
         dbsnp_resource_vcf_index=Variantcallingofthefuture.dbsnp_resource_vcf_index,
         disk_size=Variantcallingofthefuture.small_disk,
-        machine_mem_gb=Variantcallingofthefuture.SNPsVariantRecalibratorScattered_machine_mem_gb,
+        machine_mem_gb=Variantcallingofthefuture.apply_recalibration_machine_mem_gb,
         use_allele_specific_annotations=Variantcallingofthefuture.use_allele_specific_annotations,
     ),
     foreach=RangeOperator(
@@ -1692,7 +1625,7 @@ Variantcallingofthefuture.step(
         indel_filter_level=Variantcallingofthefuture.indel_filter_level,
         snp_filter_level=Variantcallingofthefuture.snp_filter_level,
         disk_size=Variantcallingofthefuture.medium_disk,
-        use_allele_specific_annotations=Variantcallingofthefuture.ApplyRecalibration_use_allele_specific_annotations,
+        use_allele_specific_annotations=Variantcallingofthefuture.use_allele_specific_annotations,
     ),
     foreach=RangeOperator(
         LengthOperator(
@@ -1758,6 +1691,6 @@ if __name__ == "__main__":
     tool = Variantcallingofthefuture()#.translate("wdl")
     # tool.get_dot_plot()
     s = HailBatchTranslator.translate_workflow(tool)
-    out = "/Users/michael.franklin/source/janis-core/ingestion/vqsr_batch.py"
+    out = "vqsr_batch.py"
     with open(out, "w+") as f:
         f.write(s)
