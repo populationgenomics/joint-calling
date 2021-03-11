@@ -1,6 +1,9 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
+from janis_bioinformatics.data_types import VcfTabix, Fasta
+from janis_bioinformatics.tools.htslib import Tabix_1_9
+
 from janis_core import *
 from janis_core.types.common_data_types import (
     String,
@@ -10,6 +13,11 @@ from janis_core.types.common_data_types import (
     Float,
     Boolean,
 )
+
+class FastaFaiDict(Fasta):
+    @staticmethod
+    def secondary_files() -> Optional[List[str]]:
+        return ["^.dict", ".fai"]
 
 Tabixbgzippedfile_Dev = CommandToolBuilder(
     tool="TabixBGzippedFile",
@@ -66,79 +74,14 @@ Tabixbgzippedfile_Dev = CommandToolBuilder(
         )
     },
 )
-Splitintervallist_Dev = CommandToolBuilder(
-    tool="SplitIntervalList",
-    base_command=["sh", "script.sh"],
-    inputs=[
-        ToolInput(
-            tag="interval_list",
-            input_type=File(),
-            doc=InputDocumentation(doc=None),
-        ),
-        ToolInput(
-            tag="scatter_count",
-            input_type=Int(),
-            doc=InputDocumentation(doc=None),
-        ),
-        ToolInput(
-            tag="ref_fasta", input_type=File(), doc=InputDocumentation(doc=None)
-        ),
-        ToolInput(
-            tag="ref_fasta_index",
-            input_type=File(),
-            doc=InputDocumentation(doc=None),
-        ),
-        ToolInput(
-            tag="ref_dict", input_type=File(), doc=InputDocumentation(doc=None)
-        ),
-        ToolInput(
-            tag="sample_names_unique_done",
-            input_type=Boolean(),
-            doc=InputDocumentation(
-                doc=None, quality=InputQualityType.configuration
-            ),
-        ),
-        ToolInput(
-            tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)
-        ),
-        ToolInput(
-            tag="gatk_docker",
-            input_type=String(),
-            default="us.gcr.io/broad-gatk/gatk:4.1.1.0",
-            doc=InputDocumentation(doc=None),
-        ),
-    ],
-    outputs=[
-        ToolOutput(
-            tag="output_intervals",
-            output_type=Array(t=File()),
-            selector=WildcardSelector(wildcard="scatterDir/*"),
-            doc=OutputDocumentation(doc=None),
-        )
-    ],
-    container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
-    version="DEV",
-    memory=3.49246125,
-    disk=AddOperator(
-        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
-        " HDD",
-    ),
-    files_to_create={
-        "script.sh": StringFormatter(
-            "\n    gatk --java-options -Xms3g SplitIntervals \\n      -L {JANIS_WDL_TOKEN_1} -O  scatterDir -scatter {JANIS_WDL_TOKEN_2} -R {JANIS_WDL_TOKEN_3} \\n      -mode BALANCING_WITHOUT_INTERVAL_SUBDIVISION_WITH_OVERFLOW\n   ",
-            JANIS_WDL_TOKEN_1=InputSelector(input_to_select="interval_list"),
-            JANIS_WDL_TOKEN_2=InputSelector(input_to_select="scatter_count"),
-            JANIS_WDL_TOKEN_3=InputSelector(input_to_select="ref_fasta"),
-        )
-    },
-)
+
 Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
     tool="GnarlyGenotyperOnVcf",
     base_command=["sh", "script.sh"],
     inputs=[
         ToolInput(
             tag="combined_gvcf",
-            input_type=File(),
+            input_type=VcfTabix(),
             doc=InputDocumentation(doc=None),
         ),
         ToolInput(
@@ -155,7 +98,7 @@ Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
             doc=InputDocumentation(doc=None),
         ),
         ToolInput(
-            tag="ref_fasta", input_type=File(), doc=InputDocumentation(doc=None)
+            tag="ref_fasta", input_type=FastaFaiDict(), doc=InputDocumentation(doc=None)
         ),
         ToolInput(
             tag="ref_fasta_index",
@@ -210,24 +153,10 @@ Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
     outputs=[
         ToolOutput(
             tag="output_vcf",
-            output_type=File(),
-            selector=StringFormatter(
-                "{JANIS_WDL_TOKEN_1}",
-                JANIS_WDL_TOKEN_1=InputSelector(
+            output_type=VcfTabix(),
+            selector=InputSelector(
                     input_to_select="output_vcf_filename"
                 ),
-            ),
-            doc=OutputDocumentation(doc=None),
-        ),
-        ToolOutput(
-            tag="output_vcf_index",
-            output_type=File(),
-            selector=StringFormatter(
-                "{JANIS_WDL_TOKEN_1}.tbi",
-                JANIS_WDL_TOKEN_1=InputSelector(
-                    input_to_select="output_vcf_filename"
-                ),
-            ),
             doc=OutputDocumentation(doc=None),
         ),
     ],
@@ -552,10 +481,7 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
     version="DEV",
     cpus=2,
     memory=104.0,
-    disk=AddOperator(
-        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
-        " HDD",
-    ),
+    disk=InputSelector(input_to_select="disk_size"),
     files_to_create={
         "script.sh": StringFormatter(
             "\n    set -euo pipefail\n\n    MODEL_REPORT={JANIS_WDL_TOKEN_1}\n\n    gatk --java-options -Xms100g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_3} \\n      --tranches-file {JANIS_WDL_TOKEN_4} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_5} \\n      -an {JANIS_WDL_TOKEN_6} \\n      -mode INDEL \\n      {JANIS_WDL_TOKEN_7} \\n      {JANIS_WDL_TOKEN_8} \\n      --max-gaussians {JANIS_WDL_TOKEN_9} \\n      -resource:mills,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_10} \\n      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_11} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {JANIS_WDL_TOKEN_12}\n  ",
@@ -1315,7 +1241,7 @@ Variantcallingofthefuture.input(
 
 Variantcallingofthefuture.input(
     "ref_fasta",
-    File(),
+    FastaFaiDict(),
 )
 
 Variantcallingofthefuture.input(
@@ -1528,6 +1454,8 @@ Variantcallingofthefuture.input(
 )
 
 
+Tabix_1_9()
+
 Variantcallingofthefuture.step(
     "TabixBGzippedFile",
     Tabixbgzippedfile_Dev(
@@ -1538,18 +1466,6 @@ Variantcallingofthefuture.step(
 )
 
 
-Variantcallingofthefuture.step(
-    "SplitIntervalList",
-    Splitintervallist_Dev(
-        interval_list=Variantcallingofthefuture.unpadded_intervals_file,
-        scatter_count=Variantcallingofthefuture.scatterCount,
-        ref_fasta=Variantcallingofthefuture.ref_fasta,
-        ref_fasta_index=Variantcallingofthefuture.ref_fasta_index,
-        ref_dict=Variantcallingofthefuture.ref_dict,
-        disk_size=Variantcallingofthefuture.small_disk,
-        sample_names_unique_done=Variantcallingofthefuture.SplitIntervalList_sample_names_unique_done,
-    ),
-)
 
 
 Variantcallingofthefuture.step(
@@ -1587,7 +1503,7 @@ Variantcallingofthefuture.step(
     "HardFilterAndMakeSitesOnlyVcf",
     Hardfilterandmakesitesonlyvcf_Dev(
         vcf=Variantcallingofthefuture.GnarlyGenotyperOnVcf.output_vcf,
-        vcf_index=Variantcallingofthefuture.GnarlyGenotyperOnVcf.output_vcf_index,
+        vcf_index=None, # Variantcallingofthefuture.GnarlyGenotyperOnVcf.output_vcf_index,
         excess_het_threshold=Variantcallingofthefuture.excess_het_threshold,
         variant_filtered_vcf_filename=AddOperator(
             AddOperator(
@@ -1834,3 +1750,14 @@ Variantcallingofthefuture.step(
     ),
     when=Variantcallingofthefuture.is_small_callset,
 )
+
+
+if __name__ == "__main__":
+    # or "cwl"
+    from janis_core.translations.hailbatch import HailBatchTranslator
+    tool = Variantcallingofthefuture()#.translate("wdl")
+    # tool.get_dot_plot()
+    s = HailBatchTranslator.translate_workflow(tool)
+    out = "/Users/michael.franklin/source/janis-core/ingestion/vqsr_batch.py"
+    with open(out, "w+") as f:
+        f.write(s)
