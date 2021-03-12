@@ -7,9 +7,11 @@ import hailtop.batch as hb
 
 
 def main(
-    unpadded_intervals_file: str,
     combined_gvcf: str,
     callset_name: str,
+    unpadded_intervals_file: Optional[
+        str
+    ] = "gs://broad-references-private/HybSelOligos/xgen_plus_spikein/white_album_exome_calling_regions.v1.interval_list",
     ref_fasta: Optional[
         str
     ] = "gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta",
@@ -138,14 +140,18 @@ def main(
     scatterCount = (
         scatterCount
         if scatterCount is not None
-        else (unboundedScatterCount if (unboundedScatterCount > 10) else 10)
+        else (
+            unboundedScatterCount
+            if (unboundedScatterCount and (unboundedScatterCount > 10))
+            else 10
+        )
     )
     combined_gvcf = b.read_input(combined_gvcf)
     ref_fasta = b.read_input_group(
-        fasta=ref_fasta,
+        base=ref_fasta,
         dict=ref_fasta.replace(".fasta", "")
-        .replace(".fa", "")
         .replace(".fna", "")
+        .replace(".fa", "")
         + ".dict",
         fai=ref_fasta + ".fai",
     )
@@ -184,11 +190,14 @@ def main(
                 b,
                 combined_gvcf=TabixBGzippedFile.out,
                 interval=unpadded_intervals[idx],
-                output_vcf_filename=(((callset_name + ".") + idx) + ".vcf.gz"),
+                output_vcf_filename=(
+                    ((callset_name + ".") + str(idx)) + ".vcf.gz"
+                ),
                 ref_fasta=ref_fasta,
                 ref_fasta_index=ref_fasta_index,
                 ref_dict=ref_dict,
                 dbsnp_vcf=dbsnp_vcf,
+                is_small_callset=is_small_callset,
             )
         )
 
@@ -197,13 +206,13 @@ def main(
         HardFilterAndMakeSitesOnlyVcf.append(
             add_HardFilterAndMakeSitesOnlyVcf_step(
                 b,
-                vcf=GnarlyGenotyperOnVcf.output_vcf,
+                vcf=GnarlyGenotyperOnVcf[idx].output_vcf,
                 excess_het_threshold=excess_het_threshold,
                 variant_filtered_vcf_filename=(
-                    ((callset_name + ".") + idx) + ".variant_filtered.vcf.gz"
+                    ((callset_name + ".") + str(idx)) + ".variant_filtered.vcf.gz"
                 ),
                 sites_only_vcf_filename=(
-                    ((callset_name + ".") + idx)
+                    ((callset_name + ".") + str(idx))
                     + ".sites_only.variant_filtered.vcf.gz"
                 ),
                 disk_size=medium_disk,
@@ -211,7 +220,7 @@ def main(
         )
     SitesOnlyGatherVcf = add_SitesOnlyGatherVcf_step(
         b,
-        input_vcfs=HardFilterAndMakeSitesOnlyVcf.sites_only_vcf,
+        input_vcfs=[j.sites_only_vcf for j in HardFilterAndMakeSitesOnlyVcf],
         output_vcf_name=(callset_name + ".sites_only.vcf.gz"),
         disk_size=medium_disk,
     )
@@ -260,16 +269,16 @@ def main(
             add_SNPsVariantRecalibratorScattered_step(
                 b,
                 sites_only_variant_filtered_vcf=HardFilterAndMakeSitesOnlyVcf.sites_only_vcf[
-                    idx
+                    str(idx)
                 ],
                 sites_only_variant_filtered_vcf_index=HardFilterAndMakeSitesOnlyVcf.sites_only_vcf_index[
-                    idx
+                    str(idx)
                 ],
                 recalibration_filename=(
-                    ((callset_name + ".snps.") + idx) + ".recal"
+                    ((callset_name + ".snps.") + str(idx)) + ".recal"
                 ),
                 tranches_filename=(
-                    ((callset_name + ".snps.") + idx) + ".tranches"
+                    ((callset_name + ".snps.") + str(idx)) + ".tranches"
                 ),
                 recalibration_tranche_values=snp_recalibration_tranche_values,
                 recalibration_annotation_values=snp_recalibration_annotation_values,
@@ -366,7 +375,8 @@ def add_TabixBGzippedFile_step(
     b, inp, preset="vcf", container="quay.io/biocontainers/htslib:1.9--ha228f0b_7"
 ):
     j = b.new_job("TabixBGzippedFile")
-    j.declare_resource_group(out={"tbi": "{root}.tbi", "root": "{root}"})
+    j.command(f"mv {inp} .")
+    j.declare_resource_group(out={"tbi": "{root}.tbi", "base": "{root}"})
     j.image(container)
 
     command_args = []
@@ -397,40 +407,31 @@ def add_GnarlyGenotyperOnVcf_step(
     ref_dict,
     dbsnp_vcf,
     gatk_docker="gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K",
+    is_small_callset=False,
     disk_size=None,
     container="gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K",
 ):
     j = b.new_job("GnarlyGenotyperOnVcf")
     disk_size = (
-        disk_size
-        if disk_size is not None
-        else math.ceil(
-            (
-                (
-                    (os.stat(combined_gvcf).st_size / 1000 * 0.001024)
-                    + (os.stat(ref_fasta).st_size / 1000 * 0.001024)
-                )
-                + ((os.stat(dbsnp_vcf).st_size / 1000 * 0.001024) * 3)
-            )
-        )
+        disk_size if disk_size is not None else (40 if is_small_callset else 80)
     )
-    j.declare_resource_group(output_vcf={"tbi": "{root}.tbi", "root": "{root}"})
+    j.declare_resource_group(output_vcf={"tbi": "{root}.tbi", "base": "{root}"})
     j.image(container)
     j.memory(f"24.214398G")
-    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
 
     j.command(
         f"""set -e
 
     gatk --java-options -Xms8g \\
       GnarlyGenotyper \\
-      -R {ref_fasta.base} \\
+      -R {ref_fasta} \\
       -O {output_vcf_filename} \\
-      -D {dbsnp_vcf.base} \\
+      -D {dbsnp_vcf} \\
       --only-output-calls-starting-in-intervals \\
       --keep-all-sites \\
-      -V {combined_gvcf.base} \\
-      -L {interval.base}"""
+      -V {combined_gvcf} \\
+      -L {interval}"""
     )
 
     j.command(
@@ -458,7 +459,7 @@ def add_HardFilterAndMakeSitesOnlyVcf_step(
     j = b.new_job("HardFilterAndMakeSitesOnlyVcf")
     j.image(container)
     j.memory(f"3.49246125G")
-    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
 
     j.command(
         f"""set -euo pipefail
@@ -512,7 +513,7 @@ def add_SitesOnlyGatherVcf_step(
     j = b.new_job("SitesOnlyGatherVcf")
     j.image(container)
     j.memory(f"6.519261G")
-    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
 
     j.command(
         f"""set -euo pipefail
@@ -648,7 +649,7 @@ def add_SNPsVariantRecalibratorCreateModel_step(
     j = b.new_job("SNPsVariantRecalibratorCreateModel")
     j.image(container)
     j.memory(f"104.0G")
-    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
 
     j.command(
         f"""set -euo pipefail
@@ -666,10 +667,10 @@ def add_SNPsVariantRecalibratorCreateModel_step(
       --sample-every-Nth-variant {downsampleFactor} \\
       --output-model {model_report_filename} \\
       --max-gaussians {max_gaussians} \\
-      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
-      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
-      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base}"""
+      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf} \\
+      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf} \\
+      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf} \\
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf}"""
     )
 
     j.command(
@@ -761,7 +762,7 @@ def add_SNPsVariantRecalibratorScattered_step(
     )
     j.image(container)
     j.memory(f"{machine_mem} GiBG")
-    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
 
     j.command(
         f"""set -euo pipefail
@@ -816,7 +817,7 @@ def add_SNPGatherTranches_step(
     j = b.new_job("SNPGatherTranches")
     j.image(container)
     j.memory(f"6.519261G")
-    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
 
     j.command(
         f"""set -euo pipefail
@@ -881,7 +882,7 @@ def add_ApplyRecalibration_step(
     j = b.new_job("ApplyRecalibration")
     j.image(container)
     j.memory(f"7.0G")
-    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
 
     j.command(
         f"""set -euo pipefail
@@ -940,7 +941,7 @@ def add_CollectMetricsSharded_step(
     j = b.new_job("CollectMetricsSharded")
     j.image(container)
     j.memory(f"6.9849225G")
-    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
 
     j.command(
         f"""set -euo pipefail
@@ -982,7 +983,7 @@ def add_FinalGatherVcf_step(
     j = b.new_job("FinalGatherVcf")
     j.image(container)
     j.memory(f"6.519261G")
-    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
 
     j.command(
         f"""set -euo pipefail
@@ -1030,7 +1031,7 @@ def add_CollectMetricsOnFullVcf_step(
     j = b.new_job("CollectMetricsOnFullVcf")
     j.image(container)
     j.memory(f"6.9849225G")
-    j.storage(f'{(("local-disk " + disk_size) + " HDD")}G')
+    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
 
     j.command(
         f"""set -euo pipefail
@@ -1093,52 +1094,222 @@ def apply_secondary_file_format_to_filename(
 
 
 @click.command()
-@click.option("--unpadded_intervals_file", "unpadded_intervals_file", type=str, required=True)
 @click.option("--combined_gvcf", "combined_gvcf", type=str, required=True)
 @click.option("--callset_name", "callset_name", type=str, required=True)
-@click.option("--ref_fasta", "ref_fasta", type=str)
-@click.option("--ref_fasta_index", "ref_fasta_index", type=str)
-@click.option("--ref_dict", "ref_dict", type=str)
-@click.option("--dbsnp_vcf", "dbsnp_vcf", type=str)
-@click.option("--dbsnp_vcf_index", "dbsnp_vcf_index", type=str)
-@click.option("--small_disk", "small_disk", type=int)
-@click.option("--medium_disk", "medium_disk", type=int)
-@click.option("--huge_disk", "huge_disk", type=int)
-@click.option("--snp_recalibration_tranche_values", "snp_recalibration_tranche_values", multiple=True, type=List[str])
 @click.option(
-    "--snp_recalibration_annotation_values", "snp_recalibration_annotation_values", multiple=True, type=List[str]
+    "--unpadded_intervals_file",
+    "unpadded_intervals_file",
+    type=str,
+    default="gs://broad-references-private/HybSelOligos/xgen_plus_spikein/white_album_exome_calling_regions.v1.interval_list",
 )
 @click.option(
-    "--indel_recalibration_tranche_values", "indel_recalibration_tranche_values", multiple=True, type=List[str]
+    "--ref_fasta",
+    "ref_fasta",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta",
 )
 @click.option(
-    "--indel_recalibration_annotation_values", "indel_recalibration_annotation_values", multiple=True, type=List[str]
+    "--ref_fasta_index",
+    "ref_fasta_index",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.fai",
 )
-@click.option("--eval_interval_list", "eval_interval_list", type=str)
-@click.option("--hapmap_resource_vcf", "hapmap_resource_vcf", type=str)
-@click.option("--hapmap_resource_vcf_index", "hapmap_resource_vcf_index", type=str)
-@click.option("--omni_resource_vcf", "omni_resource_vcf", type=str)
-@click.option("--omni_resource_vcf_index", "omni_resource_vcf_index", type=str)
-@click.option("--one_thousand_genomes_resource_vcf", "one_thousand_genomes_resource_vcf", type=str)
-@click.option("--one_thousand_genomes_resource_vcf_index", "one_thousand_genomes_resource_vcf_index", type=str)
-@click.option("--mills_resource_vcf", "mills_resource_vcf", type=str)
-@click.option("--mills_resource_vcf_index", "mills_resource_vcf_index", type=str)
-@click.option("--axiomPoly_resource_vcf", "axiomPoly_resource_vcf", type=str)
-@click.option("--axiomPoly_resource_vcf_index", "axiomPoly_resource_vcf_index", type=str)
+@click.option(
+    "--ref_dict",
+    "ref_dict",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dict",
+)
+@click.option(
+    "--dbsnp_vcf",
+    "dbsnp_vcf",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf",
+)
+@click.option(
+    "--dbsnp_vcf_index",
+    "dbsnp_vcf_index",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf.idx",
+)
+@click.option("--small_disk", "small_disk", type=int, default=100)
+@click.option("--medium_disk", "medium_disk", type=int, default=200)
+@click.option("--huge_disk", "huge_disk", type=int, default=2000)
+@click.option(
+    "--snp_recalibration_tranche_values",
+    "snp_recalibration_tranche_values",
+    multiple=True,
+    type=str,
+    default=[
+        "100.0",
+        "99.95",
+        "99.9",
+        "99.8",
+        "99.6",
+        "99.5",
+        "99.4",
+        "99.3",
+        "99.0",
+        "98.0",
+        "97.0",
+        "90.0",
+    ],
+)
+@click.option(
+    "--snp_recalibration_annotation_values",
+    "snp_recalibration_annotation_values",
+    multiple=True,
+    type=str,
+    default=[
+        "AS_QD",
+        "AS_MQRankSum",
+        "AS_ReadPosRankSum",
+        "AS_FS",
+        "AS_SOR",
+        "AS_MQ",
+    ],
+)
+@click.option(
+    "--indel_recalibration_tranche_values",
+    "indel_recalibration_tranche_values",
+    multiple=True,
+    type=str,
+    default=[
+        "100.0",
+        "99.95",
+        "99.9",
+        "99.5",
+        "99.0",
+        "97.0",
+        "96.0",
+        "95.0",
+        "94.0",
+        "93.5",
+        "93.0",
+        "92.0",
+        "91.0",
+        "90.0",
+    ],
+)
+@click.option(
+    "--indel_recalibration_annotation_values",
+    "indel_recalibration_annotation_values",
+    multiple=True,
+    type=str,
+    default=["AS_FS", "AS_SOR", "AS_ReadPosRankSum", "AS_MQRankSum", "AS_QD"],
+)
+@click.option(
+    "--eval_interval_list",
+    "eval_interval_list",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/exome_evaluation_regions.v1.interval_list",
+)
+@click.option(
+    "--hapmap_resource_vcf",
+    "hapmap_resource_vcf",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/hapmap_3.3.hg38.vcf.gz",
+)
+@click.option(
+    "--hapmap_resource_vcf_index",
+    "hapmap_resource_vcf_index",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/hapmap_3.3.hg38.vcf.gz.tbi",
+)
+@click.option(
+    "--omni_resource_vcf",
+    "omni_resource_vcf",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/1000G_omni2.5.hg38.vcf.gz",
+)
+@click.option(
+    "--omni_resource_vcf_index",
+    "omni_resource_vcf_index",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/1000G_omni2.5.hg38.vcf.gz.tbi",
+)
+@click.option(
+    "--one_thousand_genomes_resource_vcf",
+    "one_thousand_genomes_resource_vcf",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/1000G_phase1.snps.high_confidence.hg38.vcf.gz",
+)
+@click.option(
+    "--one_thousand_genomes_resource_vcf_index",
+    "one_thousand_genomes_resource_vcf_index",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/1000G_phase1.snps.high_confidence.hg38.vcf.gz.tbi",
+)
+@click.option(
+    "--mills_resource_vcf",
+    "mills_resource_vcf",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz",
+)
+@click.option(
+    "--mills_resource_vcf_index",
+    "mills_resource_vcf_index",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz.tbi",
+)
+@click.option(
+    "--axiomPoly_resource_vcf",
+    "axiomPoly_resource_vcf",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz",
+)
+@click.option(
+    "--axiomPoly_resource_vcf_index",
+    "axiomPoly_resource_vcf_index",
+    type=str,
+    default="gs://gcp-public-data--broad-references/hg38/v0/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz.tbi",
+)
 @click.option("--dbsnp_resource_vcf", "dbsnp_resource_vcf", type=str)
 @click.option("--dbsnp_resource_vcf_index", "dbsnp_resource_vcf_index", type=str)
-@click.option("--excess_het_threshold", "excess_het_threshold", type=float)
-@click.option("--snp_filter_level", "snp_filter_level", type=float)
-@click.option("--indel_filter_level", "indel_filter_level", type=float)
-@click.option("--SNP_VQSR_downsampleFactor", "SNP_VQSR_downsampleFactor", type=int)
-@click.option("--indel_VQSR_downsampleFactor", "indel_VQSR_downsampleFactor", type=int)
-@click.option("--use_allele_specific_annotations", "use_allele_specific_annotations", is_flag=True)
-@click.option("--vcf_count", "vcf_count", type=int)
+@click.option(
+    "--excess_het_threshold", "excess_het_threshold", type=float, default=54.69
+)
+@click.option("--snp_filter_level", "snp_filter_level", type=float, default=99.7)
+@click.option(
+    "--indel_filter_level", "indel_filter_level", type=float, default=99.0
+)
+@click.option(
+    "--SNP_VQSR_downsampleFactor",
+    "SNP_VQSR_downsampleFactor",
+    type=int,
+    default=75,
+)
+@click.option(
+    "--indel_VQSR_downsampleFactor",
+    "indel_VQSR_downsampleFactor",
+    type=int,
+    default=10,
+)
+@click.option(
+    "--use_allele_specific_annotations",
+    "use_allele_specific_annotations",
+    is_flag=True,
+    default=True,
+)
+@click.option("--vcf_count", "vcf_count", type=int, default=30)
 @click.option("--unboundedScatterCount", "unboundedScatterCount", type=int)
 @click.option("--scatterCount", "scatterCount", type=int)
-@click.option("--unpadded_intervals", "unpadded_intervals", multiple=True, type=List[str])
-@click.option("--apply_recalibration_machine_mem_gb", "apply_recalibration_machine_mem_gb", type=int)
-@click.option("--is_small_callset", "is_small_callset", is_flag=True)
+@click.option(
+    "--unpadded_intervals",
+    "unpadded_intervals",
+    multiple=True,
+    type=str,
+    default="gs://broad-references-private/HybSelOligos/xgen_plus_spikein/white_album_exome_calling_regions.v1.interval_list",
+)
+@click.option(
+    "--apply_recalibration_machine_mem_gb",
+    "apply_recalibration_machine_mem_gb",
+    type=int,
+    default=60,
+)
+@click.option(
+    "--is_small_callset", "is_small_callset", is_flag=True, default=False
+)
 def main_from_click(*args, **kwargs):
     return main(*args, **kwargs)
 

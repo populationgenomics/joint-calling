@@ -57,34 +57,17 @@ Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
             doc=InputDocumentation(doc=None),
         ),
         ToolInput(
+            tag="is_small_callset",
+            input_type=Boolean(),
+            default=False,
+        ),
+        ToolInput(
             tag="disk_size",
             input_type=Int(),
-            default=CeilOperator(
-                AddOperator(
-                    AddOperator(
-                        MultiplyOperator(
-                            FileSizeOperator(
-                                InputSelector(input_to_select="combined_gvcf")
-                            ),
-                            0.001024,
-                        ),
-                        MultiplyOperator(
-                            FileSizeOperator(
-                                InputSelector(input_to_select="ref_fasta")
-                            ),
-                            0.001024,
-                        ),
-                    ),
-                    MultiplyOperator(
-                        MultiplyOperator(
-                            FileSizeOperator(
-                                InputSelector(input_to_select="dbsnp_vcf")
-                            ),
-                            0.001024,
-                        ),
-                        3,
-                    ),
-                )
+            default=If(
+                InputSelector(input_to_select="is_small_callset"),
+                40,
+                80,
             ),
             doc=InputDocumentation(doc=None),
         ),
@@ -104,7 +87,7 @@ Gnarlygenotyperonvcf_Dev = CommandToolBuilder(
     cpus=2,
     memory=24.214398,
     disk=AddOperator(
-        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        AddOperator("local-disk ", AsStringOperator(InputSelector(input_to_select="disk_size"))),
         " HDD",
     ),
     files_to_create={
@@ -201,7 +184,7 @@ Hardfilterandmakesitesonlyvcf_Dev = CommandToolBuilder(
     cpus=1,
     memory=3.49246125,
     disk=AddOperator(
-        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        AddOperator("local-disk ", AsStringOperator(InputSelector(input_to_select="disk_size"))),
         " HDD",
     ),
     files_to_create={
@@ -273,7 +256,7 @@ Gathervcfs_Dev = CommandToolBuilder(
     cpus=1,
     memory=6.519261,
     disk=AddOperator(
-        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        AddOperator("local-disk ", AsStringOperator(InputSelector(input_to_select="disk_size"))),
         " HDD",
     ),
     files_to_create={
@@ -581,7 +564,7 @@ Snpsvariantrecalibratorcreatemodel_Dev = CommandToolBuilder(
     cpus=2,
     memory=104.0,
     disk=AddOperator(
-        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        AddOperator("local-disk ", AsStringOperator(InputSelector(input_to_select="disk_size"))),
         " HDD",
     ),
     files_to_create={
@@ -846,7 +829,7 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
         JANIS_WDL_TOKEN_1=InputSelector(input_to_select="machine_mem"),
     ),
     disk=AddOperator(
-        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        AddOperator("local-disk ", AsStringOperator(InputSelector(input_to_select="disk_size"))),
         " HDD",
     ),
     files_to_create={
@@ -929,7 +912,7 @@ Gathertranches_Dev = CommandToolBuilder(
     cpus=2,
     memory=6.519261,
     disk=AddOperator(
-        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        AddOperator("local-disk ", AsStringOperator(InputSelector(input_to_select="disk_size"))),
         " HDD",
     ),
     files_to_create={
@@ -1043,7 +1026,7 @@ Applyrecalibration_Dev = CommandToolBuilder(
     cpus=1,
     memory=7.0,
     disk=AddOperator(
-        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        AddOperator("local-disk ", AsStringOperator(InputSelector(input_to_select="disk_size"))),
         " HDD",
     ),
     files_to_create={
@@ -1139,7 +1122,7 @@ Collectvariantcallingmetrics_Dev = CommandToolBuilder(
     cpus=2,
     memory=6.9849225,
     disk=AddOperator(
-        AddOperator("local-disk ", InputSelector(input_to_select="disk_size")),
+        AddOperator("local-disk ", AsStringOperator(InputSelector(input_to_select="disk_size"))),
         " HDD",
     ),
     files_to_create={
@@ -1161,11 +1144,6 @@ Variantcallingofthefuture = WorkflowBuilder(
 )
 
 Variantcallingofthefuture.input(
-    "unpadded_intervals_file",
-    String(),
-)
-
-Variantcallingofthefuture.input(
     "combined_gvcf",
     CompressedVcf(),
 )
@@ -1173,6 +1151,12 @@ Variantcallingofthefuture.input(
 Variantcallingofthefuture.input(
     "callset_name",
     String(),
+)
+
+Variantcallingofthefuture.input(
+    "unpadded_intervals_file",
+    String(),
+    default="gs://broad-references-private/HybSelOligos/xgen_plus_spikein/white_album_exome_calling_regions.v1.interval_list",
 )
 
 Variantcallingofthefuture.input(
@@ -1377,7 +1361,8 @@ Variantcallingofthefuture.input(
     "scatterCount",
     Int(optional=True),
     default=If(
-        GtOperator(Variantcallingofthefuture.unboundedScatterCount, 10),
+        AndOperator(Variantcallingofthefuture.unboundedScatterCount, 
+            GtOperator(Variantcallingofthefuture.unboundedScatterCount, 10)),
         Variantcallingofthefuture.unboundedScatterCount,
         10,
     ),
@@ -1418,7 +1403,7 @@ Variantcallingofthefuture.step(
         output_vcf_filename=AddOperator(
             AddOperator(
                 AddOperator(Variantcallingofthefuture.callset_name, "."),
-                ForEachSelector(),
+                AsStringOperator(ForEachSelector()),
             ),
             ".vcf.gz",
         ),
@@ -1426,12 +1411,12 @@ Variantcallingofthefuture.step(
         ref_fasta_index=Variantcallingofthefuture.ref_fasta_index,
         ref_dict=Variantcallingofthefuture.ref_dict,
         dbsnp_vcf=Variantcallingofthefuture.dbsnp_vcf,
+        is_small_callset=Variantcallingofthefuture.is_small_callset,
     ),
     foreach=RangeOperator(
         LengthOperator(Variantcallingofthefuture.unpadded_intervals)
     ),
 )
-
 
 Variantcallingofthefuture.step(
     "HardFilterAndMakeSitesOnlyVcf",
@@ -1441,14 +1426,14 @@ Variantcallingofthefuture.step(
         variant_filtered_vcf_filename=AddOperator(
             AddOperator(
                 AddOperator(Variantcallingofthefuture.callset_name, "."),
-                ForEachSelector(),
+                AsStringOperator(ForEachSelector()),
             ),
             ".variant_filtered.vcf.gz",
         ),
         sites_only_vcf_filename=AddOperator(
             AddOperator(
                 AddOperator(Variantcallingofthefuture.callset_name, "."),
-                ForEachSelector(),
+                AsStringOperator(ForEachSelector()),
             ),
             ".sites_only.variant_filtered.vcf.gz",
         ),
@@ -1535,23 +1520,23 @@ Variantcallingofthefuture.step(
     Snpsvariantrecalibrator_Dev(
         sites_only_variant_filtered_vcf=IndexOperator(
             Variantcallingofthefuture.HardFilterAndMakeSitesOnlyVcf.sites_only_vcf,
-            ForEachSelector(),
+            AsStringOperator(ForEachSelector()),
         ),
         sites_only_variant_filtered_vcf_index=IndexOperator(
             Variantcallingofthefuture.HardFilterAndMakeSitesOnlyVcf.sites_only_vcf_index,
-            ForEachSelector(),
+            AsStringOperator(ForEachSelector()),
         ),
         recalibration_filename=AddOperator(
             AddOperator(
                 AddOperator(Variantcallingofthefuture.callset_name, ".snps."),
-                ForEachSelector(),
+                AsStringOperator(ForEachSelector()),
             ),
             ".recal",
         ),
         tranches_filename=AddOperator(
             AddOperator(
                 AddOperator(Variantcallingofthefuture.callset_name, ".snps."),
-                ForEachSelector(),
+                AsStringOperator(ForEachSelector()),
             ),
             ".tranches",
         ),
