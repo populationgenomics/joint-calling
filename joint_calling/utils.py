@@ -94,7 +94,7 @@ def file_exists(path: str) -> bool:
     return os.path.exists(path)
 
 
-def gs_cache_file(fpath: str, local_tmp_dir: str = None) -> str:
+def gs_cache_file(fpath: str, local_tmp_dir: str) -> str:
     """
     :param fpath: local or a `gs://` path. If the latter, the file
         will be downloaded and cached if local_tmp_dir is provided,
