@@ -355,7 +355,7 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
             input_type=String(),
             default=If(
                 IsDefined(InputSelector(input_to_select="model_report")),
-                "--input-model $MODEL_REPORT --output-tranches-for-scatter",
+                AddOperator(AddOperator("--input-model ", InputSelector(input_to_select="model_report")), "--output-tranches-for-scatter"),
                 "",
             ),
             doc=InputDocumentation(doc=None),
@@ -403,8 +403,7 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
     disk=InputSelector(input_to_select="disk_size"),
     files_to_create={
         "script.sh": StringFormatter(
-            "\n    set -euo pipefail\n\n    MODEL_REPORT={JANIS_WDL_TOKEN_1}\n\n    gatk --java-options -Xms100g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_3} \\n      --tranches-file {JANIS_WDL_TOKEN_4} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_5} \\n      -an {JANIS_WDL_TOKEN_6} \\n      -mode INDEL \\n      {JANIS_WDL_TOKEN_7} \\n      {JANIS_WDL_TOKEN_8} \\n      --max-gaussians {JANIS_WDL_TOKEN_9} \\n      -resource:mills,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_10} \\n      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_11} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {JANIS_WDL_TOKEN_12}\n  ",
-            JANIS_WDL_TOKEN_1=InputSelector(input_to_select="model_report"),
+            "\n    set -euo pipefail\n\n    gatk --java-options -Xms100g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_3} \\n      --tranches-file {JANIS_WDL_TOKEN_4} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_5} \\n      -an {JANIS_WDL_TOKEN_6} \\n      -mode INDEL \\n      {JANIS_WDL_TOKEN_7} \\n      {JANIS_WDL_TOKEN_8} \\n      --max-gaussians {JANIS_WDL_TOKEN_9} \\n      -resource:mills,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_10} \\n      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_11} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {JANIS_WDL_TOKEN_12}\n  ",
             JANIS_WDL_TOKEN_2=InputSelector(
                 input_to_select="sites_only_variant_filtered_vcf"
             ),
@@ -780,7 +779,7 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
             input_type=String(),
             default=If(
                 IsDefined(InputSelector(input_to_select="model_report")),
-                "--input-model $MODEL_REPORT --output-tranches-for-scatter",
+                AddOperator(AddOperator("--input-model ", InputSelector(input_to_select="model_report")), "--output-tranches-for-scatter"),
                 "",
             ),
             doc=InputDocumentation(doc=None),

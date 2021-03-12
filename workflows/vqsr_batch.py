@@ -150,8 +150,8 @@ def main(
     ref_fasta = b.read_input_group(
         base=ref_fasta,
         dict=ref_fasta.replace(".fasta", "")
-        .replace(".fna", "")
         .replace(".fa", "")
+        .replace(".fna", "")
         + ".dict",
         fai=ref_fasta + ".fai",
     )
@@ -206,7 +206,7 @@ def main(
         HardFilterAndMakeSitesOnlyVcf.append(
             add_HardFilterAndMakeSitesOnlyVcf_step(
                 b,
-                vcf=GnarlyGenotyperOnVcf[idx].output_vcf,
+                vcf=GnarlyGenotyperOnVcf.output_vcf,
                 excess_het_threshold=excess_het_threshold,
                 variant_filtered_vcf_filename=(
                     ((callset_name + ".") + str(idx)) + ".variant_filtered.vcf.gz"
@@ -220,7 +220,7 @@ def main(
         )
     SitesOnlyGatherVcf = add_SitesOnlyGatherVcf_step(
         b,
-        input_vcfs=[j.sites_only_vcf for j in HardFilterAndMakeSitesOnlyVcf],
+        input_vcfs=HardFilterAndMakeSitesOnlyVcf.sites_only_vcf,
         output_vcf_name=(callset_name + ".sites_only.vcf.gz"),
         disk_size=medium_disk,
     )
@@ -425,13 +425,13 @@ def add_GnarlyGenotyperOnVcf_step(
 
     gatk --java-options -Xms8g \\
       GnarlyGenotyper \\
-      -R {ref_fasta} \\
+      -R {ref_fasta.base} \\
       -O {output_vcf_filename} \\
-      -D {dbsnp_vcf} \\
+      -D {dbsnp_vcf.base} \\
       --only-output-calls-starting-in-intervals \\
       --keep-all-sites \\
-      -V {combined_gvcf} \\
-      -L {interval}"""
+      -V {combined_gvcf.base} \\
+      -L {interval.base}"""
     )
 
     j.command(
@@ -561,7 +561,6 @@ def add_IndelsVariantRecalibrator_step(
     dbsnp_resource_vcf_index,
     use_allele_specific_annotations,
     disk_size,
-    model_report=None,
     max_gaussians=4,
     model_report_arg=None,
     container="ubuntu:latest",
@@ -571,7 +570,7 @@ def add_IndelsVariantRecalibrator_step(
         model_report_arg
         if model_report_arg is not None
         else (
-            "--input-model $MODEL_REPORT --output-tranches-for-scatter"
+            (("--input-model " + model_report) + "--output-tranches-for-scatter")
             if model_report is not None
             else ""
         )
@@ -582,8 +581,6 @@ def add_IndelsVariantRecalibrator_step(
 
     j.command(
         f"""set -euo pipefail
-
-    MODEL_REPORT={model_report.base}
 
     gatk --java-options -Xms100g \\
       VariantRecalibrator \\
@@ -667,10 +664,10 @@ def add_SNPsVariantRecalibratorCreateModel_step(
       --sample-every-Nth-variant {downsampleFactor} \\
       --output-model {model_report_filename} \\
       --max-gaussians {max_gaussians} \\
-      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf} \\
-      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf} \\
-      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf}"""
+      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
+      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
+      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base}"""
     )
 
     j.command(
@@ -755,7 +752,7 @@ def add_SNPsVariantRecalibratorScattered_step(
         model_report_arg
         if model_report_arg is not None
         else (
-            "--input-model $MODEL_REPORT --output-tranches-for-scatter"
+            (("--input-model " + model_report) + "--output-tranches-for-scatter")
             if model_report is not None
             else ""
         )
