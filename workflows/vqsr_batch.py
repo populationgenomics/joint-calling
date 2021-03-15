@@ -1,4 +1,4 @@
-import math, os
+import math, os, tempfile
 from typing import Union, Optional, List
 
 import click
@@ -150,8 +150,8 @@ def main(
     ref_fasta = b.read_input_group(
         base=ref_fasta,
         dict=ref_fasta.replace(".fasta", "")
-        .replace(".fa", "")
         .replace(".fna", "")
+        .replace(".fa", "")
         + ".dict",
         fai=ref_fasta + ".fai",
     )
@@ -301,24 +301,20 @@ def main(
     )
 
     ApplyRecalibration = []
-    for j in HardFilterAndMakeSitesOnlyVcf:
+    for idx, j in enumerate(HardFilterAndMakeSitesOnlyVcf):
         ApplyRecalibration.append(
             add_ApplyRecalibration_step(
                 b,
                 recalibrated_vcf_filename=(
-                    ((callset_name + ".filtered.") + idx) + ".vcf.gz"
+                    ((callset_name + ".filtered.") + str(idx)) + ".vcf.gz"
                 ),
                 input_vcf=j.variant_filtered_vcf,
                 input_vcf_index=j.variant_filtered_vcf_index,
                 indels_recalibration=IndelsVariantRecalibrator.recalibration,
                 indels_recalibration_index=IndelsVariantRecalibrator.recalibration_index,
                 indels_tranches=IndelsVariantRecalibrator.tranches,
-                snps_recalibration=SNPsVariantRecalibratorScattered.recalibration[
-                    idx
-                ],
-                snps_recalibration_index=SNPsVariantRecalibratorScattered.recalibration_index[
-                    idx
-                ],
+                snps_recalibration=SNPsVariantRecalibratorScattered[idx].recalibration,
+                snps_recalibration_index=SNPsVariantRecalibratorScattered[idx].recalibration_index,
                 snps_tranches=SNPGatherTranches.out_tranches,
                 indel_filter_level=indel_filter_level,
                 snp_filter_level=snp_filter_level,
@@ -344,7 +340,7 @@ def main(
     if is_small_callset:
         FinalGatherVcf = add_FinalGatherVcf_step(
             b,
-            input_vcfs=ApplyRecalibration.recalibrated_vcf,
+            input_vcfs=[j.recalibrated_vcf for j in ApplyRecalibration],
             output_vcf_name=(callset_name + ".vcf.gz"),
             disk_size=huge_disk,
         )
@@ -363,7 +359,7 @@ def main(
             disk_size=huge_disk,
         )
 
-    return b
+    b.run()
 
 
 def add_TabixBGzippedFile_step(
@@ -768,10 +764,15 @@ def add_SNPGatherTranches_step(
     j.memory(f"6.519261G")
     j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
 
+    tranches_file = tempfile.NamedTemporaryFile(suffix="_tranches.list")
+    with open(tranches_file.name, 'w') as out:
+        for tranch in tranches:
+            out.write(f'{tranch}\n')
+
     j.command(
         f"""set -euo pipefail
 
-    tranches_fofn={JANIS: write_lines([inputs.tranches])}
+    tranches_fofn={tranches_file.name}
 
     # Jose says:
     # Cromwell will fall over if we have it try to localize tens of thousands of files,

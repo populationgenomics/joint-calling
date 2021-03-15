@@ -1,5 +1,11 @@
 --- workflows/vqsr_batch.py	2021-03-15 12:43:43.000000000 +1100
 +++ workflows/vqsr_batch.py	2021-03-15 12:43:49.000000000 +1100
+@@ -1,4 +1,4 @@
+-import math, os
++import math, os, tempfile
+ from typing import Union, Optional, List
+
+ import click
 @@ -206,7 +206,7 @@
          HardFilterAndMakeSitesOnlyVcf.append(
              add_HardFilterAndMakeSitesOnlyVcf_step(
@@ -38,7 +44,7 @@
                  recalibration_filename=(
                      ((callset_name + ".snps.") + str(idx)) + ".recal"
                  ),
-@@ -299,23 +295,21 @@ def main(
+@@ -299,32 +295,26 @@
          )
      SNPGatherTranches = add_SNPGatherTranches_step(
          b,
@@ -50,12 +56,13 @@
  
      ApplyRecalibration = []
 -    for idx in range(len(HardFilterAndMakeSitesOnlyVcf.variant_filtered_vcf)):
-+    for j in HardFilterAndMakeSitesOnlyVcf:
++    for idx, j in enumerate(HardFilterAndMakeSitesOnlyVcf):
          ApplyRecalibration.append(
              add_ApplyRecalibration_step(
                  b,
                  recalibrated_vcf_filename=(
-                     ((callset_name + ".filtered.") + idx) + ".vcf.gz"
+-                    ((callset_name + ".filtered.") + idx) + ".vcf.gz"
++                    ((callset_name + ".filtered.") + str(idx)) + ".vcf.gz"
                  ),
 -                input_vcf=HardFilterAndMakeSitesOnlyVcf.variant_filtered_vcf[idx],
 -                input_vcf_index=HardFilterAndMakeSitesOnlyVcf.variant_filtered_vcf_index[
@@ -66,3 +73,40 @@
                  indels_recalibration=IndelsVariantRecalibrator.recalibration,
                  indels_recalibration_index=IndelsVariantRecalibrator.recalibration_index,
                  indels_tranches=IndelsVariantRecalibrator.tranches,
+-                snps_recalibration=SNPsVariantRecalibratorScattered.recalibration[
+-                    idx
+-                ],
+-                snps_recalibration_index=SNPsVariantRecalibratorScattered.recalibration_index[
+-                    idx
+-                ],
++                snps_recalibration=SNPsVariantRecalibratorScattered[idx].recalibration,
++                snps_recalibration_index=SNPsVariantRecalibratorScattered[idx].recalibration_index,
+                 snps_tranches=SNPGatherTranches.out_tranches,
+                 indel_filter_level=indel_filter_level,
+                 snp_filter_level=snp_filter_level,
+@@ -344,7 +340,7 @@ def main(
+     if is_small_callset:
+         FinalGatherVcf = add_FinalGatherVcf_step(
+             b,
+-            input_vcfs=ApplyRecalibration.recalibrated_vcf,
++            input_vcfs=[j.recalibrated_vcf for j in ApplyRecalibration],
+             output_vcf_name=(callset_name + ".vcf.gz"),
+             disk_size=huge_disk,
+         )
+@@ -774,10 +764,15 @@
+     j.memory(f"6.519261G")
+     j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+
++    tranches_file = tempfile.NamedTemporaryFile(suffix="_tranches.list")
++    with open(tranches_file.name, 'w') as out:
++        for tranch in tranches:
++            out.write(f'{tranch}\n')
++
+     j.command(
+         f"""set -euo pipefail
+
+-    tranches_fofn={JANIS: write_lines([inputs.tranches])}
++    tranches_fofn={tranches_file.name}
+
+     # Jose says:
+     # Cromwell will fall over if we have it try to localize tens of thousands of files,
