@@ -293,6 +293,7 @@ def main(
                 dbsnp_resource_vcf_index=dbsnp_resource_vcf_index,
                 disk_size=small_disk,
                 machine_mem_gb=apply_recalibration_machine_mem_gb,
+                is_small_callset=is_small_callset,
                 use_allele_specific_annotations=use_allele_specific_annotations,
             )
         )
@@ -427,11 +428,11 @@ def add_GnarlyGenotyperOnVcf_step(
       GnarlyGenotyper \\
       -R {ref_fasta.base} \\
       -O {output_vcf_filename} \\
-      -D {dbsnp_vcf.base} \\
+      -D {dbsnp_vcf} \\
       --only-output-calls-starting-in-intervals \\
       --keep-all-sites \\
       -V {combined_gvcf.base} \\
-      -L {interval.base}"""
+      -L {interval}"""
     )
 
     j.command(
@@ -469,7 +470,7 @@ def add_HardFilterAndMakeSitesOnlyVcf_step(
       --filter-expression 'ExcessHet > {excess_het_threshold}' \\
       --filter-name ExcessHet \\
       -O {variant_filtered_vcf_filename} \\
-      -V {vcf.base}
+      -V {vcf}
 
     gatk --java-options -Xms3g \\
       MakeSitesOnlyVcf \\
@@ -562,19 +563,9 @@ def add_IndelsVariantRecalibrator_step(
     use_allele_specific_annotations,
     disk_size,
     max_gaussians=4,
-    model_report_arg=None,
     container="ubuntu:latest",
 ):
     j = b.new_job("IndelsVariantRecalibrator")
-    model_report_arg = (
-        model_report_arg
-        if model_report_arg is not None
-        else (
-            (("--input-model " + model_report) + "--output-tranches-for-scatter")
-            if model_report is not None
-            else ""
-        )
-    )
     j.image(container)
     j.memory(f"104.0G")
     j.storage(f"disk_sizeG")
@@ -584,7 +575,7 @@ def add_IndelsVariantRecalibrator_step(
 
     gatk --java-options -Xms100g \\
       VariantRecalibrator \\
-      -V {sites_only_variant_filtered_vcf.base} \\
+      -V {sites_only_variant_filtered_vcf} \\
       -O {recalibration_filename} \\
       --tranches-file {tranches_filename} \\
       --trust-all-polymorphic \\
@@ -592,11 +583,10 @@ def add_IndelsVariantRecalibrator_step(
       -an {recalibration_annotation_values} \\
       -mode INDEL \\
       {use_allele_specific_annotations} \\
-      {model_report_arg} \\
       --max-gaussians {max_gaussians} \\
-      -resource:mills,known=false,training=true,truth=true,prior=12 {mills_resource_vcf.base} \\
-      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {axiomPoly_resource_vcf.base} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf.base}"""
+      -resource:mills,known=false,training=true,truth=true,prior=12 {mills_resource_vcf} \\
+      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {axiomPoly_resource_vcf} \\
+      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf}"""
     )
 
     j.command(
@@ -653,7 +643,7 @@ def add_SNPsVariantRecalibratorCreateModel_step(
 
     gatk --java-options -Xms{java_mem}g \\
       VariantRecalibrator \\
-      -V {sites_only_variant_filtered_vcf.base} \\
+      -V {sites_only_variant_filtered_vcf} \\
       -O {recalibration_filename} \\
       --tranches-file {tranches_filename} \\
       --trust-all-polymorphic \\
@@ -664,10 +654,10 @@ def add_SNPsVariantRecalibratorCreateModel_step(
       --sample-every-Nth-variant {downsampleFactor} \\
       --output-model {model_report_filename} \\
       --max-gaussians {max_gaussians} \\
-      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
-      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
-      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base}"""
+      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf} \\
+      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf} \\
+      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf} \\
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf}"""
     )
 
     j.command(
@@ -697,54 +687,22 @@ def add_SNPsVariantRecalibratorScattered_step(
     dbsnp_resource_vcf_index,
     disk_size,
     use_allele_specific_annotations,
+    is_small_callset,
     model_report=None,
     max_gaussians=6,
     gatk_docker="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     machine_mem_gb=None,
-    auto_mem=None,
     machine_mem=None,
     model_report_arg=None,
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
 ):
     j = b.new_job("SNPsVariantRecalibratorScattered")
-    auto_mem = (
-        auto_mem
-        if auto_mem is not None
-        else math.ceil(
-            (
-                2
-                * (
-                    None
-                    * (
-                        (
-                            (
-                                (
-                                    (
-                                        0
-                                        + os.stat(
-                                            sites_only_variant_filtered_vcf
-                                        ).st_size
-                                        / 1000
-                                    )
-                                    + os.stat(hapmap_resource_vcf).st_size / 1000
-                                )
-                                + os.stat(omni_resource_vcf).st_size / 1000
-                            )
-                            + os.stat(one_thousand_genomes_resource_vcf).st_size
-                            / 1000
-                        )
-                        + os.stat(dbsnp_resource_vcf).st_size / 1000
-                    )
-                )
-            )
-        )
-    )
     machine_mem = (
         machine_mem
         if machine_mem is not None
         else [
             a
-            for a in [machine_mem_gb, (7 if (auto_mem < 7) else auto_mem)]
+            for a in [machine_mem_gb, (30 if is_small_callset else 60)]
             if a is not None
         ]
     )
@@ -764,11 +722,11 @@ def add_SNPsVariantRecalibratorScattered_step(
     j.command(
         f"""set -euo pipefail
 
-    MODEL_REPORT={model_report.base}
+    MODEL_REPORT={model_report}
 
     gatk --java-options -Xms{{(machine_mem - 1)}}g \\
       VariantRecalibrator \\
-      -V {sites_only_variant_filtered_vcf.base} \\
+      -V {sites_only_variant_filtered_vcf} \\
       -O {recalibration_filename} \\
       --tranches-file {tranches_filename} \\
       --trust-all-polymorphic \\
@@ -778,10 +736,10 @@ def add_SNPsVariantRecalibratorScattered_step(
       {use_allele_specific_annotations} \\
        {model_report_arg} \\
       --max-gaussians {max_gaussians} \\
-      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
-      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
-      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base}"""
+      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf} \\
+      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf} \\
+      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf} \\
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf}"""
     )
 
     j.command(
@@ -887,9 +845,9 @@ def add_ApplyRecalibration_step(
     gatk --java-options -Xms5g \\
       ApplyVQSR \\
       -O tmp.indel.recalibrated.vcf \\
-      -V {input_vcf.base} \\
-      --recal-file {indels_recalibration.base} \\
-      --tranches-file {indels_tranches.base} \\
+      -V {input_vcf} \\
+      --recal-file {indels_recalibration} \\
+      --tranches-file {indels_tranches} \\
       --truth-sensitivity-filter-level {indel_filter_level} \\
       --create-output-variant-index true \\
       -mode INDEL {use_allele_specific_annotations} \\
@@ -899,8 +857,8 @@ def add_ApplyRecalibration_step(
       ApplyVQSR \\
       -O {recalibrated_vcf_filename} \\
       -V tmp.indel.recalibrated.vcf \\
-      --recal-file {snps_recalibration.base} \\
-      --tranches-file {snps_tranches.base} \\
+      --recal-file {snps_recalibration} \\
+      --tranches-file {snps_tranches} \\
       --truth-sensitivity-filter-level {snp_filter_level} \\
       --create-output-variant-index true \\
       -mode SNP {use_allele_specific_annotations} \\
@@ -945,12 +903,12 @@ def add_CollectMetricsSharded_step(
 
     gatk --java-options -Xms6g \\
       CollectVariantCallingMetrics \\
-      --INPUT {input_vcf.base} \\
-      --DBSNP {dbsnp_vcf.base} \\
-      --SEQUENCE_DICTIONARY {ref_dict.base} \\
+      --INPUT {input_vcf} \\
+      --DBSNP {dbsnp_vcf} \\
+      --SEQUENCE_DICTIONARY {ref_dict} \\
       --OUTPUT {metrics_filename_prefix} \\
       --THREAD_COUNT 8 \\
-      --TARGET_INTERVALS {interval_list.base}"""
+      --TARGET_INTERVALS {interval_list}"""
     )
 
     j.command(
@@ -1035,12 +993,12 @@ def add_CollectMetricsOnFullVcf_step(
 
     gatk --java-options -Xms6g \\
       CollectVariantCallingMetrics \\
-      --INPUT {input_vcf.base} \\
-      --DBSNP {dbsnp_vcf.base} \\
-      --SEQUENCE_DICTIONARY {ref_dict.base} \\
+      --INPUT {input_vcf} \\
+      --DBSNP {dbsnp_vcf} \\
+      --SEQUENCE_DICTIONARY {ref_dict} \\
       --OUTPUT {metrics_filename_prefix} \\
       --THREAD_COUNT 8 \\
-      --TARGET_INTERVALS {interval_list.base}"""
+      --TARGET_INTERVALS {interval_list}"""
     )
 
     j.command(

@@ -282,11 +282,6 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
             doc=InputDocumentation(doc=None),
         ),
         ToolInput(
-            tag="model_report",
-            input_type=File(optional=True),
-            doc=InputDocumentation(doc=None),
-        ),
-        ToolInput(
             tag="recalibration_tranche_values",
             input_type=Array(t=String()),
             doc=InputDocumentation(doc=None),
@@ -349,17 +344,7 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
         ),
         ToolInput(
             tag="disk_size", input_type=Int(), doc=InputDocumentation(doc=None)
-        ),
-        ToolInput(
-            tag="model_report_arg",
-            input_type=String(),
-            default=If(
-                IsDefined(InputSelector(input_to_select="model_report")),
-                AddOperator(AddOperator("--input-model ", InputSelector(input_to_select="model_report")), "--output-tranches-for-scatter"),
-                "",
-            ),
-            doc=InputDocumentation(doc=None),
-        ),
+        )
     ],
     outputs=[
         ToolOutput(
@@ -403,7 +388,7 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
     disk=InputSelector(input_to_select="disk_size"),
     files_to_create={
         "script.sh": StringFormatter(
-            "\n    set -euo pipefail\n\n    gatk --java-options -Xms100g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_3} \\n      --tranches-file {JANIS_WDL_TOKEN_4} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_5} \\n      -an {JANIS_WDL_TOKEN_6} \\n      -mode INDEL \\n      {JANIS_WDL_TOKEN_7} \\n      {JANIS_WDL_TOKEN_8} \\n      --max-gaussians {JANIS_WDL_TOKEN_9} \\n      -resource:mills,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_10} \\n      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_11} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {JANIS_WDL_TOKEN_12}\n  ",
+            "\n    set -euo pipefail\n\n    gatk --java-options -Xms100g \\n      VariantRecalibrator \\n      -V {JANIS_WDL_TOKEN_2} \\n      -O {JANIS_WDL_TOKEN_3} \\n      --tranches-file {JANIS_WDL_TOKEN_4} \\n      --trust-all-polymorphic \\n      -tranche {JANIS_WDL_TOKEN_5} \\n      -an {JANIS_WDL_TOKEN_6} \\n      -mode INDEL \\n      {JANIS_WDL_TOKEN_7} \\n      --max-gaussians {JANIS_WDL_TOKEN_9} \\n      -resource:mills,known=false,training=true,truth=true,prior=12 {JANIS_WDL_TOKEN_10} \\n      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {JANIS_WDL_TOKEN_11} \\n      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {JANIS_WDL_TOKEN_12}\n  ",
             JANIS_WDL_TOKEN_2=InputSelector(
                 input_to_select="sites_only_variant_filtered_vcf"
             ),
@@ -420,7 +405,6 @@ Indelsvariantrecalibrator_Dev = CommandToolBuilder(
             JANIS_WDL_TOKEN_7=InputSelector(
                 input_to_select="use_allele_specific_annotations"
             ),
-            JANIS_WDL_TOKEN_8=InputSelector(input_to_select="model_report_arg"),
             JANIS_WDL_TOKEN_9=InputSelector(input_to_select="max_gaussians"),
             JANIS_WDL_TOKEN_10=InputSelector(
                 input_to_select="mills_resource_vcf"
@@ -699,65 +683,21 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
             doc=InputDocumentation(doc=None),
         ),
         ToolInput(
-            tag="machine_mem_gb",
-            input_type=Int(optional=True),
-            doc=InputDocumentation(
-                doc=None, quality=InputQualityType.configuration
-            ),
-        ),
-        ToolInput(
             tag="use_allele_specific_annotations",
             input_type=Boolean(),
             doc=InputDocumentation(doc=None),
         ),
         ToolInput(
-            tag="auto_mem",
-            input_type=Int(),
-            default=CeilOperator(
-                MultiplyOperator(
-                    2,
-                    MultiplyOperator(
-                        None,
-                        AddOperator(
-                            AddOperator(
-                                AddOperator(
-                                    AddOperator(
-                                        AddOperator(
-                                            0,
-                                            FileSizeOperator(
-                                                InputSelector(
-                                                    input_to_select="sites_only_variant_filtered_vcf"
-                                                )
-                                            ),
-                                        ),
-                                        FileSizeOperator(
-                                            InputSelector(
-                                                input_to_select="hapmap_resource_vcf"
-                                            )
-                                        ),
-                                    ),
-                                    FileSizeOperator(
-                                        InputSelector(
-                                            input_to_select="omni_resource_vcf"
-                                        )
-                                    ),
-                                ),
-                                FileSizeOperator(
-                                    InputSelector(
-                                        input_to_select="one_thousand_genomes_resource_vcf"
-                                    )
-                                ),
-                            ),
-                            FileSizeOperator(
-                                InputSelector(
-                                    input_to_select="dbsnp_resource_vcf"
-                                )
-                            ),
-                        ),
-                    ),
-                )
-            ),
+            tag="is_small_callset",
+            input_type=Boolean(),
             doc=InputDocumentation(doc=None),
+        ),
+        ToolInput(
+            tag="machine_mem_gb",
+            input_type=Int(optional=True),
+            doc=InputDocumentation(
+                doc=None, quality=InputQualityType.configuration
+            ),
         ),
         ToolInput(
             tag="machine_mem",
@@ -766,9 +706,9 @@ Snpsvariantrecalibrator_Dev = CommandToolBuilder(
                 [
                     InputSelector(input_to_select="machine_mem_gb"),
                     If(
-                        LtOperator(InputSelector(input_to_select="auto_mem"), 7),
-                        7,
-                        InputSelector(input_to_select="auto_mem"),
+                        InputSelector(input_to_select="is_small_callset"),
+                        30,
+                        60,
                     ),
                 ]
             ),
@@ -1552,6 +1492,7 @@ Variantcallingofthefuture.step(
         dbsnp_resource_vcf_index=Variantcallingofthefuture.dbsnp_resource_vcf_index,
         disk_size=Variantcallingofthefuture.small_disk,
         machine_mem_gb=Variantcallingofthefuture.apply_recalibration_machine_mem_gb,
+        is_small_callset=Variantcallingofthefuture.is_small_callset,
         use_allele_specific_annotations=Variantcallingofthefuture.use_allele_specific_annotations,
     ),
     foreach=RangeOperator(
@@ -1675,6 +1616,6 @@ if __name__ == "__main__":
     tool = Variantcallingofthefuture()#.translate("wdl")
     # tool.get_dot_plot()
     s = HailBatchTranslator.translate_workflow(tool)
-    out = "vqsr_batch.py"
+    out = "vqsr_batch-generated.py"
     with open(out, "w+") as f:
         f.write(s)
