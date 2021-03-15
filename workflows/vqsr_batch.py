@@ -206,7 +206,7 @@ def main(
         HardFilterAndMakeSitesOnlyVcf.append(
             add_HardFilterAndMakeSitesOnlyVcf_step(
                 b,
-                vcf=GnarlyGenotyperOnVcf.output_vcf,
+                vcf=[j.output_vcf for j in GnarlyGenotyperOnVcf],
                 excess_het_threshold=excess_het_threshold,
                 variant_filtered_vcf_filename=(
                     ((callset_name + ".") + str(idx)) + ".variant_filtered.vcf.gz"
@@ -220,7 +220,7 @@ def main(
         )
     SitesOnlyGatherVcf = add_SitesOnlyGatherVcf_step(
         b,
-        input_vcfs=HardFilterAndMakeSitesOnlyVcf.sites_only_vcf,
+        input_vcfs=[j.sites_only_vcf for j in HardFilterAndMakeSitesOnlyVcf],
         output_vcf_name=(callset_name + ".sites_only.vcf.gz"),
         disk_size=medium_disk,
     )
@@ -264,16 +264,12 @@ def main(
     )
 
     SNPsVariantRecalibratorScattered = []
-    for idx in range(len(HardFilterAndMakeSitesOnlyVcf.sites_only_vcf)):
+    for j in HardFilterAndMakeSitesOnlyVcf:
         SNPsVariantRecalibratorScattered.append(
             add_SNPsVariantRecalibratorScattered_step(
                 b,
-                sites_only_variant_filtered_vcf=HardFilterAndMakeSitesOnlyVcf.sites_only_vcf[
-                    str(idx)
-                ],
-                sites_only_variant_filtered_vcf_index=HardFilterAndMakeSitesOnlyVcf.sites_only_vcf_index[
-                    str(idx)
-                ],
+                sites_only_variant_filtered_vcf=j.sites_only_vcf,
+                sites_only_variant_filtered_vcf_index=j.sites_only_vcf_index,
                 recalibration_filename=(
                     ((callset_name + ".snps.") + str(idx)) + ".recal"
                 ),
@@ -299,23 +295,21 @@ def main(
         )
     SNPGatherTranches = add_SNPGatherTranches_step(
         b,
-        tranches=SNPsVariantRecalibratorScattered.tranches,
+        tranches=[j.tranches for j in SNPsVariantRecalibratorScattered],
         output_filename=(callset_name + ".snps.gathered.tranches"),
         disk_size=small_disk,
     )
 
     ApplyRecalibration = []
-    for idx in range(len(HardFilterAndMakeSitesOnlyVcf.variant_filtered_vcf)):
+    for j in HardFilterAndMakeSitesOnlyVcf:
         ApplyRecalibration.append(
             add_ApplyRecalibration_step(
                 b,
                 recalibrated_vcf_filename=(
                     ((callset_name + ".filtered.") + idx) + ".vcf.gz"
                 ),
-                input_vcf=HardFilterAndMakeSitesOnlyVcf.variant_filtered_vcf[idx],
-                input_vcf_index=HardFilterAndMakeSitesOnlyVcf.variant_filtered_vcf_index[
-                    idx
-                ],
+                input_vcf=j.variant_filtered_vcf,
+                input_vcf_index=j.variant_filtered_vcf_index,
                 indels_recalibration=IndelsVariantRecalibrator.recalibration,
                 indels_recalibration_index=IndelsVariantRecalibrator.recalibration_index,
                 indels_tranches=IndelsVariantRecalibrator.tranches,
