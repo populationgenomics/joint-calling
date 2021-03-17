@@ -3,7 +3,7 @@
     The upload processor will determine when samples should be added
     to existing MatrixTables where appropriate and which MatrixTables
     they should be combined with in this case. Following a successful
-    run all uploaded files will be moved to archival storage"""
+    run all uploaded files will be moved to archival storage."""
 
 from google.cloud import storage
 from google.api_core.exceptions import NotFound
@@ -12,13 +12,13 @@ from google.api_core.exceptions import NotFound
 def copy_files(
     sample_files: list, source_bucket_name: str, target_bucket_name: str
 ) -> bool:
-    """Given a list of file names, an source bucket and
+    """Given a list of file names, a source bucket and
     a target bucket, this function will copy the identified files
-    to their new location. The function assumes that the sample_files have
+    to their new location. The function assumes that the file names have
     been validated at an earlier stage. It will return true when the
-    files have been all successfully copied and false if at least 1 wasn't"""
+    files have been all successfully copied and false if at least 1 was not."""
 
-    # Connecting to buckets.
+    # Connecting to buckets
     try:
         storage_client = storage.Client()
         source_bucket = storage_client.get_bucket(source_bucket_name)
@@ -28,6 +28,7 @@ def copy_files(
 
     # Copying files from source bucket to target bucket
     current_files = storage_client.list_blobs(source_bucket)
+    # A list of unique identifiers for each file in the bucket
     sample_crc32cs = []
 
     for current_file in current_files:
@@ -35,7 +36,7 @@ def copy_files(
             sample_crc32cs.append(current_file.crc32c)
             source_bucket.copy_blob(current_file, target_bucket)
 
-    # Checks that the files were successfully copied over.
+    # Checks that the files were successfully copied over
     updated_files = storage_client.list_blobs(target_bucket)
     compare_list = []
     for updated_file in updated_files:
@@ -52,7 +53,7 @@ def delete_files(samples: list, target_bucket_name: str) -> bool:
     return true if all files are successfully deleted and false
     if at least one is not."""
 
-    # Connecting to buckets.
+    # Connecting to buckets
 
     try:
         storage_client = storage.Client()
@@ -60,7 +61,9 @@ def delete_files(samples: list, target_bucket_name: str) -> bool:
     except NotFound as invalid_details:
         raise Exception('Bucket does not exist for this user.') from invalid_details
 
+    # A list of unique identifiers for each file in the bucket
     samples_crc32cs = []
+
     # Delete all files in the provided samples list
     current_files = storage_client.list_blobs(target_bucket)
     for current_file in current_files:
