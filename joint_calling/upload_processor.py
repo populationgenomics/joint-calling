@@ -12,7 +12,7 @@ from google.cloud import storage
 def copy_files(sample_files: list, source_bucket_name: str, target_bucket_name: str) -> bool:
     """ Given a list of file names, an source bucket and 
     a target bucket, this function will copy the identified files
-    to their new location. Assumes that sample_files has been validated 
+    to their new location. The function assumes that sample_files has been validated 
     at an earlier stage. Assumes source bucket has been validated."""
 
     #Connecting to buckets.
