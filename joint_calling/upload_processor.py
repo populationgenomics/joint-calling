@@ -1,11 +1,12 @@
-""" This function prepares gCVF's uploaded to GCP, based off sample status
-    logged in a database, for joint calling. The upload processor will
-    determine when samples should be added to existing MatrixTables where
-    appropriate and which MatrixTables they should be combined with.
-    Following a successful run all uploaded files will be moved to archival
-    storage"""
+""" This function prepares gCVF's uploaded to GCS, based off sample status
+    logged in a database, for further QC and downstream analysis.
+    The upload processor will determine when samples should be added
+    to existing MatrixTables where appropriate and which MatrixTables
+    they should be combined with in this case. Following a successful
+    run all uploaded files will be moved to archival storage"""
 
 from google.cloud import storage
+from google.api_core.exceptions import NotFound
 
 
 def copy_files(
@@ -13,18 +14,17 @@ def copy_files(
 ) -> bool:
     """Given a list of file names, an source bucket and
     a target bucket, this function will copy the identified files
-    to their new location. The function assumes that sample_files has been validated
-    at an earlier stage."""
+    to their new location. The function assumes that the sample_files have
+    been validated at an earlier stage. It will return true when the
+    files have been all successfully copied and false if at least 1 wasn't"""
 
     # Connecting to buckets.
     try:
         storage_client = storage.Client()
         source_bucket = storage_client.get_bucket(source_bucket_name)
         target_bucket = storage_client.get_bucket(target_bucket_name)
-    except Exception as invalid_details:
-        raise Exception(
-            'Invalid GCS details. Double check your bucket names & project config'
-        ) from invalid_details
+    except NotFound as invalid_details:
+        raise Exception('Bucket does not exist for this user.') from invalid_details
 
     # Copying files from source bucket to target bucket
     current_files = storage_client.list_blobs(source_bucket)
@@ -47,29 +47,32 @@ def copy_files(
 def delete_files(samples: list, target_bucket_name: str) -> bool:
     """Given a list of sample files and a target
     bucket, this function will delete the identified files
-    from their specified location"""
-    # Connecting to buckets.
+    from their specified location. This function assumes that
+    the samples list is validated at an earlier stage. It will
+    return true if all files are successfully deleted and false
+    if at least one is not."""
 
-    deleted = True
+    # Connecting to buckets.
 
     try:
         storage_client = storage.Client()
         target_bucket = storage_client.get_bucket(target_bucket_name)
-    except Exception as invalid_details:
-        raise Exception(
-            'Invalid GCS details. Double check your bucket names & project config'
-        ) from invalid_details
+    except NotFound as invalid_details:
+        raise Exception('Bucket does not exist for this user.') from invalid_details
 
+    samples_crc32cs = []
     # Delete all files in the provided samples list
     current_files = storage_client.list_blobs(target_bucket)
     for current_file in current_files:
         if current_file.name in samples:
+            samples_crc32cs.append(current_file.crc32c)
             target_bucket.delete_blob(current_file.name)
 
-    # Check that they were deleted
+    # Checks that the deleted files no longer exist in the bucket
+    deleted = True
     current_files = storage_client.list_blobs(target_bucket)
     for current_file in current_files:
-        if current_file.name in samples:
+        if current_file.crc32c in samples_crc32cs:
             deleted = False
 
     return deleted
