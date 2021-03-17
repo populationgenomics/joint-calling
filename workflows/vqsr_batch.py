@@ -125,6 +125,7 @@ def main(
     apply_recalibration_machine_mem_gb: Optional[int] = 60,
     is_small_callset: Optional[bool] = False,
 ):
+    backend = hb.ServiceBackend(billing_project="test")
     b = hb.Batch("VariantCallingOFTHEFUTURE")
     dbsnp_resource_vcf = (
         dbsnp_resource_vcf if dbsnp_resource_vcf is not None else dbsnp_vcf
@@ -149,53 +150,52 @@ def main(
     combined_gvcf = b.read_input(combined_gvcf)
     ref_fasta = b.read_input_group(
         base=ref_fasta,
-        dict=ref_fasta.replace(".fasta", "")
-        .replace(".fna", "")
-        .replace(".fa", "")
-        + ".dict",
-        fai=ref_fasta + ".fai",
+        dict=ref_dict or (
+            ref_fasta.replace(".fasta", "")
+            .replace(".fna", "")
+            .replace(".fa", "") + ".dict"),
+        fai=ref_fasta_index or (ref_fasta + ".fai"),
     )
-    ref_fasta_index = b.read_input(ref_fasta_index)
-    ref_dict = b.read_input(ref_dict)
-    dbsnp_vcf = b.read_input(dbsnp_vcf)
-    dbsnp_vcf_index = b.read_input(dbsnp_vcf_index)
+    dbsnp_vcf = b.read_input_group(
+        base=dbsnp_vcf, 
+        tbi=dbsnp_vcf_index)
     eval_interval_list = b.read_input(eval_interval_list)
-    hapmap_resource_vcf = b.read_input(hapmap_resource_vcf)
-    hapmap_resource_vcf_index = b.read_input(hapmap_resource_vcf_index)
-    omni_resource_vcf = b.read_input(omni_resource_vcf)
-    omni_resource_vcf_index = b.read_input(omni_resource_vcf_index)
-    one_thousand_genomes_resource_vcf = b.read_input(
-        one_thousand_genomes_resource_vcf
-    )
-    one_thousand_genomes_resource_vcf_index = b.read_input(
-        one_thousand_genomes_resource_vcf_index
-    )
-    mills_resource_vcf = b.read_input(mills_resource_vcf)
-    mills_resource_vcf_index = b.read_input(mills_resource_vcf_index)
-    axiomPoly_resource_vcf = b.read_input(axiomPoly_resource_vcf)
-    axiomPoly_resource_vcf_index = b.read_input(axiomPoly_resource_vcf_index)
-    dbsnp_resource_vcf = b.read_input(dbsnp_resource_vcf)
-    dbsnp_resource_vcf_index = b.read_input(dbsnp_resource_vcf_index)
+    hapmap_resource_vcf = b.read_input_group(
+        base=hapmap_resource_vcf, 
+        tbi=hapmap_resource_vcf_index)
+    omni_resource_vcf = b.read_input_group(
+        base=omni_resource_vcf, 
+        tbi=omni_resource_vcf_index)
+    one_thousand_genomes_resource_vcf = b.read_input_group(
+        base=one_thousand_genomes_resource_vcf, 
+        tbi=one_thousand_genomes_resource_vcf_index)
+    mills_resource_vcf = b.read_input_group(
+        base=mills_resource_vcf,
+        tbi=mills_resource_vcf_index)
+    axiomPoly_resource_vcf = b.read_input_group(
+        base=axiomPoly_resource_vcf, 
+        tbi=axiomPoly_resource_vcf_index)
+    dbsnp_resource_vcf = b.read_input_group(
+        base=dbsnp_resource_vcf, 
+        tbi=dbsnp_resource_vcf_index)
+
     unpadded_intervals = [
         b.read_input(inner_unpadded_intervals)
         for inner_unpadded_intervals in unpadded_intervals
     ]
-
-    TabixBGzippedFile = add_TabixBGzippedFile_step(b, inp=combined_gvcf)
+    unpadded_intervals = unpadded_intervals[0]
 
     GnarlyGenotyperOnVcf = []
     for idx in range(len(unpadded_intervals)):
         GnarlyGenotyperOnVcf.append(
             add_GnarlyGenotyperOnVcf_step(
                 b,
-                combined_gvcf=TabixBGzippedFile.out,
+                combined_gvcf=combined_gvcf,
                 interval=unpadded_intervals[idx],
                 output_vcf_filename=(
                     ((callset_name + ".") + str(idx)) + ".vcf.gz"
                 ),
                 ref_fasta=ref_fasta,
-                ref_fasta_index=ref_fasta_index,
-                ref_dict=ref_dict,
                 dbsnp_vcf=dbsnp_vcf,
                 is_small_callset=is_small_callset,
             )
@@ -206,7 +206,7 @@ def main(
         HardFilterAndMakeSitesOnlyVcf.append(
             add_HardFilterAndMakeSitesOnlyVcf_step(
                 b,
-                vcf=[j.output_vcf for j in GnarlyGenotyperOnVcf],
+                input_vcfs=[j.output_vcf for j in GnarlyGenotyperOnVcf],
                 excess_het_threshold=excess_het_threshold,
                 variant_filtered_vcf_filename=(
                     ((callset_name + ".") + str(idx)) + ".variant_filtered.vcf.gz"
@@ -227,24 +227,19 @@ def main(
     IndelsVariantRecalibrator = add_IndelsVariantRecalibrator_step(
         b,
         sites_only_variant_filtered_vcf=SitesOnlyGatherVcf.output_vcf,
-        sites_only_variant_filtered_vcf_index=SitesOnlyGatherVcf.output_vcf_index,
         recalibration_filename=(callset_name + ".indels.recal"),
         tranches_filename=(callset_name + ".indels.tranches"),
         recalibration_tranche_values=indel_recalibration_tranche_values,
         recalibration_annotation_values=indel_recalibration_annotation_values,
         mills_resource_vcf=mills_resource_vcf,
-        mills_resource_vcf_index=mills_resource_vcf_index,
         axiomPoly_resource_vcf=axiomPoly_resource_vcf,
-        axiomPoly_resource_vcf_index=axiomPoly_resource_vcf_index,
         dbsnp_resource_vcf=dbsnp_resource_vcf,
-        dbsnp_resource_vcf_index=dbsnp_resource_vcf_index,
         use_allele_specific_annotations=use_allele_specific_annotations,
         disk_size=small_disk,
     )
     SNPsVariantRecalibratorCreateModel = add_SNPsVariantRecalibratorCreateModel_step(
         b,
         sites_only_variant_filtered_vcf=SitesOnlyGatherVcf.output_vcf,
-        sites_only_variant_filtered_vcf_index=SitesOnlyGatherVcf.output_vcf_index,
         recalibration_filename=(callset_name + ".snps.recal"),
         tranches_filename=(callset_name + ".snps.tranches"),
         recalibration_tranche_values=snp_recalibration_tranche_values,
@@ -252,13 +247,9 @@ def main(
         downsampleFactor=SNP_VQSR_downsampleFactor,
         model_report_filename=(callset_name + ".snps.model.report"),
         hapmap_resource_vcf=hapmap_resource_vcf,
-        hapmap_resource_vcf_index=hapmap_resource_vcf_index,
         omni_resource_vcf=omni_resource_vcf,
-        omni_resource_vcf_index=omni_resource_vcf_index,
         one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
-        one_thousand_genomes_resource_vcf_index=one_thousand_genomes_resource_vcf_index,
         dbsnp_resource_vcf=dbsnp_resource_vcf,
-        dbsnp_resource_vcf_index=dbsnp_resource_vcf_index,
         disk_size=small_disk,
         use_allele_specific_annotations=use_allele_specific_annotations,
     )
@@ -269,7 +260,6 @@ def main(
             add_SNPsVariantRecalibratorScattered_step(
                 b,
                 sites_only_variant_filtered_vcf=j.sites_only_vcf,
-                sites_only_variant_filtered_vcf_index=j.sites_only_vcf_index,
                 recalibration_filename=(
                     ((callset_name + ".snps.") + str(idx)) + ".recal"
                 ),
@@ -280,13 +270,9 @@ def main(
                 recalibration_annotation_values=snp_recalibration_annotation_values,
                 model_report=SNPsVariantRecalibratorCreateModel.model_report,
                 hapmap_resource_vcf=hapmap_resource_vcf,
-                hapmap_resource_vcf_index=hapmap_resource_vcf_index,
                 omni_resource_vcf=omni_resource_vcf,
-                omni_resource_vcf_index=omni_resource_vcf_index,
                 one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
-                one_thousand_genomes_resource_vcf_index=one_thousand_genomes_resource_vcf_index,
                 dbsnp_resource_vcf=dbsnp_resource_vcf,
-                dbsnp_resource_vcf_index=dbsnp_resource_vcf_index,
                 disk_size=small_disk,
                 machine_mem_gb=apply_recalibration_machine_mem_gb,
                 is_small_callset=is_small_callset,
@@ -309,12 +295,9 @@ def main(
                     ((callset_name + ".filtered.") + str(idx)) + ".vcf.gz"
                 ),
                 input_vcf=j.variant_filtered_vcf,
-                input_vcf_index=j.variant_filtered_vcf_index,
                 indels_recalibration=IndelsVariantRecalibrator.recalibration,
-                indels_recalibration_index=IndelsVariantRecalibrator.recalibration_index,
                 indels_tranches=IndelsVariantRecalibrator.tranches,
                 snps_recalibration=SNPsVariantRecalibratorScattered[idx].recalibration,
-                snps_recalibration_index=SNPsVariantRecalibratorScattered[idx].recalibration_index,
                 snps_tranches=SNPGatherTranches.out_tranches,
                 indel_filter_level=indel_filter_level,
                 snp_filter_level=snp_filter_level,
@@ -327,12 +310,10 @@ def main(
         CollectMetricsSharded = add_CollectMetricsSharded_step(
             b,
             input_vcf=ApplyRecalibration.recalibrated_vcf,
-            input_vcf_index=ApplyRecalibration.recalibrated_vcf_index,
             metrics_filename_prefix=((callset_name + ".") + idx),
             dbsnp_vcf=dbsnp_vcf,
-            dbsnp_vcf_index=dbsnp_vcf_index,
             interval_list=eval_interval_list,
-            ref_dict=ref_dict,
+            ref_dict=ref_fasta.dict,
             disk_size=small_disk,
         )
 
@@ -350,42 +331,14 @@ def main(
         CollectMetricsOnFullVcf = add_CollectMetricsOnFullVcf_step(
             b,
             input_vcf=FinalGatherVcf.output_vcf,
-            input_vcf_index=FinalGatherVcf.output_vcf_index,
             metrics_filename_prefix=callset_name,
             dbsnp_vcf=dbsnp_vcf,
-            dbsnp_vcf_index=dbsnp_vcf_index,
             interval_list=eval_interval_list,
-            ref_dict=ref_dict,
+            ref_dict=ref_fasta.dict,
             disk_size=huge_disk,
         )
 
-    b.run()
-
-
-def add_TabixBGzippedFile_step(
-    b, inp, preset="vcf", container="quay.io/biocontainers/htslib:1.9--ha228f0b_7"
-):
-    j = b.new_job("TabixBGzippedFile")
-    j.command(f"mv {inp} .")
-    j.declare_resource_group(out={"tbi": "{root}.tbi", "base": "{root}"})
-    j.image(container)
-
-    command_args = []
-    if preset is not None:
-        command_args.append(f"--preset {preset}")
-    if inp is not None:
-        command_args.append(inp)
-    nl = " \\\n  "
-    command = f"""
-tabix {"".join(nl + a for a in command_args)} 
-    """
-
-    j.command('ln "{value}" {dest}'.format(value=inp, dest=j.out))
-    j.command(
-        'ln "{value}" {dest}'.format(value=f"{inp}.tbi", dest=f"{j.out}.tbi")
-    )
-
-    return j
+    b.run(dry_run=True)
 
 
 def add_GnarlyGenotyperOnVcf_step(
@@ -394,8 +347,6 @@ def add_GnarlyGenotyperOnVcf_step(
     interval,
     output_vcf_filename,
     ref_fasta,
-    ref_fasta_index,
-    ref_dict,
     dbsnp_vcf,
     gatk_docker="gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K",
     is_small_callset=False,
@@ -406,7 +357,7 @@ def add_GnarlyGenotyperOnVcf_step(
     disk_size = (
         disk_size if disk_size is not None else (40 if is_small_callset else 80)
     )
-    j.declare_resource_group(output_vcf={"tbi": "{root}.tbi", "base": "{root}"})
+    j.declare_resource_group(output_vcf={"index": "{root}.tbi", "base": "{root}"})
     j.image(container)
     j.memory(f"24.214398G")
     j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
@@ -414,32 +365,25 @@ def add_GnarlyGenotyperOnVcf_step(
     j.command(
         f"""set -e
 
+    tabix -p vcf {combined_gvcf}
+
     gatk --java-options -Xms8g \\
       GnarlyGenotyper \\
       -R {ref_fasta.base} \\
-      -O {output_vcf_filename} \\
-      -D {dbsnp_vcf} \\
+      -O {j.output_vcf.base} \\
+      -D {dbsnp_vcf.base} \\
       --only-output-calls-starting-in-intervals \\
       --keep-all-sites \\
-      -V {combined_gvcf.base} \\
+      -V {combined_gvcf} \\
       -L {interval}"""
     )
-
-    j.command(
-        'ln "{value}" {dest}'.format(value=output_vcf_filename, dest=j.output_vcf)
-    )
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{output_vcf_filename}.tbi", dest=f"{j.output_vcf}.tbi"
-        )
-    )
-
+    b.write_output(j.output_vcf, output_vcf_filename)
     return j
 
 
 def add_HardFilterAndMakeSitesOnlyVcf_step(
     b,
-    vcf,
+    input_vcfs,
     excess_het_threshold,
     variant_filtered_vcf_filename,
     sites_only_vcf_filename,
@@ -448,10 +392,13 @@ def add_HardFilterAndMakeSitesOnlyVcf_step(
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
 ):
     j = b.new_job("HardFilterAndMakeSitesOnlyVcf")
+    j.declare_resource_group(variant_filtered_vcf={"base": "{root}", "index": "{root}.tbi"})
+    j.declare_resource_group(sites_only_vcf={"base": "{root}", "index": "{root}.tbi"})
     j.image(container)
     j.memory(f"3.49246125G")
     j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
 
+    input_cmdl = " ".join([v.base for v in input_vcfs])
     j.command(
         f"""set -euo pipefail
 
@@ -459,37 +406,16 @@ def add_HardFilterAndMakeSitesOnlyVcf_step(
       VariantFiltration \\
       --filter-expression 'ExcessHet > {excess_het_threshold}' \\
       --filter-name ExcessHet \\
-      -O {variant_filtered_vcf_filename} \\
-      -V {vcf}
+      -O {j.variant_filtered_vcf.base} \\
+      -V {input_cmdl}
 
     gatk --java-options -Xms3g \\
       MakeSitesOnlyVcf \\
-      -I {variant_filtered_vcf_filename} \\
-      -O {sites_only_vcf_filename}"""
+      -I {j.variant_filtered_vcf.base} \\
+      -O {j.sites_only_vcf.base}"""
     )
-
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{variant_filtered_vcf_filename}", dest=j.variant_filtered_vcf
-        )
-    )
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{variant_filtered_vcf_filename}.tbi",
-            dest=j.variant_filtered_vcf_index,
-        )
-    )
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{sites_only_vcf_filename}", dest=j.sites_only_vcf
-        )
-    )
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{sites_only_vcf_filename}.tbi", dest=j.sites_only_vcf_index
-        )
-    )
-
+    b.write_output(j.variant_filtered_vcf, variant_filtered_vcf_filename)
+    b.write_output(j.sites_only_vcf, sites_only_vcf_filename)
     return j
 
 
@@ -505,7 +431,9 @@ def add_SitesOnlyGatherVcf_step(
     j.image(container)
     j.memory(f"6.519261G")
     j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.declare_resource_group(output_vcf={"base": "{root}", "index": "{root}.tbi"})
 
+    input_cmdl = " ".join([v.base for v in input_vcfs])
     j.command(
         f"""set -euo pipefail
 
@@ -516,23 +444,12 @@ def add_SitesOnlyGatherVcf_step(
       GatherVcfsCloud \\
       --ignore-safety-checks \\
       --gather-type BLOCK \\
-      --input {input_vcfs} \\
-      --output {output_vcf_name}
+      --input {input_cmdl} \\
+      --output {j.output_vcf.base}
 
-    tabix {output_vcf_name}"""
+    tabix {j.output_vcf.base}"""
     )
-
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{output_vcf_name}", dest=j.output_vcf
-        )
-    )
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{output_vcf_name}.tbi", dest=j.output_vcf_index
-        )
-    )
-
+    b.write_output(j.output_vcf, output_vcf_name)
     return j
 
 
@@ -543,13 +460,9 @@ def add_IndelsVariantRecalibrator_step(
     recalibration_tranche_values,
     recalibration_annotation_values,
     sites_only_variant_filtered_vcf,
-    sites_only_variant_filtered_vcf_index,
     mills_resource_vcf,
     axiomPoly_resource_vcf,
     dbsnp_resource_vcf,
-    mills_resource_vcf_index,
-    axiomPoly_resource_vcf_index,
-    dbsnp_resource_vcf_index,
     use_allele_specific_annotations,
     disk_size,
     max_gaussians=4,
@@ -559,6 +472,7 @@ def add_IndelsVariantRecalibrator_step(
     j.image(container)
     j.memory(f"104.0G")
     j.storage(f"disk_sizeG")
+    j.declare_resource_group(recalibration={"base": "{root}", "index": "{root}.idx"})
 
     j.command(
         f"""set -euo pipefail
@@ -566,35 +480,20 @@ def add_IndelsVariantRecalibrator_step(
     gatk --java-options -Xms100g \\
       VariantRecalibrator \\
       -V {sites_only_variant_filtered_vcf} \\
-      -O {recalibration_filename} \\
-      --tranches-file {tranches_filename} \\
+      -O {j.recalibration.base} \\
+      --tranches-file {j.tranches} \\
       --trust-all-polymorphic \\
       -tranche {recalibration_tranche_values} \\
       -an {recalibration_annotation_values} \\
       -mode INDEL \\
       {use_allele_specific_annotations} \\
       --max-gaussians {max_gaussians} \\
-      -resource:mills,known=false,training=true,truth=true,prior=12 {mills_resource_vcf} \\
-      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {axiomPoly_resource_vcf} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf}"""
+      -resource:mills,known=false,training=true,truth=true,prior=12 {mills_resource_vcf.base} \\
+      -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {axiomPoly_resource_vcf.base} \\
+      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf.base}"""
     )
-
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{recalibration_filename}", dest=j.recalibration
-        )
-    )
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{recalibration_filename}.idx", dest=j.recalibration_index
-        )
-    )
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{tranches_filename}", dest=j.tranches
-        )
-    )
-
+    b.write_output(j.recalibration, recalibration_filename)
+    b.write_output(j.tranches, tranches_filename)
     return j
 
 
@@ -607,15 +506,10 @@ def add_SNPsVariantRecalibratorCreateModel_step(
     recalibration_tranche_values,
     recalibration_annotation_values,
     sites_only_variant_filtered_vcf,
-    sites_only_variant_filtered_vcf_index,
     hapmap_resource_vcf,
     omni_resource_vcf,
     one_thousand_genomes_resource_vcf,
     dbsnp_resource_vcf,
-    hapmap_resource_vcf_index,
-    omni_resource_vcf_index,
-    one_thousand_genomes_resource_vcf_index,
-    dbsnp_resource_vcf_index,
     disk_size,
     use_allele_specific_annotations,
     max_gaussians=6,
@@ -627,35 +521,32 @@ def add_SNPsVariantRecalibratorCreateModel_step(
     j.image(container)
     j.memory(f"104.0G")
     j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.declare_resource_group(recalibration={"base": "{root}", "index": "{root}.idx"})
 
     j.command(
         f"""set -euo pipefail
 
     gatk --java-options -Xms{java_mem}g \\
       VariantRecalibrator \\
-      -V {sites_only_variant_filtered_vcf} \\
-      -O {recalibration_filename} \\
-      --tranches-file {tranches_filename} \\
+      -V {sites_only_variant_filtered_vcf.base} \\
+      -O {j.recalibration.base} \\
+      --tranches-file {j.tranches} \\
       --trust-all-polymorphic \\
       -tranche {recalibration_tranche_values} \\
       -an {recalibration_annotation_values} \\
       -mode SNP \\
       {use_allele_specific_annotations} \\
       --sample-every-Nth-variant {downsampleFactor} \\
-      --output-model {model_report_filename} \\
+      --output-model {j.model_report} \\
       --max-gaussians {max_gaussians} \\
-      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf} \\
-      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf} \\
-      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf}"""
+      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
+      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
+      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base}"""
     )
-
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{model_report_filename}", dest=j.model_report
-        )
-    )
-
+    b.write_output(j.recalibration, recalibration_filename)
+    b.write_output(j.tranches, tranches_filename)
+    b.write_output(j.model_report, model_report_filename)
     return j
 
 
@@ -666,15 +557,10 @@ def add_SNPsVariantRecalibratorScattered_step(
     recalibration_tranche_values,
     recalibration_annotation_values,
     sites_only_variant_filtered_vcf,
-    sites_only_variant_filtered_vcf_index,
     hapmap_resource_vcf,
     omni_resource_vcf,
     one_thousand_genomes_resource_vcf,
     dbsnp_resource_vcf,
-    hapmap_resource_vcf_index,
-    omni_resource_vcf_index,
-    one_thousand_genomes_resource_vcf_index,
-    dbsnp_resource_vcf_index,
     disk_size,
     use_allele_specific_annotations,
     is_small_callset,
@@ -708,6 +594,7 @@ def add_SNPsVariantRecalibratorScattered_step(
     j.image(container)
     j.memory(f"{machine_mem} GiBG")
     j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.declare_resource_group(recalibration={"base": "{root}", "index": "{root}.index"})
 
     j.command(
         f"""set -euo pipefail
@@ -716,9 +603,9 @@ def add_SNPsVariantRecalibratorScattered_step(
 
     gatk --java-options -Xms{{(machine_mem - 1)}}g \\
       VariantRecalibrator \\
-      -V {sites_only_variant_filtered_vcf} \\
-      -O {recalibration_filename} \\
-      --tranches-file {tranches_filename} \\
+      -V {sites_only_variant_filtered_vcf.base} \\
+      -O {j.recalibration.base} \\
+      --tranches-file {j.tranches} \\
       --trust-all-polymorphic \\
       -tranche {recalibration_tranche_values} \\
       -an {recalibration_annotation_values} \\
@@ -726,28 +613,13 @@ def add_SNPsVariantRecalibratorScattered_step(
       {use_allele_specific_annotations} \\
        {model_report_arg} \\
       --max-gaussians {max_gaussians} \\
-      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf} \\
-      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf} \\
-      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf}"""
+      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
+      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
+      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base}"""
     )
-
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{recalibration_filename}", dest=j.recalibration
-        )
-    )
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{recalibration_filename}.idx", dest=j.recalibration_index
-        )
-    )
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{tranches_filename}", dest=j.tranches
-        )
-    )
-
+    b.write_output(j.recalibration, recalibration_filename)
+    b.write_output(j.tranches, tranches_filename)
     return j
 
 
@@ -799,15 +671,9 @@ def add_SNPGatherTranches_step(
     gatk --java-options -Xms6g \\
       GatherTranches \\
       --input inputs.list \\
-      --output {output_filename}"""
+      --output {j.out_tranches}"""
     )
-
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{output_filename}", dest=j.out_tranches
-        )
-    )
-
+    b.write_output(j.out_tranches, output_filename)
     return j
 
 
@@ -815,12 +681,9 @@ def add_ApplyRecalibration_step(
     b,
     recalibrated_vcf_filename,
     input_vcf,
-    input_vcf_index,
     indels_recalibration,
-    indels_recalibration_index,
     indels_tranches,
     snps_recalibration,
-    snps_recalibration_index,
     snps_tranches,
     indel_filter_level,
     snp_filter_level,
@@ -833,6 +696,7 @@ def add_ApplyRecalibration_step(
     j.image(container)
     j.memory(f"7.0G")
     j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.declare_resource_group(recalibrated_vcf={"base": "{root}", "index": "{root}.tbi"})
 
     j.command(
         f"""set -euo pipefail
@@ -840,48 +704,33 @@ def add_ApplyRecalibration_step(
     gatk --java-options -Xms5g \\
       ApplyVQSR \\
       -O tmp.indel.recalibrated.vcf \\
-      -V {input_vcf} \\
-      --recal-file {indels_recalibration} \\
+      -V {input_vcf.base} \\
+      --recal-file {indels_recalibration.base} \\
       --tranches-file {indels_tranches} \\
       --truth-sensitivity-filter-level {indel_filter_level} \\
       --create-output-variant-index true \\
       -mode INDEL {use_allele_specific_annotations} \\
 
-
     gatk --java-options -Xms5g \\
       ApplyVQSR \\
-      -O {recalibrated_vcf_filename} \\
+      -O {j.recalibrated_vcf.base} \\
       -V tmp.indel.recalibrated.vcf \\
-      --recal-file {snps_recalibration} \\
+      --recal-file {snps_recalibration.base} \\
       --tranches-file {snps_tranches} \\
       --truth-sensitivity-filter-level {snp_filter_level} \\
       --create-output-variant-index true \\
       -mode SNP {use_allele_specific_annotations} \\
 """
     )
-
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{recalibrated_vcf_filename}", dest=j.recalibrated_vcf
-        )
-    )
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{recalibrated_vcf_filename}.tbi",
-            dest=j.recalibrated_vcf_index,
-        )
-    )
-
+    b.write_output(j.recalibrated_vcf, recalibrated_vcf_filename)
     return j
 
 
 def add_CollectMetricsSharded_step(
     b,
     input_vcf,
-    input_vcf_index,
     metrics_filename_prefix,
     dbsnp_vcf,
-    dbsnp_vcf_index,
     interval_list,
     ref_dict,
     disk_size,
@@ -892,33 +741,23 @@ def add_CollectMetricsSharded_step(
     j.image(container)
     j.memory(f"6.9849225G")
     j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
-
+    j.declare_resource_group(metrics={
+        "detail_metrics_file": "{root}.variant_calling_detail_metrics",
+        "summary_metrics_file": "{root}.variant_calling_summary_metrics",
+    })
     j.command(
         f"""set -euo pipefail
 
     gatk --java-options -Xms6g \\
       CollectVariantCallingMetrics \\
-      --INPUT {input_vcf} \\
-      --DBSNP {dbsnp_vcf} \\
+      --INPUT {input_vcf.base} \\
+      --DBSNP {dbsnp_vcf.base} \\
       --SEQUENCE_DICTIONARY {ref_dict} \\
-      --OUTPUT {metrics_filename_prefix} \\
+      --OUTPUT {j.metrics} \\
       --THREAD_COUNT 8 \\
       --TARGET_INTERVALS {interval_list}"""
     )
-
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{metrics_filename_prefix}.variant_calling_detail_metrics",
-            dest=j.detail_metrics_file,
-        )
-    )
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{metrics_filename_prefix}.variant_calling_summary_metrics",
-            dest=j.summary_metrics_file,
-        )
-    )
-
+    b.write_output(j.metrics, metrics_filename_prefix)
     return j
 
 
@@ -934,7 +773,9 @@ def add_FinalGatherVcf_step(
     j.image(container)
     j.memory(f"6.519261G")
     j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.declare_resource_group(output_vcf = {"base": "{root}", "index": "{root}.tbi"})
 
+    input_cmdl = " ".join([v.base for v in input_vcfs])
     j.command(
         f"""set -euo pipefail
 
@@ -945,33 +786,20 @@ def add_FinalGatherVcf_step(
       GatherVcfsCloud \\
       --ignore-safety-checks \\
       --gather-type BLOCK \\
-      --input {input_vcfs} \\
-      --output {output_vcf_name}
+      --input {input_cmdl} \\
+      --output {j.output_vcf.base}
 
-    tabix {output_vcf_name}"""
+    tabix {j.output_vcf.base}"""
     )
-
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{output_vcf_name}", dest=j.output_vcf
-        )
-    )
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{output_vcf_name}.tbi", dest=j.output_vcf_index
-        )
-    )
-
+    b.write_output(j.output_vcf, output_vcf_name)
     return j
 
 
 def add_CollectMetricsOnFullVcf_step(
     b,
     input_vcf,
-    input_vcf_index,
     metrics_filename_prefix,
     dbsnp_vcf,
-    dbsnp_vcf_index,
     interval_list,
     ref_dict,
     disk_size,
@@ -982,33 +810,24 @@ def add_CollectMetricsOnFullVcf_step(
     j.image(container)
     j.memory(f"6.9849225G")
     j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.declare_resource_group(metrics={
+        "detail_metrics_file": "{root}.variant_calling_detail_metrics",
+        "summary_metrics_file": "{root}.variant_calling_summary_metrics",
+    })
 
     j.command(
         f"""set -euo pipefail
 
     gatk --java-options -Xms6g \\
       CollectVariantCallingMetrics \\
-      --INPUT {input_vcf} \\
-      --DBSNP {dbsnp_vcf} \\
+      --INPUT {input_vcf.base} \\
+      --DBSNP {dbsnp_vcf.base} \\
       --SEQUENCE_DICTIONARY {ref_dict} \\
-      --OUTPUT {metrics_filename_prefix} \\
+      --OUTPUT {j.metrics} \\
       --THREAD_COUNT 8 \\
       --TARGET_INTERVALS {interval_list}"""
     )
-
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{metrics_filename_prefix}.variant_calling_detail_metrics",
-            dest=j.detail_metrics_file,
-        )
-    )
-    j.command(
-        'ln "{value}" {dest}'.format(
-            value=f"{metrics_filename_prefix}.variant_calling_summary_metrics",
-            dest=j.summary_metrics_file,
-        )
-    )
-
+    b.write_output(j.metrics, metrics_filename_prefix)
     return j
 
 
