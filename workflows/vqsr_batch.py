@@ -124,9 +124,17 @@ def main(
     ] = "gs://broad-references-private/HybSelOligos/xgen_plus_spikein/white_album_exome_calling_regions.v1.interval_list",
     apply_recalibration_machine_mem_gb: Optional[int] = 60,
     is_small_callset: Optional[bool] = False,
+    dry_run: Optional[bool] = False,
+    billing_project: str = None,
 ):
-    backend = hb.ServiceBackend(billing_project="test")
-    b = hb.Batch("VariantCallingOFTHEFUTURE")
+    if not dry_run:
+        if not billing_project:
+            raise click.BadParameter(
+                "--billing_project has to be specified (unless --dry_run is set)"
+            )
+
+    backend = hb.ServiceBackend(billing_project=billing_project)
+    b = hb.Batch("VariantCallingOFTHEFUTURE", backend=backend)
     dbsnp_resource_vcf = (
         dbsnp_resource_vcf if dbsnp_resource_vcf is not None else dbsnp_vcf
     )
@@ -206,7 +214,7 @@ def main(
         HardFilterAndMakeSitesOnlyVcf.append(
             add_HardFilterAndMakeSitesOnlyVcf_step(
                 b,
-                input_vcfs=[j.output_vcf for j in GnarlyGenotyperOnVcf],
+                input_vcf=GnarlyGenotyperOnVcf[idx].output_vcf,
                 excess_het_threshold=excess_het_threshold,
                 variant_filtered_vcf_filename=(
                     ((callset_name + ".") + str(idx)) + ".variant_filtered.vcf.gz"
@@ -338,7 +346,7 @@ def main(
             disk_size=huge_disk,
         )
 
-    b.run(dry_run=True)
+    b.run(dry_run=dry_run)
 
 
 def add_GnarlyGenotyperOnVcf_step(
@@ -359,8 +367,8 @@ def add_GnarlyGenotyperOnVcf_step(
     )
     j.declare_resource_group(output_vcf={"index": "{root}.tbi", "base": "{root}"})
     j.image(container)
-    j.memory(f"24.214398G")
-    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.memory(f"32G")
+    j.storage(f"{disk_size}G")
 
     j.command(
         f"""set -e
@@ -383,7 +391,7 @@ def add_GnarlyGenotyperOnVcf_step(
 
 def add_HardFilterAndMakeSitesOnlyVcf_step(
     b,
-    input_vcfs,
+    input_vcf,
     excess_het_threshold,
     variant_filtered_vcf_filename,
     sites_only_vcf_filename,
@@ -395,10 +403,9 @@ def add_HardFilterAndMakeSitesOnlyVcf_step(
     j.declare_resource_group(variant_filtered_vcf={"base": "{root}", "index": "{root}.tbi"})
     j.declare_resource_group(sites_only_vcf={"base": "{root}", "index": "{root}.tbi"})
     j.image(container)
-    j.memory(f"3.49246125G")
-    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.memory("8G")
+    j.storage(f"{disk_size}G")
 
-    input_cmdl = " ".join([v.base for v in input_vcfs])
     j.command(
         f"""set -euo pipefail
 
@@ -407,7 +414,7 @@ def add_HardFilterAndMakeSitesOnlyVcf_step(
       --filter-expression 'ExcessHet > {excess_het_threshold}' \\
       --filter-name ExcessHet \\
       -O {j.variant_filtered_vcf.base} \\
-      -V {input_cmdl}
+      -V {input_vcf}
 
     gatk --java-options -Xms3g \\
       MakeSitesOnlyVcf \\
@@ -429,11 +436,11 @@ def add_SitesOnlyGatherVcf_step(
 ):
     j = b.new_job("SitesOnlyGatherVcf")
     j.image(container)
-    j.memory(f"6.519261G")
-    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.memory("8G")
+    j.storage(f"{disk_size}G")
     j.declare_resource_group(output_vcf={"base": "{root}", "index": "{root}.tbi"})
 
-    input_cmdl = " ".join([v.base for v in input_vcfs])
+    input_cmdl = " ".join([f"--input {v.base}" for v in input_vcfs])
     j.command(
         f"""set -euo pipefail
 
@@ -444,7 +451,7 @@ def add_SitesOnlyGatherVcf_step(
       GatherVcfsCloud \\
       --ignore-safety-checks \\
       --gather-type BLOCK \\
-      --input {input_cmdl} \\
+      {input_cmdl} \\
       --output {j.output_vcf.base}
 
     tabix {j.output_vcf.base}"""
@@ -470,10 +477,12 @@ def add_IndelsVariantRecalibrator_step(
 ):
     j = b.new_job("IndelsVariantRecalibrator")
     j.image(container)
-    j.memory(f"104.0G")
-    j.storage(f"disk_sizeG")
+    j.memory(f"64G")
+    j.storage(f"{disk_size}G")
     j.declare_resource_group(recalibration={"base": "{root}", "index": "{root}.idx"})
-
+    
+    tranche_cmdl = " ".join([f"-tranche {v}" for v in recalibration_tranche_values])
+    an_cmdl = " ".join([f"-an {v}" for v in recalibration_annotation_values])
     j.command(
         f"""set -euo pipefail
 
@@ -483,8 +492,8 @@ def add_IndelsVariantRecalibrator_step(
       -O {j.recalibration.base} \\
       --tranches-file {j.tranches} \\
       --trust-all-polymorphic \\
-      -tranche {recalibration_tranche_values} \\
-      -an {recalibration_annotation_values} \\
+      {tranche_cmdl} \\
+      {an_cmdl} \\
       -mode INDEL \\
       {use_allele_specific_annotations} \\
       --max-gaussians {max_gaussians} \\
@@ -519,10 +528,12 @@ def add_SNPsVariantRecalibratorCreateModel_step(
 ):
     j = b.new_job("SNPsVariantRecalibratorCreateModel")
     j.image(container)
-    j.memory(f"104.0G")
-    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.memory(f"64G")
+    j.storage(f"{disk_size}G")
     j.declare_resource_group(recalibration={"base": "{root}", "index": "{root}.idx"})
 
+    tranche_cmdl = " ".join([f"-tranche {v}" for v in recalibration_tranche_values])
+    an_cmdl = " ".join([f"-an {v}" for v in recalibration_annotation_values])
     j.command(
         f"""set -euo pipefail
 
@@ -532,8 +543,8 @@ def add_SNPsVariantRecalibratorCreateModel_step(
       -O {j.recalibration.base} \\
       --tranches-file {j.tranches} \\
       --trust-all-polymorphic \\
-      -tranche {recalibration_tranche_values} \\
-      -an {recalibration_annotation_values} \\
+      {tranche_cmdl} \\
+      {an_cmdl} \\
       -mode SNP \\
       {use_allele_specific_annotations} \\
       --sample-every-Nth-variant {downsampleFactor} \\
@@ -568,20 +579,13 @@ def add_SNPsVariantRecalibratorScattered_step(
     max_gaussians=6,
     gatk_docker="us.gcr.io/broad-gatk/gatk:4.1.1.0",
     machine_mem_gb=None,
-    machine_mem=None,
     model_report_arg=None,
     container="us.gcr.io/broad-gatk/gatk:4.1.1.0",
 ):
     j = b.new_job("SNPsVariantRecalibratorScattered")
-    machine_mem = (
-        machine_mem
-        if machine_mem is not None
-        else [
-            a
-            for a in [machine_mem_gb, (30 if is_small_callset else 60)]
-            if a is not None
-        ]
-    )
+    
+    machine_mem_gb = machine_mem_gb or (30 if is_small_callset else 60)
+
     model_report_arg = (
         model_report_arg
         if model_report_arg is not None
@@ -592,22 +596,23 @@ def add_SNPsVariantRecalibratorScattered_step(
         )
     )
     j.image(container)
-    j.memory(f"{machine_mem} GiBG")
-    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.memory(f"{machine_mem_gb}G")
+    j.storage(f"{disk_size}G")
     j.declare_resource_group(recalibration={"base": "{root}", "index": "{root}.index"})
 
+    tranche_cmdl = " ".join([f"-tranche {v}" for v in recalibration_tranche_values])
     j.command(
         f"""set -euo pipefail
 
     MODEL_REPORT={model_report}
 
-    gatk --java-options -Xms{{(machine_mem - 1)}}g \\
+    gatk --java-options -Xms{machine_mem_gb - 1}g \\
       VariantRecalibrator \\
       -V {sites_only_variant_filtered_vcf.base} \\
       -O {j.recalibration.base} \\
       --tranches-file {j.tranches} \\
       --trust-all-polymorphic \\
-      -tranche {recalibration_tranche_values} \\
+      {tranche_cmdl} \\
       -an {recalibration_annotation_values} \\
       -mode SNP \\
       {use_allele_specific_annotations} \\
@@ -633,8 +638,8 @@ def add_SNPGatherTranches_step(
 ):
     j = b.new_job("SNPGatherTranches")
     j.image(container)
-    j.memory(f"6.519261G")
-    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.memory("8G")
+    j.storage(f"{disk_size}G")
 
     tranches_file = tempfile.NamedTemporaryFile(suffix="_tranches.list")
     with open(tranches_file.name, 'w') as out:
@@ -694,8 +699,8 @@ def add_ApplyRecalibration_step(
 ):
     j = b.new_job("ApplyRecalibration")
     j.image(container)
-    j.memory(f"7.0G")
-    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.memory("8G")
+    j.storage(f"{disk_size}G")
     j.declare_resource_group(recalibrated_vcf={"base": "{root}", "index": "{root}.tbi"})
 
     j.command(
@@ -739,8 +744,8 @@ def add_CollectMetricsSharded_step(
 ):
     j = b.new_job("CollectMetricsSharded")
     j.image(container)
-    j.memory(f"6.9849225G")
-    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.memory("8G")
+    j.storage(f"{disk_size}G")
     j.declare_resource_group(metrics={
         "detail_metrics_file": "{root}.variant_calling_detail_metrics",
         "summary_metrics_file": "{root}.variant_calling_summary_metrics",
@@ -771,11 +776,11 @@ def add_FinalGatherVcf_step(
 ):
     j = b.new_job("FinalGatherVcf")
     j.image(container)
-    j.memory(f"6.519261G")
-    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.memory(f"8G")
+    j.storage(f"{disk_size}G")
     j.declare_resource_group(output_vcf = {"base": "{root}", "index": "{root}.tbi"})
 
-    input_cmdl = " ".join([v.base for v in input_vcfs])
+    input_cmdl = " ".join([f"--input {v.base}" for v in input_vcfs])
     j.command(
         f"""set -euo pipefail
 
@@ -786,7 +791,7 @@ def add_FinalGatherVcf_step(
       GatherVcfsCloud \\
       --ignore-safety-checks \\
       --gather-type BLOCK \\
-      --input {input_cmdl} \\
+      {input_cmdl} \\
       --output {j.output_vcf.base}
 
     tabix {j.output_vcf.base}"""
@@ -809,7 +814,7 @@ def add_CollectMetricsOnFullVcf_step(
     j = b.new_job("CollectMetricsOnFullVcf")
     j.image(container)
     j.memory(f"6.9849225G")
-    j.storage(f'{(("local-disk " + str(disk_size)) + " HDD")}G')
+    j.storage(f"{disk_size}G")
     j.declare_resource_group(metrics={
         "detail_metrics_file": "{root}.variant_calling_detail_metrics",
         "summary_metrics_file": "{root}.variant_calling_summary_metrics",
@@ -1078,6 +1083,12 @@ def apply_secondary_file_format_to_filename(
 )
 @click.option(
     "--is_small_callset", "is_small_callset", is_flag=True, default=False
+)
+@click.option(
+    "--dry_run", "dry_run", is_flag=True, default=False
+)
+@click.option(
+    "--billing_project", "billing_project"
 )
 def main_from_click(*args, **kwargs):
     return main(*args, **kwargs)
