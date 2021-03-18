@@ -1,4 +1,4 @@
-""" This function prepares gCVF's uploaded to GCS, based off sample status
+""" This function prepares gVCF's uploaded to GCS, based off sample status
     logged in a database, for further QC and downstream analysis.
     The upload processor will determine when samples should be added
     to existing MatrixTables where appropriate and which MatrixTables
