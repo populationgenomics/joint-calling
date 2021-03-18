@@ -26,11 +26,11 @@ def copy_files(
     except NotFound as invalid_details:
         raise Exception('Bucket does not exist for this user.') from invalid_details
 
-    # Copying files from source bucket to target bucket
     current_files = storage_client.list_blobs(source_bucket)
     # A list of unique identifiers for each file in the bucket
     sample_crc32cs = []
 
+    # Copying files from source bucket to target bucket
     for current_file in current_files:
         if current_file.name in sample_files:
             sample_crc32cs.append(current_file.crc32c)
