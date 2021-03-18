@@ -5,77 +5,84 @@
     they should be combined with in this case. Following a successful
     run all uploaded files will be moved to archival storage."""
 
+from typing import Tuple, List
 from google.cloud import storage
 from google.api_core.exceptions import NotFound
 
 
 def copy_files(
-    sample_files: list, source_bucket_name: str, target_bucket_name: str
-) -> bool:
+    sample_files: List[str], source_bucket_name: str, destination_bucket_name: str
+) -> Tuple[List[str], List[str]]:
+
     """Given a list of file names, a source bucket and
-    a target bucket, this function will copy the identified files
+    a destination bucket, this function will copy the identified files
     to their new location. The function assumes that the file names have
-    been validated at an earlier stage. It will return true when the
-    files have been all successfully copied and false if at least 1 was not."""
+    been validated at an earlier stage. It will return two lists. One containing
+    the successfully copied files, and one containing the files that were not copied."""
 
     # Connecting to buckets
     try:
         storage_client = storage.Client()
         source_bucket = storage_client.get_bucket(source_bucket_name)
-        target_bucket = storage_client.get_bucket(target_bucket_name)
+        destination_bucket = storage_client.get_bucket(destination_bucket_name)
     except NotFound as invalid_details:
         raise Exception('Bucket does not exist for this user.') from invalid_details
 
-    current_files = storage_client.list_blobs(source_bucket)
-    # A list of unique identifiers for each file in the bucket
-    sample_crc32cs = []
+    skipped = []
+    copied = []
 
-    # Copying files from source bucket to target bucket
-    for current_file in current_files:
-        if current_file.name in sample_files:
-            sample_crc32cs.append(current_file.crc32c)
-            source_bucket.copy_blob(current_file, target_bucket)
+    # Copying files from source to destination
+    for sample in sample_files:
+        sample_blob = source_bucket.get_blob(sample)
+        if sample_blob:
+            # Check if the sample also exists in the destination folder.
+            check_blob = destination_bucket.get_blob(sample)
+            if check_blob:
+                if check_blob.crc32c == sample_blob.crc32c:
+                    # skip the copy as the same file already exists in the
+                    # destination folder
+                    skipped.append(sample)
+                else:
+                    # A file with the same name exists, however it contains different
+                    # content, so the new version is copied across
+                    source_bucket.copy_blob(sample_blob, destination_bucket)
+                    copied.append(sample)
+            else:
+                # copy the file over.
+                source_bucket.copy_blob(sample_blob, destination_bucket)
+                copied.append(sample)
+        else:
+            # Sample file was not found
+            skipped.append(sample)
 
-    # Checks that the files were successfully copied over
-    updated_files = storage_client.list_blobs(target_bucket)
-    compare_list = []
-    for updated_file in updated_files:
-        compare_list.append(updated_file.crc32c)
-
-    return set(sample_crc32cs).issubset(compare_list)
+    return copied, skipped
 
 
-def delete_files(samples: list, target_bucket_name: str) -> bool:
-    """Given a list of sample files and a target
+def delete_files(samples: List[str], bucket_name: str) -> Tuple[List[str], List[str]]:
+    """Given a list of sample files and a
     bucket, this function will delete the identified files
     from their specified location. This function assumes that
-    the samples list is validated at an earlier stage. It will
-    return true if all files are successfully deleted and false
-    if at least one is not."""
+    the samples list is validated at an earlier stage. It will return
+    two lists. One containing the successfully copied files, and one
+    containing the unsuccessfully copied files."""
 
     # Connecting to buckets
-
     try:
         storage_client = storage.Client()
-        target_bucket = storage_client.get_bucket(target_bucket_name)
+        target_bucket = storage_client.get_bucket(bucket_name)
     except NotFound as invalid_details:
         raise Exception('Bucket does not exist for this user.') from invalid_details
 
-    # A list of unique identifiers for each file in the bucket
-    samples_crc32cs = []
+    skipped = []
+    deleted = []
 
-    # Delete all files in the provided samples list
-    current_files = storage_client.list_blobs(target_bucket)
-    for current_file in current_files:
-        if current_file.name in samples:
-            samples_crc32cs.append(current_file.crc32c)
-            target_bucket.delete_blob(current_file.name)
+    for sample in samples:
+        try:
+            # Delete the specified sample
+            target_bucket.delete_blob(sample)
+            deleted.append(sample)
+        except NotFound:
+            # The sample file was not found
+            skipped.append(sample)
 
-    # Checks that the deleted files no longer exist in the bucket
-    deleted = True
-    current_files = storage_client.list_blobs(target_bucket)
-    for current_file in current_files:
-        if current_file.crc32c in samples_crc32cs:
-            deleted = False
-
-    return deleted
+    return deleted, skipped
