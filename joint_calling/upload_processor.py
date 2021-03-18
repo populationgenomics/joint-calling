@@ -14,14 +14,34 @@ def move_files(
     sample_files: List[str],
     source_bucket_name: str,
     destination_bucket_name: str,
-    path: str,
+    path: str = '',
 ):
-    """Given a list of file names, a source bucket and
-    a destination bucket, this function will move the identified files
-    to their new location. The function assumes that the file names have
-    been validated at an earlier stage. The function will
-    raise an error if invalid bucket details, or invalid sample names
-    are produced."""
+    """Moving files between buckets
+
+    Parameters
+    ==========
+    sample_files: List[str]
+        A list of the file names to be moved.
+        For example ["TOB1543","TOB2314","TOB3423"]
+    source_bucket_name: str
+        The name of the bucket where the files are initially located.
+        For example "cpg-tob-wgs-upload"
+    destination_bucket_name: str
+        The name of the bucket where files are to be moved.
+        For example "cpg-tob-wgs-main"
+    path: str, optional
+        The path to the specific sub-directory where the file should be moved.
+        By default no sub-directory is specified.
+        For example, "/v1"
+
+    Notes
+    =====
+    The function assumes that the file names have
+    been validated at an earlier stage.
+
+    The function will raise an error if invalid bucket details,
+    or invalid sample names are produced."""
+
     # Connecting to buckets
     try:
         storage_client = storage.Client()
