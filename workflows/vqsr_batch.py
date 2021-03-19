@@ -5,8 +5,10 @@ import click
 import hailtop.batch as hb
 
 
-GATK_VERSION = "4.1.4.0"
+GATK_VERSION = "4.2.0.0"
 GATK_DOCKER = f"us.gcr.io/broad-gatk/gatk:{GATK_VERSION}"
+# GnarlyGenotyper crashes with NullPointerException when using GATK docker
+GNARLY_DOCKER = "gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K"
 
 
 @click.command()
@@ -486,7 +488,7 @@ def add_GnarlyGenotyperOnVcf_step(
     disk_size,
 ):
     j = b.new_job("GnarlyGenotyperOnVcf")
-    j.image(GATK_DOCKER)
+    j.image(GNARLY_DOCKER)  # GnarlyGenotyper crashes with NullPointerException when using GATK docker
     j.memory(f"32G")
     j.storage(f"{disk_size}G")
     j.declare_resource_group(output_vcf={"vcf.gz": "{root}.vcf.gz", "vcf.gz.tbi": "{root}.vcf.gz.tbi"})
@@ -631,8 +633,7 @@ def add_IndelsVariantRecalibrator_step(
       -resource:mills,known=false,training=true,truth=true,prior=12 {mills_resource_vcf.base} \\
       -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {axiom_poly_resource_vcf.base} \\
       -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf.base} \\
-      --rscript-file {j.indel_rscript_file} \\
-      """
+      --rscript-file {j.indel_rscript_file}"""
     )
     return j.recalibration, j.tranches
 
@@ -683,8 +684,7 @@ def add_SNPsVariantRecalibratorCreateModel_step(
       -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
       -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
       -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base} \\
-      --rscript-file {j.snp_rscript_file} \\
-    """
+      --rscript-file {j.snp_rscript_file}"""
     )
     return j.model_report
 
@@ -744,8 +744,7 @@ def add_SNPsVariantRecalibratorScattered_step(
       -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
       -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
       -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base} \\
-    """
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base}"""
     )
     return j.recalibration, j.tranches
 
