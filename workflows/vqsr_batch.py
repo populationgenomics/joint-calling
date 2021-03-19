@@ -426,25 +426,6 @@ def main(
         ) for idx in range(len(hard_filtered_vcfs))
     ]
     
-    # For large callsets we need to collect metrics from the shards and gather them after
-    if not is_small_callset:
-        metrics_sharded = [add_CollectMetricsSharded_step(
-            b,
-            input_vcf=recalibrated_vcfs[idx],
-            dbsnp_vcf=dbsnp_vcf,
-            interval_list=eval_interval_list,
-            ref_dict=ref_fasta.dict,
-            disk_size=small_disk,
-        ) for idx in range(len(recalibrated_vcfs))]
-
-        add_GatherVariantCallingMetrics_step(
-            b,
-            input_details=[m.detail_metrics for m in metrics_sharded],
-            input_summaries=[m.summary_metrics for m in metrics_sharded],
-            output_path_prefix=os.path.join(output_bucket, callset_name),
-            disk_size=medium_disk
-        )
-
     final_gathered_vcf = add_FinalGatherVcf_step(
         b,
         input_vcfs=recalibrated_vcfs,
@@ -452,18 +433,15 @@ def main(
         disk_size=huge_disk,
     )
 
-    # For small callsets we can gather the VCF shards and then collect metrics on it
-    if is_small_callset:
-        add_CollectMetricsOnFullVcf_step(
-            b,
-            input_vcf=final_gathered_vcf,
-            metrics_path_prefix=os.path.join(output_bucket, callset_name),
-            dbsnp_vcf=dbsnp_vcf,
-            interval_list=eval_interval_list,
-            ref_dict=ref_fasta.dict,
-            disk_size=huge_disk,
-        )
-  
+    add_VariantEval_step(
+        b,
+        input_vcf=final_gathered_vcf,
+        ref_fasta=ref_fasta,
+        dbsnp_vcf=dbsnp_vcf,
+        output_path=os.path.join(output_bucket, callset_name + "-cohorteval.txt"),
+        disk_size=huge_disk,
+    )
+
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
 
 
@@ -902,40 +880,31 @@ def add_FinalGatherVcf_step(
     return j.output_vcf
 
 
-def add_CollectMetricsOnFullVcf_step(
+def add_VariantEval_step(
     b,
     input_vcf,
-    metrics_path_prefix,
+    ref_fasta,
     dbsnp_vcf,
-    interval_list,
-    ref_dict,
+    output_path,
     disk_size,
-    threads=8,
 ):
-    j = b.new_job("CollectMetricsOnFullVcf")
+    j = b.new_job("VariantEval")
     j.image(GATK_DOCKER)
     j.memory(f"8G")
-    j.cpu(threads)
     j.storage(f"{disk_size}G")
-    j.declare_resource_group(metrics={
-        "detail_metrics": "{root}.variant_calling_detail_metrics",
-        "summary_metrics": "{root}.variant_calling_summary_metrics",
-    })
 
     j.command(
         f"""set -euo pipefail
 
     gatk --java-options -Xms6g \\
-      CollectVariantCallingMetrics \\
-      --INPUT {input_vcf} \\
-      --DBSNP {dbsnp_vcf.base} \\
-      --SEQUENCE_DICTIONARY {ref_dict} \\
-      --OUTPUT {j.metrics} \\
-      --THREAD_COUNT {threads} \\
-      --TARGET_INTERVALS {interval_list}"""
+      VariantEval \\
+      --eval {input_vcf} \\
+      -R {ref_fasta.base} \\
+      -D {dbsnp_vcf.base} \\
+      --output {j.output}"""
     )
-    b.write_output(j.metrics, metrics_path_prefix)
-    return j.metrics
+    b.write_output(j.output, output_path)
+    return j.output
 
 
 def add_GatherVariantCallingMetrics_step(
