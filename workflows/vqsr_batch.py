@@ -5,7 +5,7 @@ import click
 import hailtop.batch as hb
 
 
-GATK_VERSION = "4.2.0.0"
+GATK_VERSION = "4.1.4.0"
 GATK_DOCKER = f"us.gcr.io/broad-gatk/gatk:{GATK_VERSION}"
 
 
