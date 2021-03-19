@@ -630,7 +630,9 @@ def add_IndelsVariantRecalibrator_step(
       --max-gaussians {max_gaussians} \\
       -resource:mills,known=false,training=true,truth=true,prior=12 {mills_resource_vcf.base} \\
       -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {axiom_poly_resource_vcf.base} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf.base}"""
+      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf.base} \\
+      --rscript-file {j.indel_rscript_file} \\
+      """
     )
     return j.recalibration, j.tranches
 
@@ -680,7 +682,9 @@ def add_SNPsVariantRecalibratorCreateModel_step(
       -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
       -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
       -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base}"""
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base} \\
+      --rscript-file {j.snp_rscript_file} \\
+    """
     )
     return j.model_report
 
@@ -740,7 +744,8 @@ def add_SNPsVariantRecalibratorScattered_step(
       -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
       -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
       -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base}"""
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base} \\
+    """
     )
     return j.recalibration, j.tranches
 
