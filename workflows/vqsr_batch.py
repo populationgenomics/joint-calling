@@ -432,7 +432,7 @@ def main(  # pylint: disable=R0913,R0914
     # indels_recalibration = 'gs://playground-au/batch/859e9a/17/recalibration'
     # indels_tranches = 'gs://playground-au/batch/859e9a/17/tranches'
 
-    model_report = add_snps_variant_recalibrator_create_model_step(
+    model_file = add_snps_variant_recalibrator_create_model_step(
         b,
         sites_only_variant_filtered_vcf=sites_only_gathered_vcf,
         recalibration_tranche_values=snp_recalibration_tranche_values,
@@ -445,8 +445,8 @@ def main(  # pylint: disable=R0913,R0914
         use_allele_specific_annotations=not skip_allele_specific_annotations,
         is_small_callset=is_small_callset,
         downsample_factor=snp_vqsr_downsample_factor,
-    ).model_report
-    # model_report = b.read_input('gs://playground-au/batch/859e9a/18/model_report')
+    ).model_file
+    # model_file = b.read_input('gs://playground-au/batch/859e9a/18/model_report')
 
     snps_recalibrator_jobs = [
         add_snps_variant_recalibrator_scattered_step(
@@ -454,7 +454,7 @@ def main(  # pylint: disable=R0913,R0914
             sites_only_variant_filtered_vcf=sites_only_vcfs[idx],
             recalibration_tranche_values=snp_recalibration_tranche_values,
             recalibration_annotation_values=snp_recalibration_annotation_values,
-            model_report=model_report,
+            model_report=model_file,
             hapmap_resource_vcf=hapmap_resource_vcf,
             omni_resource_vcf=omni_resource_vcf,
             one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
