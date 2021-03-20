@@ -297,9 +297,9 @@ def main(
         scatter_count,
         ref_fasta,
         disk_size=small_disk,
-    )
+    ).intervals
 
-    gnarly_outputs = [
+    gnarly_output_vcfs = [
         add_GnarlyGenotyperOnVcf_step(
             b,
             combined_gvcf=combined_gvcf,
@@ -307,7 +307,7 @@ def main(
             ref_fasta=ref_fasta,
             dbsnp_vcf=dbsnp_vcf,
             disk_size=medium_disk,
-        ) for idx in range(scatter_count)]
+        ).output_vcf for idx in range(scatter_count)]
 
     if not is_small_callset:
         # ExcessHet filtering applies only to callsets with a large number of samples, 
@@ -318,13 +318,13 @@ def main(
         hard_filtered_vcfs = [
             add_HardFilter_step(
                 b,
-                input_vcf=gnarly_outputs[idx],
+                input_vcf=gnarly_output_vcfs[idx],
                 excess_het_threshold=excess_het_threshold,
                 disk_size=medium_disk,
-            )
+            ).output_vcf
             for idx in range(scatter_count)]
     else:
-        hard_filtered_vcfs = gnarly_outputs
+        hard_filtered_vcfs = gnarly_output_vcfs
     # hard_filtered_vcfs = [
     #     b.read_input_group(
     #         base=f"gs://playground-au/batch/859e9a/{idx + 2}/output_vcf.vcf.gz", 
@@ -338,8 +338,8 @@ def main(
             b,
             input_vcf=hard_filtered_vcfs[idx],
             disk_size=medium_disk,
-        )
-        for idx in range(scatter_count)]    
+        ).sites_only_vcf
+        for idx in range(scatter_count)]
     # sites_only_vcfs = [
     #     b.read_input_group(
     #         base=f"gs://playground-au/batch/859e9a/{idx + 9}/sites_only_vcf.vcf.gz", 
@@ -352,9 +352,9 @@ def main(
         b,
         input_vcfs=sites_only_vcfs,
         disk_size=medium_disk,
-    )
+    ).output_vcf
     
-    indels_recalibration, indels_tranches = add_IndelsVariantRecalibrator_step(
+    indels_variant_recalibrator_job = add_IndelsVariantRecalibrator_step(
         b,
         sites_only_variant_filtered_vcf=sites_only_gathered_vcf,
         recalibration_tranche_values=indel_recalibration_tranche_values,
@@ -365,6 +365,8 @@ def main(
         use_allele_specific_annotations=not skip_allele_specific_annotations,
         disk_size=small_disk,
     )
+    indels_recalibration = indels_variant_recalibrator_job.recalibration
+    indels_tranches = indels_variant_recalibrator_job.tranches
     # indels_recalibration = "gs://playground-au/batch/859e9a/17/recalibration"
     # indels_tranches = "gs://playground-au/batch/859e9a/17/tranches"
 
@@ -381,10 +383,10 @@ def main(
         disk_size=small_disk,
         use_allele_specific_annotations=not skip_allele_specific_annotations,
         is_small_callset=is_small_callset,
-    )
+    ).model_report
     # model_report = b.read_input("gs://playground-au/batch/859e9a/18/model_report")
 
-    snp_recalibrations, snp_tranches = zip(*[add_SNPsVariantRecalibratorScattered_step(
+    snps_recalibrator_jobs = [add_SNPsVariantRecalibratorScattered_step(
         b,
         sites_only_variant_filtered_vcf=sites_only_vcfs[idx],
         recalibration_tranche_values=snp_recalibration_tranche_values,
@@ -397,7 +399,9 @@ def main(
         disk_size=small_disk,
         is_small_callset=is_small_callset,
         use_allele_specific_annotations=not skip_allele_specific_annotations,
-    ) for idx in range(len(sites_only_vcfs))])
+    ) for idx in range(len(sites_only_vcfs))]
+    snps_recalibrations = [j.recalibrations for j in snps_recalibrator_jobs]
+    snps_tranches = [j.tranches for j in snps_recalibrator_jobs]
     # snp_tranches = [
     #     b.read_input(f'gs://playground-au/batch/df311d/{idx + 1}/tranches') 
     #     for idx in range(scatter_count)
@@ -407,11 +411,11 @@ def main(
     #     for idx in range(scatter_count)
     # ]
 
-    snp_gathered_tranches = add_SNPGatherTranches_step(
+    snps_gathered_tranches = add_SNPGatherTranches_step(
         b,
-        tranches=snp_tranches,
+        tranches=snps_tranches,
         disk_size=small_disk,
-    )
+    ).out_tranches
 
     recalibrated_vcfs = [
         add_ApplyRecalibration_step(
@@ -419,13 +423,13 @@ def main(
             input_vcf=hard_filtered_vcfs[idx],
             indels_recalibration=indels_recalibration,
             indels_tranches=indels_tranches,
-            snps_recalibration=snp_recalibrations[idx],
-            snps_tranches=snp_gathered_tranches,
+            snps_recalibration=snps_recalibrations[idx],
+            snps_tranches=snps_tranches,
             indel_filter_level=indel_filter_level,
             snp_filter_level=snp_filter_level,
             disk_size=medium_disk,
             use_allele_specific_annotations=not skip_allele_specific_annotations,
-        ) for idx in range(len(hard_filtered_vcfs))
+        ).recalibrated_vcf for idx in range(len(hard_filtered_vcfs))
     ]
     
     final_gathered_vcf = add_FinalGatherVcf_step(
@@ -433,7 +437,7 @@ def main(
         input_vcfs=recalibrated_vcfs,
         output_vcf_path=os.path.join(output_bucket, callset_name + "-recalibrated.vcf.gz"),
         disk_size=huge_disk,
-    )
+    ).output_vcf
 
     add_VariantEval_step(
         b,
@@ -476,7 +480,7 @@ def add_SplitIntervals_step(
       -mode BALANCING_WITHOUT_INTERVAL_SUBDIVISION_WITH_OVERFLOW
       """
     )
-    return j.intervals
+    return j
 
 
 def add_GnarlyGenotyperOnVcf_step(
@@ -509,7 +513,7 @@ def add_GnarlyGenotyperOnVcf_step(
       -L {interval} \\
       --create-output-variant-index"""
     )
-    return j.output_vcf
+    return j
 
 
 def add_HardFilter_step(
@@ -522,7 +526,7 @@ def add_HardFilter_step(
     j.image(GATK_DOCKER)
     j.memory("8G")
     j.storage(f"{disk_size}G")
-    j.declare_resource_group(variant_filtered_vcf={"vcf.gz": "{root}.vcf.gz", "vcf.gz.tbi": "{root}.vcf.gz.tbi"})
+    j.declare_resource_group(output_vcf={"vcf.gz": "{root}.vcf.gz", "vcf.gz.tbi": "{root}.vcf.gz.tbi"})
 
     j.command(
         f"""set -euo pipefail
@@ -533,12 +537,12 @@ def add_HardFilter_step(
       VariantFiltration \\
       --filter-expression 'ExcessHet > {excess_het_threshold}' \\
       --filter-name ExcessHet \\
-      -O {j.variant_filtered_vcf["vcf.gz"]} \\
+      -O {j.output_vcf["vcf.gz"]} \\
       -V {input_vcf["vcf.gz"]} \\
       2> {j.stderr}
     """
     )
-    return j.variant_filtered_vcf
+    return j
 
 
 def add_MakeSitesOnlyVcf_step(
@@ -560,7 +564,7 @@ def add_MakeSitesOnlyVcf_step(
       -I {input_vcf["vcf.gz"]} \\
       -O {j.sites_only_vcf["vcf.gz"]}"""
     )
-    return j.sites_only_vcf
+    return j
 
 
 def add_SitesOnlyGatherVcf_step(
@@ -591,7 +595,7 @@ def add_SitesOnlyGatherVcf_step(
 
     tabix {j.output_vcf["vcf.gz"]}"""
     )
-    return j.output_vcf
+    return j
 
 
 def add_IndelsVariantRecalibrator_step(
@@ -635,7 +639,7 @@ def add_IndelsVariantRecalibrator_step(
       -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf.base} \\
       --rscript-file {j.indel_rscript_file}"""
     )
-    return j.recalibration, j.tranches
+    return j
 
 
 def add_SNPsVariantRecalibratorCreateModel_step(
@@ -686,7 +690,7 @@ def add_SNPsVariantRecalibratorCreateModel_step(
       -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base} \\
       --rscript-file {j.snp_rscript_file}"""
     )
-    return j.model_report
+    return j
 
 
 def add_SNPsVariantRecalibratorScattered_step(
@@ -746,7 +750,7 @@ def add_SNPsVariantRecalibratorScattered_step(
       -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
       -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base}"""
     )
-    return j.recalibration, j.tranches
+    return j
 
 
 def add_SNPGatherTranches_step(
@@ -770,7 +774,7 @@ def add_SNPGatherTranches_step(
       {inputs_cmdl} \\
       --output {j.out_tranches}"""
     )
-    return j.out_tranches
+    return j
 
 
 def add_ApplyRecalibration_step(
@@ -816,7 +820,7 @@ def add_ApplyRecalibration_step(
       -mode SNP \\
       {'--use-allele-specific-annotations' if use_allele_specific_annotations else ''}"""
     )
-    return j.recalibrated_vcf
+    return j
 
 
 def add_CollectMetricsSharded_step(
@@ -849,7 +853,7 @@ def add_CollectMetricsSharded_step(
       --THREAD_COUNT 8 \\
       --TARGET_INTERVALS {interval_list}"""
     )
-    return j.metrics
+    return j
 
 
 def add_FinalGatherVcf_step(
@@ -876,12 +880,12 @@ def add_FinalGatherVcf_step(
       --ignore-safety-checks \\
       --gather-type BLOCK \\
       {input_cmdl} \\
-      --output {j.output_vcf}
+      --output {j.output_vcf["vcf.gz"]}
 
     tabix {j.output_vcf}"""
     )
     b.write_output(j.output_vcf, output_vcf_path.replace(".vcf.gz", ""))
-    return j.output_vcf
+    return j
 
 
 def add_VariantEval_step(
@@ -908,7 +912,7 @@ def add_VariantEval_step(
       --output {j.output}"""
     )
     b.write_output(j.output, output_path)
-    return j.output
+    return j
 
 
 def add_GatherVariantCallingMetrics_step(
@@ -937,7 +941,7 @@ def add_GatherVariantCallingMetrics_step(
       --OUTPUT {j.metrics}"""
     )
     b.write_output(j.metrics, output_path_prefix)
-    return j.metrics
+    return j
 
 
 if __name__ == "__main__":
