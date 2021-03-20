@@ -400,7 +400,7 @@ def main(
         is_small_callset=is_small_callset,
         use_allele_specific_annotations=not skip_allele_specific_annotations,
     ) for idx in range(len(sites_only_vcfs))]
-    snps_recalibrations = [j.recalibrations for j in snps_recalibrator_jobs]
+    snps_recalibrations = [j.recalibration for j in snps_recalibrator_jobs]
     snps_tranches = [j.tranches for j in snps_recalibrator_jobs]
     # snp_tranches = [
     #     b.read_input(f'gs://playground-au/batch/df311d/{idx + 1}/tranches') 
