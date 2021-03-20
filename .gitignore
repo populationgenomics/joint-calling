@@ -46,3 +46,4 @@ test/data/gvcfs/
 test/data/sample_maps/
 
 .env
+libs
