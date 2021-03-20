@@ -19,7 +19,9 @@ The input is a VCF file, build the following way:
    `scripts/mt_to_vcf.py`
 
 The output is a VCF file <output_bucket>/<callset>-recalibrated.vcf.gz,
-as well as a QC file <output_bucket>/<callset>-eval.txt.
+as well as a QC file <output_bucket>/<callset>-eval.txt
+and R scripts to plot VQSR models: <output_bucket>/plot-snps-recal.Rscript
+and <output_bucket>/plot-indels-recal.Rscript
 """
 
 import os
@@ -426,6 +428,7 @@ def main(  # pylint: disable=R0913,R0914
         dbsnp_resource_vcf=dbsnp_resource_vcf,
         use_allele_specific_annotations=not skip_allele_specific_annotations,
         disk_size=small_disk,
+        output_bucket=output_bucket,
     )
     indels_recalibration = indels_variant_recalibrator_job.recalibration
     indels_tranches = indels_variant_recalibrator_job.tranches
@@ -442,6 +445,7 @@ def main(  # pylint: disable=R0913,R0914
         one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
         dbsnp_resource_vcf=dbsnp_resource_vcf,
         disk_size=small_disk,
+        output_bucket=output_bucket,
         use_allele_specific_annotations=not skip_allele_specific_annotations,
         is_small_callset=is_small_callset,
         downsample_factor=snp_vqsr_downsample_factor,
@@ -732,6 +736,7 @@ def add_indels_variant_recalibrator_step(
     dbsnp_resource_vcf: hb.ResourceGroup,
     use_allele_specific_annotations: bool,
     disk_size: int,
+    output_bucket: str = None,
     max_gaussians: int = 4,
 ) -> Job:
     """
@@ -775,6 +780,11 @@ def add_indels_variant_recalibrator_step(
       -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf.base} \\
       --rscript-file {j.indel_rscript_file}"""
     )
+    if output_bucket:
+        b.write_output(
+            j.indel_rscript_file,
+            os.path.join(output_bucket, 'plot-indels-recal.Rscript'),
+        )
     return j
 
 
@@ -788,6 +798,7 @@ def add_snps_variant_recalibrator_create_model_step(
     one_thousand_genomes_resource_vcf: hb.ResourceGroup,
     dbsnp_resource_vcf: hb.ResourceGroup,
     disk_size: int,
+    output_bucket: str = None,
     use_allele_specific_annotations: bool = True,
     is_small_callset: bool = False,
     max_gaussians: int = 4,
@@ -851,6 +862,10 @@ def add_snps_variant_recalibrator_create_model_step(
       {dbsnp_resource_vcf.base} \\
       --rscript-file {j.snp_rscript_file}"""
     )
+    if output_bucket:
+        b.write_output(
+            j.snp_rscript_file, os.path.join(output_bucket, 'plot-snps-recal.Rscript')
+        )
     return j
 
 
