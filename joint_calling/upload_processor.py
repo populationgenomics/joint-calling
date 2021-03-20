@@ -6,8 +6,10 @@
     run all uploaded files will be moved to archival storage."""
 
 from typing import List
+from subprocess import CalledProcessError
 from google.cloud import storage
 from google.api_core.exceptions import NotFound
+import hailtop.batch as hb
 
 
 def move_files(
@@ -76,3 +78,50 @@ def move_files(
             continue
         else:
             raise NotFound(f'{sample} was not found')
+
+
+def batch_move_files(
+    sample_files: List[str],
+    source_bucket_name: str,
+    destination_bucket_name: str,
+    path: str = '',
+):
+    """Moving files between buckets
+
+    Parameters
+    ==========
+    sample_files: List[str]
+        A list of the file names to be moved.
+        For example ["TOB1543","TOB2314","TOB3423"]
+    source_bucket_name: str
+        The name of the bucket where the files are initially located.
+        For example "cpg-tob-wgs-upload"
+    destination_bucket_name: str
+        The name of the bucket where files are to be moved.
+        For example "cpg-tob-wgs-main"
+    path: str, optional
+        The path to the specific sub-directory where the file should be moved.
+        By default no sub-directory is specified.
+        For example, "/v1"
+
+    Notes
+    =====
+    The function assumes that the file names have
+    been validated at an earlier stage."""
+
+    source_bucket = 'gs://' + source_bucket_name
+    destination_bucket = 'gs://' + destination_bucket_name
+    b = hb.Batch()
+
+    for sample in sample_files:
+        previous_location = source_bucket + f'/{sample}'
+        new_location = destination_bucket + path + f'/{sample}'
+        j = b.new_job(name=f'moving_{sample}')
+        j.command(f'gsutil mv {previous_location} {new_location}')
+
+    try:
+        b.run()
+    except CalledProcessError as invalid_details:
+        raise Exception(
+            'Could not execute move function. Check the file and bucket name.'
+        ) from invalid_details
