@@ -12,10 +12,9 @@ import logging
 import click
 
 import hail as hl
-import hailtop.batch as hb
 
 from joint_calling import _version
-from joint_calling.utils import get_validation_callback, init_hail
+from joint_calling.utils import get_validation_callback, init_hail, file_exists
 from joint_calling.mt_to_vcf import mt_to_sites_only_mt
 
 logger = logging.getLogger('vqsr_qc')
@@ -35,13 +34,9 @@ logger.setLevel(logging.INFO)
     callback=get_validation_callback(
         ext='mt', must_exist=True, accompanying_metadata_suffix='.metadata.ht'
     ),
-    help='path to the input MatrixTable. Must have an `.mt` extension')
-@click.option(
-    '--bucket',
-    'bucket',
-    required=True,
-    help='path to write output.'
+    help='path to the input MatrixTable. Must have an `.mt` extension',
 )
+@click.option('--bucket', 'bucket', required=True, help='path to write output.')
 @click.option(
     '--local-tmp-dir',
     'local_tmp_dir',
@@ -85,20 +80,20 @@ def main(
     mt = hl.read_matrix_table(mt_path).key_rows_by('locus', 'alleles')
 
     output_path = os.path.join(bucket, 'sites.vcf.bgz')
+    if file_exists(output_path):
+        if overwrite:
+            logger.info(f'Output file {output_path} exists and will be overwritten')
+        else:
+            logger.info(
+                f'Output file {output_path} exists, use --overwrite to overwrite'
+            )
+            return
     output_path = export_sites_only_vcf(
         mt=mt, output_path=output_path, partitions=partitions
     )
 
-    # now run the WDL pipeline on Cromwell with inputs:
-    inputs = {'vcf': output_path}
-    print(inputs)
 
-    return inputs
-
-
-def export_sites_only_vcf(
-    mt: hl.MatrixTable, output_path: str, partitions: int = 5000
-):
+def export_sites_only_vcf(mt: hl.MatrixTable, output_path: str, partitions: int = 5000):
     """
     Take initial matrix table, convert to sites-only matrix table, then export to vcf
     """
@@ -117,4 +112,4 @@ def export_sites_only_vcf(
 
 
 if __name__ == '__main__':
-    main()
+    main()  # pylint: disable=E1120
