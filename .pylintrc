@@ -18,8 +18,10 @@
 #    c-extension-no-member
 # 8. unsubscriptable-object (see https://github.com/PyCQA/pylint/issues/3882)
 # 9. R0801 (Similar lines in 2 files)
+# 10. C0301: Line too long (covered by black)
+# 11. C0302: Too many lines in module
 
-disable=f-string-without-interpolation,inherit-non-class,too-few-public-methods,C0330,C0326,fixme,logging-fstring-interpolation,import-error,no-member,c-extension-no-member,unsubscriptable-object,R0801
+disable=f-string-without-interpolation,inherit-non-class,too-few-public-methods,C0330,C0326,fixme,logging-fstring-interpolation,import-error,no-member,c-extension-no-member,unsubscriptable-object,R0801,C0301,C0302
 
 # Overriding variable name patterns to allow short 1- or 2-letter variables
 attr-rgx=[a-z_][a-z0-9_]{0,50}$
