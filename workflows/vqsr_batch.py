@@ -25,7 +25,7 @@ and <output_bucket>/plot-indels-recal.Rscript
 """
 
 import os
-from typing import Optional, List
+from typing import List
 
 import click
 import hailtop.batch as hb
@@ -80,9 +80,9 @@ BROAD_REF_BUCKET = 'gs://gcp-public-data--broad-references/hg38/v0'
     type=str,
     default=os.path.join(BROAD_REF_BUCKET, 'Homo_sapiens_assembly38.dbsnp138.vcf.idx'),
 )
-@click.option('--small_disk', 'small_disk', type=int, default=50)
-@click.option('--medium_disk', 'medium_disk', type=int, default=100)
-@click.option('--huge_disk', 'huge_disk', type=int, default=200)
+@click.option('--small_disk', 'small_disk', type=int)
+@click.option('--medium_disk', 'medium_disk', type=int)
+@click.option('--huge_disk', 'huge_disk', type=int)
 @click.option(
     '--snp_recalibration_tranche_values',
     'snp_recalibration_tranche_values',
@@ -244,7 +244,6 @@ BROAD_REF_BUCKET = 'gs://gcp-public-data--broad-references/hg38/v0'
 )
 @click.option('--dry_run', 'dry_run', is_flag=True, default=False)
 @click.option('--keep_scratch', 'keep_scratch', is_flag=True, default=False)
-@click.option('--is_small_callset', 'is_small_callset', is_flag=True, default=False)
 @click.option('--billing_project', 'billing_project', type=str)
 def main(  # pylint: disable=R0913,R0914
     combined_gvcf: str,
@@ -257,35 +256,31 @@ def main(  # pylint: disable=R0913,R0914
     ref_dict: str,
     dbsnp_vcf: str,
     dbsnp_vcf_index: str,
-    small_disk: Optional[int] = None,
-    medium_disk: Optional[int] = None,
-    huge_disk: Optional[int] = None,
-    snp_recalibration_tranche_values: List[float] = None,
-    snp_recalibration_annotation_values: List[str] = None,
-    indel_recalibration_tranche_values: List[float] = None,
-    indel_recalibration_annotation_values: List[str] = None,
-    eval_interval_list: str = None,
-    hapmap_resource_vcf: str = None,
-    hapmap_resource_vcf_index: str = None,
-    omni_resource_vcf: str = None,
-    omni_resource_vcf_index: str = None,
-    one_thousand_genomes_resource_vcf: str = None,
-    one_thousand_genomes_resource_vcf_index: str = None,
-    mills_resource_vcf: str = None,
-    mills_resource_vcf_index: str = None,
-    axiom_poly_resource_vcf: str = None,
-    axiom_poly_resource_vcf_index: str = None,
-    dbsnp_resource_vcf: str = None,
-    dbsnp_resource_vcf_index: str = None,
-    excess_het_threshold: float = None,
-    snp_filter_level: float = None,
-    indel_filter_level: float = None,
-    snp_vqsr_downsample_factor: int = None,
-    skip_allele_specific_annotations: bool = None,
-    dry_run: bool = None,
-    keep_scratch: bool = None,
-    billing_project: str = None,
-    is_small_callset: bool = None,
+    snp_recalibration_tranche_values: List[float],
+    snp_recalibration_annotation_values: List[str],
+    indel_recalibration_tranche_values: List[float],
+    indel_recalibration_annotation_values: List[str],
+    eval_interval_list: str,
+    hapmap_resource_vcf: str,
+    hapmap_resource_vcf_index: str,
+    omni_resource_vcf: str,
+    omni_resource_vcf_index: str,
+    one_thousand_genomes_resource_vcf: str,
+    one_thousand_genomes_resource_vcf_index: str,
+    mills_resource_vcf: str,
+    mills_resource_vcf_index: str,
+    axiom_poly_resource_vcf: str,
+    axiom_poly_resource_vcf_index: str,
+    dbsnp_resource_vcf: str,
+    dbsnp_resource_vcf_index: str,
+    excess_het_threshold: float,
+    snp_filter_level: float,
+    indel_filter_level: float,
+    snp_vqsr_downsample_factor: int,
+    skip_allele_specific_annotations: bool,
+    dry_run: bool,
+    keep_scratch: bool,
+    billing_project: str,
 ):
     """
     Run a Hail Batch workflow that performs the VQSR filtering on a WGS
@@ -304,13 +299,17 @@ def main(  # pylint: disable=R0913,R0914
     scatter_count = int(round(scatter_count_scale_factor * num_gvcfs))
     scatter_count = max(scatter_count, 2)
 
-    # For small callsets (fewer than 1000 samples) we can gather the VCF shards
-    # and collect metrics directly. For anything larger, we need to keep the VCF
-    # sharded and gather metrics collected from them.
-    # We allow overriding this default behavior for testing / special requests.
-    is_small_callset = (
-        is_small_callset if is_small_callset is not None else num_gvcfs < 1000
-    )
+    is_small_callset = num_gvcfs < 1000
+    # 1. For small callsets, we don't apply the ExcessHet filtering.
+    # 2. For small callsets, we gather the VCF shards and collect QC metrics directly.
+    # For anything larger, we need to keep the VCF sharded and gather metrics
+    # collected from them.
+    is_huge_callset = num_gvcfs >= 100000
+    # For huge callsets, we allocate more memory for the SNPs Create Model step
+
+    small_disk = 30 if is_small_callset else (50 if not is_huge_callset else 100)
+    medium_disk = 50 if is_small_callset else (100 if not is_huge_callset else 200)
+    huge_disk = 100 if is_small_callset else (500 if not is_huge_callset else 2000)
 
     backend = hb.ServiceBackend(billing_project=billing_project)
     b = hb.Batch('VariantCallingOFTHEFUTURE', backend=backend)
@@ -435,6 +434,12 @@ def main(  # pylint: disable=R0913,R0914
     # indels_recalibration = 'gs://playground-au/batch/859e9a/17/recalibration'
     # indels_tranches = 'gs://playground-au/batch/859e9a/17/tranches'
 
+    snp_max_gaussians = 6
+    if is_small_callset:
+        snp_max_gaussians = 4
+    elif is_huge_callset:
+        snp_max_gaussians = 8
+
     model_file = add_snps_variant_recalibrator_create_model_step(
         b,
         sites_only_variant_filtered_vcf=sites_only_gathered_vcf,
@@ -447,7 +452,8 @@ def main(  # pylint: disable=R0913,R0914
         disk_size=small_disk,
         output_bucket=output_bucket,
         use_allele_specific_annotations=not skip_allele_specific_annotations,
-        is_small_callset=is_small_callset,
+        is_huge_callset=is_huge_callset,
+        max_gaussians=snp_max_gaussians,
         downsample_factor=snp_vqsr_downsample_factor,
     ).model_file
     # model_file = b.read_input('gs://playground-au/batch/859e9a/18/model_report')
@@ -464,7 +470,7 @@ def main(  # pylint: disable=R0913,R0914
             one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
             dbsnp_resource_vcf=dbsnp_resource_vcf,
             disk_size=small_disk,
-            is_small_callset=is_small_callset,
+            max_gaussians=snp_max_gaussians,
             use_allele_specific_annotations=not skip_allele_specific_annotations,
         )
         for idx in range(len(sites_only_vcfs))
@@ -753,7 +759,7 @@ def add_indels_variant_recalibrator_step(
     """
     j = b.new_job('IndelsVariantRecalibrator')
     j.image(GATK_DOCKER)
-    j.memory(f'32G')
+    j.memory('32G')
     j.cpu(2)
     j.storage(f'{disk_size}G')
 
@@ -800,7 +806,7 @@ def add_snps_variant_recalibrator_create_model_step(
     disk_size: int,
     output_bucket: str = None,
     use_allele_specific_annotations: bool = True,
-    is_small_callset: bool = False,
+    is_huge_callset: bool = False,
     max_gaussians: int = 4,
     downsample_factor: int = 10,
 ) -> Job:
@@ -827,12 +833,10 @@ def add_snps_variant_recalibrator_create_model_step(
     """
     j = b.new_job('SNPsVariantRecalibratorCreateModel')
     j.image(GATK_DOCKER)
-    mem_gb = 64 if is_small_callset else 128
+    mem_gb = 64 if not is_huge_callset else 128
     j.memory(f'{mem_gb}G')
     j.cpu(2)
     j.storage(f'{disk_size}G')
-
-    max_gaussians = max_gaussians or (4 if is_small_callset else 6)
 
     tranche_cmdl = ' '.join([f'-tranche {v}' for v in recalibration_tranche_values])
     an_cmdl = ' '.join([f'-an {v}' for v in recalibration_annotation_values])
@@ -852,14 +856,10 @@ def add_snps_variant_recalibrator_create_model_step(
       --sample-every-Nth-variant {downsample_factor} \\
       --output-model {j.model_file} \\
       --max-gaussians {max_gaussians} \\
-      -resource:hapmap,known=false,training=true,truth=true,prior=15 \\
-      {hapmap_resource_vcf.base} \\
-      -resource:omni,known=false,training=true,truth=true,prior=12 \\
-      {omni_resource_vcf.base} \\
-      -resource:1000G,known=false,training=true,truth=false,prior=10 \\
-      {one_thousand_genomes_resource_vcf.base} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=7 \\
-      {dbsnp_resource_vcf.base} \\
+      -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
+      -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
+      -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base} \\
       --rscript-file {j.snp_rscript_file}"""
     )
     if output_bucket:
@@ -881,7 +881,6 @@ def add_snps_variant_recalibrator_scattered_step(
     dbsnp_resource_vcf: hb.ResourceGroup,
     disk_size: int,
     use_allele_specific_annotations: bool = True,
-    is_small_callset: bool = False,
     max_gaussians: int = 4,
 ) -> Job:
     """
@@ -906,14 +905,11 @@ def add_snps_variant_recalibrator_scattered_step(
     """
     j = b.new_job('SNPsVariantRecalibratorScattered')
 
-    mem_gb = 32 if is_small_callset else 64
-
     j.image(GATK_DOCKER)
+    mem_gb = 64  # ~ twice the sum of all input resources and input VCF sizes
     j.memory(f'{mem_gb}G')
     j.cpu(2)
     j.storage(f'{disk_size}G')
-
-    max_gaussians = max_gaussians or (4 if is_small_callset else 6)
 
     j.declare_resource_group(recalibration={'index': '{root}.idx', 'base': '{root}'})
 
@@ -934,7 +930,7 @@ def add_snps_variant_recalibrator_scattered_step(
       {an_cmdl} \\
       -mode SNP \\
       {'--use-allele-specific-annotations' if use_allele_specific_annotations else ''} \\
-      '--input-model {model_report} --output-tranches-for-scatter' \\
+      --input-model {model_report} --output-tranches-for-scatter \\
       --max-gaussians {max_gaussians} \\
       -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
       -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
