@@ -1300,7 +1300,7 @@ Variantcallingofthefuture.input(
     "scatterCount",
     Int(optional=True),
     default=If(
-        AndOperator(Variantcallingofthefuture.unboundedScatterCount, 
+        AndOperator(Variantcallingofthefuture.unboundedScatterCount,
             GtOperator(Variantcallingofthefuture.unboundedScatterCount, 10)),
         Variantcallingofthefuture.unboundedScatterCount,
         10,
