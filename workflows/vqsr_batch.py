@@ -80,9 +80,6 @@ BROAD_REF_BUCKET = 'gs://gcp-public-data--broad-references/hg38/v0'
     type=str,
     default=os.path.join(BROAD_REF_BUCKET, 'Homo_sapiens_assembly38.dbsnp138.vcf.idx'),
 )
-@click.option('--small_disk', 'small_disk', type=int)
-@click.option('--medium_disk', 'medium_disk', type=int)
-@click.option('--huge_disk', 'huge_disk', type=int)
 @click.option(
     '--snp_recalibration_tranche_values',
     'snp_recalibration_tranche_values',

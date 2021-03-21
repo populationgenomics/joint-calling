@@ -46,4 +46,4 @@ repos:
   rev: v0.812
   hooks:
   - id: mypy
-
+    exclude: workflows/vqsr_janis.py
