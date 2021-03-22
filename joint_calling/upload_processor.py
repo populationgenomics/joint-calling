@@ -114,6 +114,7 @@ def batch_move_files(
 
     source_bucket = 'gs://' + source_bucket_name
     destination_bucket = 'gs://' + destination_bucket_name
+    jobs = []
 
     for sample in sample_files:
         previous_location = source_bucket + f'/{sample}'
@@ -134,3 +135,9 @@ def batch_move_files(
         j = batch.new_job(name=f'moving_{sample}')
         # -m performs a multi-threaded/multi-processing move
         j.command(f'gsutil -m mv {previous_location} {new_location}')
+        jobs.append(j)
+
+    upload_sink = batch.new_job(name='upload_sink')
+    upload_sink.depends_on(*jobs)
+
+    return upload_sink
