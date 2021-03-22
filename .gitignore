@@ -37,11 +37,13 @@ playground/
 test_run*/
 data/
 work/
+.snakemake
+libs/
+venv/
 !test/data/
 test/data/picard_files/
 test/data/gvcfs/
 test/data/sample_maps/
-libs/
 
 .env
 libs
