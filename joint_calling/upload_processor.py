@@ -5,8 +5,8 @@
     they should be combined with in this case. Following a successful
     run all uploaded files will be moved to archival storage."""
 
+import subprocess
 from typing import List
-from subprocess import CalledProcessError
 from google.cloud import storage
 from google.api_core.exceptions import NotFound
 import hailtop.batch as hb
@@ -84,6 +84,7 @@ def batch_move_files(
     sample_files: List[str],
     source_bucket_name: str,
     destination_bucket_name: str,
+    batch: hb.Batch,
     path: str = '',
 ):
     """Moving files between buckets
@@ -99,6 +100,8 @@ def batch_move_files(
     destination_bucket_name: str
         The name of the bucket where files are to be moved.
         For example "cpg-tob-wgs-main"
+    batch: hb.Batch
+        An object representing the DAG of jobs to run.
     path: str, optional
         The path to the specific sub-directory where the file should be moved.
         By default no sub-directory is specified.
@@ -111,17 +114,23 @@ def batch_move_files(
 
     source_bucket = 'gs://' + source_bucket_name
     destination_bucket = 'gs://' + destination_bucket_name
-    b = hb.Batch()
 
     for sample in sample_files:
         previous_location = source_bucket + f'/{sample}'
         new_location = destination_bucket + path + f'/{sample}'
-        j = b.new_job(name=f'moving_{sample}')
-        j.command(f'gsutil mv {previous_location} {new_location}')
 
-    try:
-        b.run()
-    except CalledProcessError as invalid_details:
-        raise Exception(
-            'Could not execute move function. Check the file and bucket name.'
-        ) from invalid_details
+        # Checks if the files exist at the source and destination
+        get_file_source = subprocess.run(
+            ['gsutil', '-q', 'stat', previous_location], check=False
+        )
+        get_file_destination = subprocess.run(
+            ['gsutil', '-q', 'stat', new_location], check=False
+        )
+
+        # Handles case where the file has already been moved in a previous run.
+        # i.e. it exists at the destination and not the source.
+        if get_file_source.returncode == 1 and get_file_destination.returncode == 0:
+            continue
+        j = batch.new_job(name=f'moving_{sample}')
+        # -m performs a multi-threaded/multi-processing move
+        j.command(f'gsutil -m mv {previous_location} {new_location}')
