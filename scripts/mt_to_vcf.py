@@ -7,7 +7,6 @@ This script takes a path to a matrix table, and then:
  - Collect the results
 """
 
-import os
 import logging
 import click
 
@@ -36,7 +35,11 @@ logger.setLevel(logging.INFO)
     ),
     help='path to the input MatrixTable. Must have an `.mt` extension',
 )
-@click.option('--bucket', 'bucket', required=True, help='path to write output.')
+@click.option(
+    '-o',
+    'output_path',
+    required=True,
+)
 @click.option(
     '--local-tmp-dir',
     'local_tmp_dir',
@@ -64,7 +67,7 @@ logger.setLevel(logging.INFO)
 )
 def main(
     mt_path: str,
-    bucket: str,
+    output_path: str,
     local_tmp_dir: str,
     overwrite: bool,
     hail_billing: str,  # pylint: disable=unused-argument
@@ -79,7 +82,6 @@ def main(
     logger.info(f'Loading matrix table from "{mt_path}"')
     mt = hl.read_matrix_table(mt_path).key_rows_by('locus', 'alleles')
 
-    output_path = os.path.join(bucket, 'sites.vcf.bgz')
     if file_exists(output_path):
         if overwrite:
             logger.info(f'Output file {output_path} exists and will be overwritten')
