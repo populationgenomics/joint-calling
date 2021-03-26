@@ -1,0 +1,56 @@
+name: Condarise
+on:
+  push:
+    branches:
+      - main
+jobs:
+  condarise:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash -l {0}
+    env:
+      package: "${{ github.event.repository.name }}"
+    steps:
+      - uses: actions/checkout@main
+
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          activate-environment: buildenv
+          channels: cpg,conda-forge,bioconda,defaults
+          channel-priority: true
+          mamba-version: "*"
+          python-version: 3.7
+
+      - name: Setup build env
+        run: mamba install pip conda-build anaconda-client
+
+      - name: Build package
+        run: mamba build conda/${{ package }}
+
+      # Using local build as we didn't push the tarball to anaconda yet
+      # the --use-local flag is not working within an activated env,
+      # so using -c file://${CONDA_PREFIX}/... instead
+      - name: Install package
+        run: |
+          mamba install -c file://${CONDA_PREFIX}/conda-bld/ ${{ package }}
+
+      # Remove old packages to save space on anaconda
+      - name: Remove old versions
+        # Only run this step once.
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: |
+          KEEP=8  # Keep 8 latest versions
+          anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
+          show cpg/${{ package }} 2>&1 \
+          | grep "^   +" | head -n-${KEEP} | sed 's#   \+ ##' \
+          | xargs -I '{}' -L1 echo anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
+          remove -f cpg/${{ package }}/{}
+
+      - name: Upload to anaconda package repository
+        run: |
+          anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
+          upload ${CONDA_PREFIX}/conda-bld/**/*.tar.bz2

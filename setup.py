@@ -18,6 +18,7 @@ setuptools.setup(
     scripts=[
         join('scripts', 'combine_gvcfs.py'),
         join('scripts', 'sample_qc.py'),
+        join('scripts', 'mt_to_vcf.py'),
     ],
     keywords='bioinformatics',
     classifiers=[

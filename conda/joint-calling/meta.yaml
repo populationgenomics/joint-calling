@@ -1,23 +1,23 @@
 {% set data=load_setup_py_data() %}
 
 package:
-  name: cpg-qc
+  name: joint-calling
   version: {{ data['version'] }}
 
 source:
   path: ../../
 
 build:
-  number: 3
+  number: 0
   noarch: python
 
 requirements:
   host:
-    - python ==3.7.*
-    - hail >=0.2.61
+    - python
+    - hail
   run:
-    - python ==3.7.*
-    - hail >=0.2.61
+    - python
+    - hail
     - click
     - pandas
     - google-cloud-sdk
@@ -30,6 +30,7 @@ test:
   commands:
     - sample_qc.py --version
     - combine_gvcfs.py --version
+    - mt_to_vcf.py --version
 
 about:
   home: {{ data['url'] }}
