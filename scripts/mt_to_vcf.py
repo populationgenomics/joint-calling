@@ -8,8 +8,9 @@ This script takes a path to a matrix table, and then:
 """
 
 import logging
+import shutil
+import tempfile
 import click
-
 import hail as hl
 
 from joint_calling import _version
@@ -43,7 +44,6 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--local-tmp-dir',
     'local_tmp_dir',
-    required=True,
     help='local directory for temporary files and Hail logs (must be local).',
 )
 @click.option(
@@ -56,7 +56,6 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--hail-billing',
     'hail_billing',
-    required=True,
     help='Hail billing account ID.',
 )
 @click.option(
@@ -76,6 +75,10 @@ def main(
     """
     Expects hail service to already be initialised
     """
+    local_dir_is_temp = False
+    if not local_tmp_dir:
+        local_tmp_dir = tempfile.mkdtemp()
+        local_dir_is_temp = True
 
     init_hail('variant_qc', local_tmp_dir)
 
@@ -90,9 +93,10 @@ def main(
                 f'Output file {output_path} exists, use --overwrite to overwrite'
             )
             return
-    output_path = export_sites_only_vcf(
-        mt=mt, output_path=output_path, partitions=partitions
-    )
+    export_sites_only_vcf(mt=mt, output_path=output_path, partitions=partitions)
+
+    if local_dir_is_temp:
+        shutil.rmtree(local_tmp_dir)
 
 
 def export_sites_only_vcf(mt: hl.MatrixTable, output_path: str, partitions: int = 5000):
