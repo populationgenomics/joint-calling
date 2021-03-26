@@ -111,7 +111,7 @@ def export_sites_only_vcf(mt: hl.MatrixTable, output_path: str, partitions: int 
     logger.info(
         f"Exporting sites-only VCF to '{output_path}' to run in the VQSR pipeline"
     )
-    hl.export_vcf(final_mt, output_path, tabix=True)
+    hl.export_vcf(final_mt, output_path)
     logger.info('Successfully exported sites-only VCF')
 
     return output_path
