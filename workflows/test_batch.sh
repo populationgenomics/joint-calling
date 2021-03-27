@@ -1,7 +1,16 @@
-python vqsr_batch.py \
-	--combined_gvcf gs://cpg-fewgenomes-test/vqsr-testing/sites.vcf.bgz \
-	--callset_name fewgenomes \
-	--billing_project fewgenomes \
-	--num_gvcfs 48 \
-	--keep_scratch \
-	--output_bucket gs://playground-au/vqsr
+SAMPLE_MAP=gs://cpg-fewgenomes-temporary/joint-calling/100genomes-gvcf-gvcf-local.tsv
+OUTPUT_BUCKET=gs://cpg-fewgenomes-temporary/joint-calling/test-run
+CALLSET=fewgenomes
+
+CMD="vqsr_batch.py\
+ --sample-map $SAMPLE_MAP\
+ --output_bucket $OUTPUT_BUCKET \
+ --callset_name $CALLSET\
+ --keep_scratch"
+
+analysis-runner \
+--dataset $CALLSET \
+--access-level test \
+--output-dir $OUTPUT_BUCKET \
+--description "Joint-calling wofkflow" \
+"$CMD"

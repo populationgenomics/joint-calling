@@ -376,15 +376,6 @@ def main(  # pylint: disable=R0913,R0914,R0915
         for output_gvcf_path, gvcf in zip(gvcfs_for_combiner, reblocked_gvcfs)
     ]
 
-    # # ToDo: do QC and combining outside of Hail, then run VQSR, then import into hail?
-    # dataproc.hail_dataproc_job(
-    #     b,
-    #     f'combiner --output={OUTPUT}',
-    #     max_age='1h',
-    #     packages=['click', 'selenium'],
-    #     init=['gs://cpg-reference/hail_dataproc/install_phantomjs.sh'],
-    # )
-
     combiner_bucket = os.path.join(output_bucket, 'combiner')
     combined_mt_path = os.path.join(combiner_bucket, '100genomes.mt')
     d = {
@@ -408,10 +399,8 @@ def main(  # pylint: disable=R0913,R0914,R0915
         b,
         input_mt=combined_mt_path,
         output_vcf_path=combined_vcf_path,
-        tmp_bucket=os.path.join(output_bucket, 'mt2vcf'),
         depends_on=[combiner_job],
     )
-    combined_vcf = b.read_input(combined_vcf_path)
 
     split_intervals_job = add_split_intervals_step(
         b,
@@ -422,6 +411,8 @@ def main(  # pylint: disable=R0913,R0914,R0915
     )
     split_intervals_job.depends_on(mt2vcf_job)
     intervals = split_intervals_job.intervals
+
+    combined_vcf = add_tabix_step(b, combined_vcf_path, medium_disk).combined_vcf
 
     gnarly_output_vcfs = [
         add_gnarly_genotyper_on_vcf_step(
@@ -729,7 +720,6 @@ def add_combiner_step(
         f'--sample-map {input_csv_path} '
         f'--out-mt {combined_mt_path} '
         f'--bucket {tmp_bucket}/work '
-        f'--local-tmp-dir combiner-tmp '
         f'--hail-billing fewgenomes',
         max_age='8h',
         packages=[
@@ -752,7 +742,6 @@ def add_mt2vcf_step(
     b: hb.Batch,
     input_mt: str,
     output_vcf_path: str,
-    tmp_bucket: str,
     depends_on: List = None,
 ) -> Job:
     """
@@ -762,9 +751,8 @@ def add_mt2vcf_step(
         b,
         f'run-python-script.py mt_to_vcf.py '
         f'--mt {input_mt} '
-        f'--bucket {tmp_bucket}/vcf2mt/work '
         f'-o {output_vcf_path} '
-        f'--hail-billing fewgenomes',
+        f'--overwrite',
         max_age='8h',
         packages=[
             'joint-calling',
@@ -778,6 +766,32 @@ def add_mt2vcf_step(
         ],
         num_secondary_workers=10,
         depends_on=depends_on,
+    )
+    return j
+
+
+def add_tabix_step(
+    b: hb.Batch,
+    vcf_path: str,
+    disk_size: int,
+) -> Job:
+    """
+    Regzip and tabix the combined VCF (for some reason the one output with mt2vcf
+    is not block-gzipped)
+    """
+    j = b.new_job('Tabix')
+    j.image('quay.io/biocontainers/bcftools:1.10.2--h4f4756c_2')
+    j.memory(f'8G')
+    j.storage(f'{disk_size}G')
+    j.declare_resource_group(
+        combined_vcf={'vcf.gz': '{root}.vcf.gz', 'vcf.gz.tbi': '{root}.vcf.gz.tbi'}
+    )
+    vcf_inp = b.read_input(vcf_path)
+    j.command(
+        f"""set -e
+        gunzip {vcf_inp} -c | bgzip -c > {j.combined_vcf['vcf.gz']}
+        tabix -p vcf {j.combined_vcf['vcf.gz']}
+        """
     )
     return j
 
@@ -822,7 +836,7 @@ def add_split_intervals_step(
 
 def add_gnarly_genotyper_on_vcf_step(
     b: hb.Batch,
-    combined_gvcf: hb.ResourceFile,
+    combined_gvcf: hb.ResourceGroup,
     interval: hb.ResourceGroup,
     ref_fasta: hb.ResourceGroup,
     dbsnp_vcf: hb.ResourceGroup,
@@ -854,8 +868,6 @@ def add_gnarly_genotyper_on_vcf_step(
     j.command(
         f"""set -e
 
-    tabix -p vcf {combined_gvcf}
-
     gatk --java-options -Xms8g \\
       GnarlyGenotyper \\
       -R {ref_fasta.base} \\
@@ -863,7 +875,7 @@ def add_gnarly_genotyper_on_vcf_step(
       -D {dbsnp_vcf.base} \\
       --only-output-calls-starting-in-intervals \\
       --keep-all-sites \\
-      -V {combined_gvcf} \\
+      -V {combined_gvcf['vcf.gz']} \\
       -L {interval} \\
       --create-output-variant-index"""
     )
