@@ -84,9 +84,10 @@ def batch_move_files(
     sample_files: List[str],
     source_bucket_name: str,
     destination_bucket_name: str,
-    batch: hb.Batch,
+    batch: hb.batch,
+    docker_image: str,
     path: str = '',
-):
+) -> hb.batch.job:
     """Moving files between buckets
 
     Parameters
@@ -102,10 +103,20 @@ def batch_move_files(
         For example "cpg-tob-wgs-main"
     batch: hb.Batch
         An object representing the DAG of jobs to run.
+    docker_image: str
+        The address and tag of a previously built docker image, within the
+        artifact registry.
+        For example;
+        australia-southeast1-docker.pkg.dev/project/images/driver:version'
     path: str, optional
         The path to the specific sub-directory where the file should be moved.
-        By default no sub-directory is specified.
+        By default no sub-directory is specified. This may correspond to the version.
         For example, "/v1"
+
+    Returns
+    =======
+    Returns a sink, i.e. a job that is dependent on the array of
+    jobs that are defined to move each sample.
 
     Notes
     =====
@@ -132,7 +143,15 @@ def batch_move_files(
         # i.e. it exists at the destination and not the source.
         if get_file_source.returncode == 1 and get_file_destination.returncode == 0:
             continue
+
         j = batch.new_job(name=f'moving_{sample}')
+        j.image(docker_image)
+
+        # Authenticate to service account.
+        j.command(
+            'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
+        )
+
         # -m performs a multi-threaded/multi-processing move
         j.command(f'gsutil -m mv {previous_location} {new_location}')
         jobs.append(j)
