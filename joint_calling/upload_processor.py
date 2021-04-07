@@ -81,17 +81,20 @@ def move_files(
 
 
 def batch_move_files(
+    batch: hb.batch,
     sample_files: List[str],
     source_bucket_name: str,
     destination_bucket_name: str,
-    batch: hb.batch,
     docker_image: str,
-    path: str = '',
+    dest_path: str = '',
+    key: str = None,
 ) -> hb.batch.job:
     """Moving files between buckets
 
     Parameters
     ==========
+    batch: hb.Batch
+        An object representing the DAG of jobs to run.
     sample_files: List[str]
         A list of the file names to be moved.
         For example ["TOB1543","TOB2314","TOB3423"]
@@ -101,17 +104,26 @@ def batch_move_files(
     destination_bucket_name: str
         The name of the bucket where files are to be moved.
         For example "cpg-tob-wgs-main"
-    batch: hb.Batch
-        An object representing the DAG of jobs to run.
     docker_image: str
         The address and tag of a previously built docker image, within the
         artifact registry.
         For example;
         australia-southeast1-docker.pkg.dev/project/images/driver:version'
-    path: str, optional
+    dest_path: str, optional
         The path to the specific sub-directory where the file should be moved.
         By default no sub-directory is specified. This may correspond to the version.
         For example, "/v1"
+    key: str, optional
+        key-file for the service account used for authentication. In the case that this
+        is not provided as an input, it is assumed that this key will exist at
+        gsa-key/key.json. This is the case when using the hail batch service backend.
+        For example:
+        "{
+            "type": "service_account",
+            "project_id": "",
+            "private_key_id": "" ...
+        }
+        "
 
     Returns
     =======
@@ -129,7 +141,7 @@ def batch_move_files(
 
     for sample in sample_files:
         previous_location = source_bucket + f'/{sample}'
-        new_location = destination_bucket + path + f'/{sample}'
+        new_location = destination_bucket + dest_path + f'/{sample}'
 
         # Checks if the files exist at the source and destination
         get_file_source = subprocess.run(
@@ -148,9 +160,14 @@ def batch_move_files(
         j.image(docker_image)
 
         # Authenticate to service account.
-        j.command(
-            'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
-        )
+        if key is not None:
+            j.command(f"echo '{key}' > key.json")
+            j.command(f'gcloud -q auth activate-service-account --key-file=key.json')
+        # Handles service backend, or a key in the same default location.
+        else:
+            j.command(
+                'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
+            )
 
         # -m performs a multi-threaded/multi-processing move
         j.command(f'gsutil -m mv {previous_location} {new_location}')
