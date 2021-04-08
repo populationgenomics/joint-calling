@@ -22,7 +22,6 @@ OUTPUT_BUCKET=gs://cpg-tob-wgs-temporary/v0/
 CMD="batch_workflow.py\
  --callset $CALLSET\
  --version v0\
- --is-test\
  --keep_scratch"
 
 analysis-runner \
