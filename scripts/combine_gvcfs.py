@@ -6,6 +6,7 @@ Combine a set of gVCFs and output a MatrixTable and a HailTable with metadata
 
 import os
 import shutil
+import subprocess
 import tempfile
 
 from typing import List
@@ -28,16 +29,30 @@ TARGET_RECORDS = 25_000
 
 @click.command()
 @click.version_option(_version.__version__)
-@click.option(
-    '--sample-map',
-    'sample_map_csv_path',
-    required=True,
-    callback=get_validation_callback(ext='csv', must_exist=True),
-    help='path to a CSV file with per-sample data, where the '
-    'first line is a header. The only 2 required columns are `sample` '
-    '(the sample name) and `gvcf` (path to sample GVCF file) '
-    'in any order, possibly mixed with other columns.',
-)
+# @click.option(
+#     '--dataset', 'dataset', required=True,
+#     help='Dataset name'
+# )
+# @click.option(
+#     '--test', 'test', required=True, is_flag=True,
+#     help='Whether to use test or main bucket',
+# )
+# @click.option(
+#     '--dataset-version', 'dataset_version', required=True,
+#     help='Name or subfolder to find VCFs'
+# )
+@click.option('--bucket-with-vcfs', 'vcf_bucket')
+@click.option('--qc-csv', 'qc_csv', required=True, help='File with QC metadata')
+# @click.option(
+#     '--sample-map',
+#     'sample_map_csv_path',
+#     required=True,
+#     callback=get_validation_callback(ext='csv', must_exist=True),
+#     help='path to a CSV file with per-sample data, where the '
+#     'first line is a header. The only 2 required columns are `sample` '
+#     '(the sample name) and `gvcf` (path to sample GVCF file) '
+#     'in any order, possibly mixed with other columns.',
+# )
 @click.option(
     '--out-mt',
     'out_mt_path',
@@ -85,11 +100,15 @@ TARGET_RECORDS = 25_000
 @click.option(
     '--hail-billing',
     'hail_billing',
-    required=True,
     help='Hail billing account ID.',
 )
 def main(
-    sample_map_csv_path: str,
+    # sample_map_csv_path: str,
+    # dataset: str,
+    # test: bool,
+    # dataset_version: str,
+    vcf_bucket: str,
+    qc_csv: str,
     out_mt_path: str,
     existing_mt_path: str,
     work_bucket: str,
@@ -123,7 +142,20 @@ def main(
         local_tmp_dir=local_tmp_dir,
     )
 
-    new_metadata_ht = hl.import_table(sample_map_csv_path, delimiter=',', key='sample')
+    # sample.id,sample.sample_name,sample.flowcell_lane,sample.library_id,sample.platform,sample.centre,sample.reference_genome,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
+    # 613,TOB1529,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_H04,KCCG,hg38,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
+    # 609,TOB1653,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_F03,KCCG,hg38,0.0060100100,F(-1),0.024802,0.165634,452.0,33.0
+    # 604,TOB1764,ILLUMINA,HVTV7DSXY.1-2-3-4,LP9000037-NTP_B02,KCCG,hg38,0.0078874400,F(-1),0.01684,0.116911,413.0,43.0
+    # 633,TOB1532,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_C05,KCCG,hg38,0.0121946000,F(-1),0.024425,0.151094,453.0,37.0
+    new_gvcf_paths = [
+        line.strip()
+        for line in subprocess.check_output(
+            f'gsutil ls \'{vcf_bucket}/*.g.vcf.gz\'', shell=True
+        )
+        .decode()
+        .split()
+    ]
+    new_metadata_ht = hl.import_table(qc_csv, delimiter=',', key='sample.id')
 
     if reuse and file_exists(existing_mt_path):
         logger.info(f'MatrixTable exists, reusing: {existing_mt_path}')
@@ -136,7 +168,7 @@ def main(
             logger.info(f'MatrixTable with new samples exists, reusing: {new_mt_path}')
         else:
             combine_gvcfs(
-                gvcf_paths=new_metadata_ht.gvcf.collect(),
+                gvcf_paths=new_gvcf_paths,
                 out_mt_path=new_mt_path,
                 work_bucket=work_bucket,
                 overwrite=True,

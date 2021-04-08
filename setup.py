@@ -5,7 +5,7 @@ import setuptools
 
 setuptools.setup(
     name='joint-calling',
-    version='0.1.5',
+    version='0.1.6',
     description='Pipeline for joint calling, sample and variant QC for WGS germline '
     'variant calling data',
     long_description=open('README.md').read(),
@@ -19,6 +19,10 @@ setuptools.setup(
         join('scripts', 'combine_gvcfs.py'),
         join('scripts', 'sample_qc.py'),
         join('scripts', 'mt_to_vcf.py'),
+        join('scripts', 'load_vqsr.py'),
+        join('scripts', 'random_forest.py'),
+        join('scripts', 'generate_freq_data.py'),
+        join('scripts', 'generate_qc_annotations.py'),
     ],
     keywords='bioinformatics',
     classifiers=[

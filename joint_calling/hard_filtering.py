@@ -19,6 +19,7 @@ def compute_hard_filters(
     metadata_ht: hl.MatrixTable,
     sex_ht: hl.Table,
     hail_sample_qc_ht: hl.Table,
+    out_ht_path: str,
     work_bucket: str,
     local_tmp_dir: str,
     cov_threshold: int,
@@ -39,6 +40,7 @@ def compute_hard_filters(
     :param sex_ht: required fields: "sex_karyotype", "chr20_mean_dp"
     :param hail_sample_qc_ht: required fields:
         "bi_allelic_sample_qc { n_snp, n_singleton, r_het_hom_var }"
+    :param out_ht_path: location to write the hard filtered samples Table
     :param work_bucket: bucket to write checkpoints and intermediate files
     :param local_tmp_dir: local path to write temporary files
     :param cov_threshold: minimal chr20 coverage
@@ -50,7 +52,6 @@ def compute_hard_filters(
             coverage, insert_size }
     """
     logger.info('Generating hard filters')
-    out_ht_path = join(work_bucket, 'hard_filters.ht')
     if not overwrite and file_exists(out_ht_path):
         return hl.read_table(out_ht_path)
 
@@ -143,31 +144,50 @@ def _parse_picard_metrics(
         "mean_coverage":      hl.tint32
     """
     data = defaultdict(list)
+    # The data can be:
+    #
+    # 1. a QC file lication (from the WARP pipeline)
+    # sample,population,gvcf,contamination,alignment_summary_metrics,duplicate_metrics,insert_size_metrics,wgs_metrics
+    # NA19238,YRI,gs://playground-au/gvcf/NA19238.g.vcf.gz,,gs://playground-au/<....>/NA19238.readgroup.alignment_summary_metrics,<...>/NA19238.duplicate_metrics,<...>/NA19238.insert_size_metrics,<...>/NA19238.wgs_metrics
+    #
+    # 2. a metric value itself (from the KCG pipeline)
+    # sample.sample_name,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
+    # FG1529,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
+
     for row in metadata_ht.collect():
-        data['s'].append(row.sample)
+        if 'sample' in row:
+            data['s'].append(row.sample)
+            contam = row.get('contamination')
+            data['freemix'].append(
+                _parse_picard_metric(contam, 'FREEMIX', local_tmp_dir)
+            )
 
-        contam = row.get('contamination')
-        data['freemix'].append(_parse_picard_metric(contam, 'FREEMIX', local_tmp_dir))
+            aln_sum_metrics = row.get('alignment_summary_metrics')
+            data['pct_chimeras'].append(
+                _parse_picard_metric(aln_sum_metrics, 'PCT_CHIMERAS', local_tmp_dir)
+            )
 
-        aln_sum_metrics = row.get('alignment_summary_metrics')
-        data['pct_chimeras'].append(
-            _parse_picard_metric(aln_sum_metrics, 'PCT_CHIMERAS', local_tmp_dir)
-        )
+            dup_metrics = row.get('duplicate_metrics')
+            data['duplication'].append(
+                _parse_picard_metric(dup_metrics, 'PERCENT_DUPLICATION', local_tmp_dir)
+            )
 
-        dup_metrics = row.get('duplicate_metrics')
-        data['duplication'].append(
-            _parse_picard_metric(dup_metrics, 'PERCENT_DUPLICATION', local_tmp_dir)
-        )
+            is_metrics = row.get('insert_size_metrics')
+            data['median_insert_size'].append(
+                _parse_picard_metric(is_metrics, 'MEDIAN_INSERT_SIZE', local_tmp_dir)
+            )
 
-        is_metrics = row.get('insert_size_metrics')
-        data['median_insert_size'].append(
-            _parse_picard_metric(is_metrics, 'MEDIAN_INSERT_SIZE', local_tmp_dir)
-        )
-
-        wgs_metrics = row.get('wgs_metrics')
-        data['mean_coverage'].append(
-            _parse_picard_metric(wgs_metrics, 'MEDIAN_COVERAGE', local_tmp_dir)
-        )
+            wgs_metrics = row.get('wgs_metrics')
+            data['mean_coverage'].append(
+                _parse_picard_metric(wgs_metrics, 'MEDIAN_COVERAGE', local_tmp_dir)
+            )
+        elif 'sample.sample_name' in row:
+            data['s'].append(row['sample.sample_name'])
+            data['freemix'].append(float(row['raw_data.FREEMIX']))
+            data['pct_chimeras'].append(float(row['raw_data.PCT_CHIMERAS']))
+            data['duplication'].append(float(row['raw_data.PERCENT_DUPLICATION']))
+            data['median_insert_size'].append(int(row['raw_data.MEDIAN_INSERT_SIZE']))
+            data['mean_coverage'].append(int(row['raw_data.MEDIAN_COVERAGE']))
 
     csv_path = os.path.join(work_bucket, 'sample_qc_metrics.tsv')
     pd.DataFrame.from_dict(data).to_csv(csv_path, sep='\t', index=False)

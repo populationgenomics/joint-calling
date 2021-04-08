@@ -25,9 +25,9 @@ and <output_bucket>/plot-indels-recal.Rscript
 """
 
 import os
+import subprocess
+from os.path import join, basename, splitext
 from typing import List
-
-import pandas as pd
 import click
 import hailtop.batch as hb
 from hailtop.batch.job import Job
@@ -42,11 +42,32 @@ DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/drive
 
 BROAD_REF_BUCKET = 'gs://gcp-public-data--broad-references/hg38/v0'
 
+DATAPROC_PACKAGES = [
+    'joint-calling',
+    'click',
+    'cpg-gnomad',
+    'google',
+    'slackclient',
+    'fsspec',
+    'sklearn',
+    'gcloud',
+]
+
 
 @click.command()
-@click.option('--sample-map', 'sample_map_path', type=str, required=True)
-@click.option('--output_bucket', 'output_bucket', type=str, required=True)
-@click.option('--callset_name', 'callset_name', type=str, required=True)
+@click.option('--callset', 'callset_name', type=str, required=True)
+@click.option('--version', 'callset_version', type=str, required=True)
+@click.option('--qc-csv-fname', 'qc_csv_fname', type=str, required=True)
+@click.option('--prod', 'prod', is_flag=True)
+@click.option('--keep-scratch', 'keep_scratch', is_flag=True)
+@click.option('--dry-run', 'dry_run', is_flag=True)
+@click.option(
+    '--billing-project',
+    'billing_project',
+    type=str,
+    default=os.getenv('HAIL_BILLING_PROJECT'),
+)
+# Reference files
 @click.option(
     '--unpadded_intervals_file',
     'unpadded_intervals_file',
@@ -239,18 +260,14 @@ BROAD_REF_BUCKET = 'gs://gcp-public-data--broad-references/hg38/v0'
     'skip_allele_specific_annotations',
     is_flag=True,
 )
-@click.option('--dry_run', 'dry_run', is_flag=True, default=False)
-@click.option('--keep_scratch', 'keep_scratch', is_flag=True, default=False)
-@click.option(
-    '--billing_project',
-    'billing_project',
-    type=str,
-    default=os.getenv('HAIL_BILLING_PROJECT'),
-)
-def main(  # pylint: disable=R0913,R0914,R0915
-    sample_map_path: str,
-    output_bucket: str,
+def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     callset_name: str,
+    callset_version: str,
+    qc_csv_fname: str,
+    prod: bool,
+    keep_scratch: bool,
+    dry_run: bool,
+    billing_project: str,
     unpadded_intervals_file: str,
     ref_fasta: str,
     ref_fasta_index: str,
@@ -278,9 +295,6 @@ def main(  # pylint: disable=R0913,R0914,R0915
     snp_filter_level: float,
     indel_filter_level: float,
     skip_allele_specific_annotations: bool,
-    dry_run: bool,
-    keep_scratch: bool,
-    billing_project: str,
 ):
     """
     Run a Hail Batch workflow that performs the VQSR filtering on a WGS
@@ -292,18 +306,32 @@ def main(  # pylint: disable=R0913,R0914,R0915
                 '--billing_project has to be specified (unless --dry_run is set)'
             )
 
+    if prod:
+        input_bucket = f'gs://cpg-{callset_name}-main/{callset_version}'
+        output_bucket = f'gs://cpg-{callset_name}-analysis/{callset_version}'
+    else:
+        input_bucket = f'gs://cpg-{callset_name}-test/{callset_version}'
+        output_bucket = f'gs://cpg-{callset_name}-temporary/{callset_version}'
+
     backend = hb.ServiceBackend(
         billing_project=billing_project,
-        bucket=os.path.join(output_bucket, 'hail').replace('gs://', ''),
+        bucket=join(output_bucket, 'hail').replace('gs://', ''),
     )
     b = hb.Batch('VariantCallingOFTHEFUTURE', backend=backend)
 
-    sample_map_df = pd.read_csv(sample_map_path, sep='\t', names=['sample', 'gvcf'])
-    gvcfs = [
-        b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
-        for gvcf in sample_map_df['gvcf']
+    gvcf_paths = [
+        line.strip()
+        for line in subprocess.check_output(
+            f'gsutil ls \'{input_bucket}/*.g.vcf.gz\'', shell=True
+        )
+        .decode()
+        .split()
     ]
-    sample_names = sample_map_df['sample']
+    gvcfs = [
+        b.read_input_group(**{'g.vcf.gz': path, 'g.vcf.gz.tbi': path + '.tbi'})
+        for path in gvcf_paths
+    ]
+    sample_names = [splitext(basename(path))[0] for path in gvcf_paths]
 
     # Make a 2.5:1 interval number to samples in callset ratio interval list.
     # We allow overriding the behavior by specifying the desired number of vcfs
@@ -378,29 +406,81 @@ def main(  # pylint: disable=R0913,R0914,R0915
 
     combiner_bucket = os.path.join(output_bucket, 'combiner')
     combined_mt_path = os.path.join(combiner_bucket, '100genomes.mt')
-    d = {
-        'sample': sample_names,
-        'population': ['' for _ in sample_names],
-        'gvcf': gvcfs_for_combiner,
-    }
-    gvcf_df = pd.DataFrame.from_records(d, columns=list(d.keys()))
-    gvcfs_for_combiner_path = os.path.join(combiner_bucket, 'gvcfs_for_combiner.csv')
-    gvcf_df.to_csv(gvcfs_for_combiner_path, sep=',', index=False)
-    combiner_job = add_combiner_step(
+    # d = {
+    #     'sample': sample_names,
+    #     'population': ['' for _ in sample_names],
+    #     'gvcf': gvcfs_for_combiner,
+    # }
+    # gvcf_df = pd.DataFrame.from_records(d, columns=list(d.keys()))
+    # gvcfs_for_combiner_path = os.path.join(combiner_bucket, 'gvcfs_for_combiner.csv')
+    # gvcf_df.to_csv(gvcfs_for_combiner_path, sep=',', index=False)
+    hard_filtered_samples_ht_path = join(combiner_bucket, 'hard_filters.ht')
+    meta_ht_path = join(combiner_bucket, 'meta.ht')
+    combined_vcf_path = join(combiner_bucket, 'combined.vcf.gz')
+    combiner_job = dataproc.hail_dataproc_job(
         b,
-        input_csv_path=gvcfs_for_combiner_path,
-        tmp_bucket=combiner_bucket,
-        combined_mt_path=combined_mt_path,
+        f'run-python-script.py '
+        f'combine_gvcfs.py --overwrite '
+        f'--bucket-with-vcfs {input_bucket} '
+        f'--qc-csv {join(input_bucket, qc_csv_fname)}'
+        f'--out-mt {combined_mt_path} '
+        f'--bucket {combiner_bucket}/work '
+        f'--hail-billing {billing_project} '
+        f'&& sample_qc.py --overwrite '
+        f'--mt {combined_mt_path} '
+        f'--bucket {combiner_bucket} '
+        f'--out-hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
+        f'--out-meta-ht {meta_ht_path} '
+        f'--hail-billing {billing_project} '
+        f'&& mt_to_vcf.py --overwrite '
+        f'--mt {combined_mt_path} '
+        f'-o {combined_vcf_path} ',
+        max_age='8h',
+        packages=DATAPROC_PACKAGES,
+        num_secondary_workers=10,
         depends_on=subset_gvcf_jobs,
     )
 
-    combined_vcf_path = os.path.join(output_bucket, 'combined.vcf.gz')
-    mt2vcf_job = add_mt2vcf_step(
+    variant_qc_bucket = join(output_bucket, 'variant_qc')
+    freq_ht_path = join(variant_qc_bucket, 'frequencies.ht')
+    info_ht_path = join(variant_qc_bucket, 'info.ht')
+    allele_data_ht_path = join(variant_qc_bucket, 'allele_data.ht')
+    qc_ac_ht_path = join(variant_qc_bucket, 'qc_ac.ht')
+    # vep_ht = join(variant_qc_bucket, 'vep.ht')
+    rf_result_ht_path = join(variant_qc_bucket, 'rf_result.ht')
+    rf_job = dataproc.hail_dataproc_job(
         b,
-        input_mt=combined_mt_path,
-        output_vcf_path=combined_vcf_path,
-        depends_on=[combiner_job],
+        f'run-python-script.py '
+        f'generate_qc_annotations.py --split-multiallelic --overwrite '
+        f'--mt {combined_mt_path} '
+        f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
+        f'--meta-ht {meta_ht_path} '
+        f'--out-info-ht {info_ht_path} '
+        f'--out-allele-data-ht {allele_data_ht_path}'
+        f'--out-qc-ac-ht {qc_ac_ht_path}'
+        f'--bucket {combiner_bucket} '
+        f'&& '
+        f'generate_freq_data.py --overwrite '
+        f'--mt {combined_mt_path} '
+        f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
+        f'--meta-ht {meta_ht_path} '
+        f'--out-ht {freq_ht_path} '
+        f'--bucket {combiner_bucket} '
+        f'&& '
+        f'random_forest.py --overwrite '
+        f'--info-ht {info_ht_path} '
+        f'--freq-ht {freq_ht_path} '
+        f'--allele-data-ht {allele_data_ht_path} '
+        f'--qc-ac-ht {qc_ac_ht_path} '
+        f'--out-ht {rf_result_ht_path} '
+        f'--bucket {combiner_bucket} '
+        f'-o {rf_result_ht_path} ',
+        max_age='8h',
+        packages=DATAPROC_PACKAGES,
+        num_secondary_workers=10,
+        depends_on=subset_gvcf_jobs,
     )
+    rf_job.always_run()
 
     split_intervals_job = add_split_intervals_step(
         b,
@@ -409,7 +489,7 @@ def main(  # pylint: disable=R0913,R0914,R0915
         ref_fasta,
         disk_size=small_disk,
     )
-    split_intervals_job.depends_on(mt2vcf_job)
+    split_intervals_job.depends_on(combiner_job)
     intervals = split_intervals_job.intervals
 
     combined_vcf = add_tabix_step(b, combined_vcf_path, medium_disk).combined_vcf
@@ -700,73 +780,6 @@ def add_subset_noalt_step(
         """
     )
     b.write_output(j.output_gvcf, output_gvcf_path.replace('.g.vcf.gz', ''))
-    return j
-
-
-def add_combiner_step(
-    b: hb.Batch,
-    input_csv_path: str,
-    tmp_bucket: str,
-    combined_mt_path: str,
-    depends_on: List = None,
-) -> Job:
-    """
-    Combine GVCFs into a matrix table
-    """
-    j = dataproc.hail_dataproc_job(
-        b,
-        f'run-python-script.py '
-        f'combine_gvcfs.py '
-        f'--sample-map {input_csv_path} '
-        f'--out-mt {combined_mt_path} '
-        f'--bucket {tmp_bucket}/work '
-        f'--hail-billing fewgenomes',
-        max_age='8h',
-        packages=[
-            'joint-calling',
-            'click',
-            'cpg-gnomad',
-            'google',
-            'slackclient',
-            'fsspec',
-            'sklearn',
-            'gcloud',
-        ],
-        num_secondary_workers=10,
-        depends_on=depends_on,
-    )
-    return j
-
-
-def add_mt2vcf_step(
-    b: hb.Batch,
-    input_mt: str,
-    output_vcf_path: str,
-    depends_on: List = None,
-) -> Job:
-    """
-    Convert a matrix table into a site-only VCF
-    """
-    j = dataproc.hail_dataproc_job(
-        b,
-        f'run-python-script.py mt_to_vcf.py '
-        f'--mt {input_mt} '
-        f'-o {output_vcf_path} '
-        f'--overwrite',
-        max_age='8h',
-        packages=[
-            'joint-calling',
-            'click',
-            'cpg-gnomad',
-            'google',
-            'slackclient',
-            'fsspec',
-            'sklearn',
-            'gcloud',
-        ],
-        num_secondary_workers=10,
-        depends_on=depends_on,
-    )
     return j
 
 

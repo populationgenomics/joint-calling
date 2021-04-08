@@ -19,10 +19,9 @@ from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.filtering import add_filters_expr
 
 from joint_calling.utils import file_exists, get_validation_callback
-from joint_calling import hard_filtering, pop_strat_qc, utils
-from joint_calling import _version
+from joint_calling import hard_filtering, pop_strat_qc, utils, _version
 
-logger = logging.getLogger('joint_calling')
+logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
 
 
@@ -51,13 +50,14 @@ logger.setLevel('INFO')
     'used to apply QC hard filters to samples.',
 )
 @click.option(
-    '--out-ht',
-    'out_ht_path',
+    '--out-hardfiltered-samples-ht',
+    'out_hardfiltered_samples_ht_path',
     required=True,
-    callback=get_validation_callback(ext='ht'),
-    help='path to save the calculated QC, ancestry, relatedness and other '
-    'inferred per-sample data. Must have an `.ht` extension. '
-    'Can be a Google Storage URL (i.e. start with `gs://`).',
+)
+@click.option(
+    '--out-meta-ht',
+    'out_meta_ht_path',
+    required=True,
 )
 @click.option(
     '--bucket',
@@ -113,7 +113,8 @@ logger.setLevel('INFO')
 )
 def main(
     mt_path: str,
-    out_ht_path: str,
+    out_hardfiltered_samples_ht_path: str,
+    out_meta_ht_path: str,
     work_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,
@@ -152,6 +153,7 @@ def main(
         metadata_ht,
         sex_ht,
         hail_sample_qc_ht,
+        out_ht_path=out_hardfiltered_samples_ht_path,
         work_bucket=work_bucket,
         local_tmp_dir=local_tmp_dir,
         cov_threshold=min_cov,
@@ -226,8 +228,7 @@ def main(
         pop_ht=pop_ht,
         all_related_samples_to_drop_ht=pca_related_samples_to_drop_ht,
         final_related_samples_to_drop_ht=final_related_samples_to_drop_ht,
-        meta_ht_path=out_ht_path,
-        meta_tsv_path=out_ht_path.rstrip('/').replace('.ht', '.tsv'),
+        out_ht_path=out_meta_ht_path,
         overwrite=overwrite,
     )
 
@@ -288,6 +289,7 @@ def _compute_hail_sample_qc(
     logger.info('Sample QC')
     out_ht_path = join(work_bucket, 'hail_sample_qc.ht')
     if not overwrite and file_exists(out_ht_path):
+        logger.info(f'{out_ht_path} exists, reusing')
         return hl.read_table(out_ht_path)
 
     mt = filter_to_autosomes(mt)
@@ -370,8 +372,7 @@ def _generate_metadata(
     pop_ht: hl.Table,
     all_related_samples_to_drop_ht: hl.Table,
     final_related_samples_to_drop_ht: hl.Table,
-    meta_ht_path: str,
-    meta_tsv_path: str,
+    out_ht_path: str,
     overwrite: bool = False,
 ) -> hl.Table:
     """
@@ -393,8 +394,7 @@ def _generate_metadata(
     :param final_related_samples_to_drop_ht:
         table with related samples after re-ranking them based
         on population-stratified QC
-    :param meta_ht_path: path to write the resulting Hail Table
-    :param meta_tsv_path: also write a TSV version of meta table
+    :param work_bucket: bucket to write checkpoints
     :param overwrite: overwrite checkpoints if they exist
     :return: table with relevant fields from input tables,
         annotated with the following row fields:
@@ -408,43 +408,49 @@ def _generate_metadata(
     """
     logger.info('Generate the metadata HT and TSV files')
 
-    meta_ht = sex_ht.transmute(
-        impute_sex_stats=hl.struct(
-            f_stat=sex_ht.f_stat,
-            n_called=sex_ht.n_called,
-            expected_homs=sex_ht.expected_homs,
-            observed_homs=sex_ht.observed_homs,
+    if not overwrite and file_exists(out_ht_path):
+        meta_ht = hl.read_table(out_ht_path)
+    else:
+        meta_ht = sex_ht.transmute(
+            impute_sex_stats=hl.struct(
+                f_stat=sex_ht.f_stat,
+                n_called=sex_ht.n_called,
+                expected_homs=sex_ht.expected_homs,
+                observed_homs=sex_ht.observed_homs,
+            )
         )
-    )
 
-    meta_ht = meta_ht.annotate_globals(**regressed_metrics_ht.index_globals())
+        meta_ht = meta_ht.annotate_globals(**regressed_metrics_ht.index_globals())
 
-    meta_ht = meta_ht.annotate(
-        sample_qc=sample_qc_ht[meta_ht.key].bi_allelic_sample_qc,
-        **hard_filtered_samples_ht[meta_ht.key],
-        **regressed_metrics_ht[meta_ht.key],
-        **pop_ht[meta_ht.key],
-        release_related=hl.is_defined(final_related_samples_to_drop_ht[meta_ht.key]),
-        all_samples_related=hl.is_defined(all_related_samples_to_drop_ht[meta_ht.key]),
-    )
+        meta_ht = meta_ht.annotate(
+            sample_qc=sample_qc_ht[meta_ht.key].bi_allelic_sample_qc,
+            **hard_filtered_samples_ht[meta_ht.key],
+            **regressed_metrics_ht[meta_ht.key],
+            **pop_ht[meta_ht.key],
+            release_related=hl.is_defined(
+                final_related_samples_to_drop_ht[meta_ht.key]
+            ),
+            all_samples_related=hl.is_defined(
+                all_related_samples_to_drop_ht[meta_ht.key]
+            ),
+        )
 
-    meta_ht = meta_ht.annotate(
-        hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
-        sample_filters=add_filters_expr(
-            filters={'related': meta_ht.release_related},
-            current_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters),
-        ),
-    )
+        meta_ht = meta_ht.annotate(
+            hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
+            sample_filters=add_filters_expr(
+                filters={'related': meta_ht.release_related},
+                current_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters),
+            ),
+        )
 
-    meta_ht = meta_ht.annotate(
-        high_quality=(hl.len(meta_ht.hard_filters) == 0)
-        & (hl.len(meta_ht.qc_metrics_filters) == 0),
-        release=hl.len(meta_ht.sample_filters) == 0,
-    )
+        meta_ht = meta_ht.annotate(
+            high_quality=(hl.len(meta_ht.hard_filters) == 0)
+            & (hl.len(meta_ht.qc_metrics_filters) == 0),
+            release=hl.len(meta_ht.sample_filters) == 0,
+        )
+        meta_ht.write(out_ht_path, overwrite=True)
 
-    meta_ht.checkpoint(meta_ht_path, overwrite=overwrite, _read_if_exists=not overwrite)
-
-    if meta_tsv_path and (overwrite or not file_exists(meta_tsv_path)):
+    if overwrite or not file_exists(splitext(out_ht_path)[0] + '.tsv'):
         n_pcs = meta_ht.aggregate(hl.agg.min(hl.len(meta_ht.pca_scores)))
         meta_ht = meta_ht.transmute(
             **{f'PC{i + 1}': meta_ht.pca_scores[i] for i in range(n_pcs)},
@@ -456,7 +462,7 @@ def _generate_metadata(
                 hl.delimit(meta_ht.qc_metrics_filters),
             ),
         )
-        meta_ht.flatten().export(meta_tsv_path)
+        meta_ht.flatten().export(splitext(out_ht_path)[0] + '.tsv')
 
     return meta_ht
 
