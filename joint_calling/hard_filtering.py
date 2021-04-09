@@ -186,8 +186,10 @@ def _parse_picard_metrics(
             data['freemix'].append(float(row['raw_data.FREEMIX']))
             data['pct_chimeras'].append(float(row['raw_data.PCT_CHIMERAS']))
             data['duplication'].append(float(row['raw_data.PERCENT_DUPLICATION']))
-            data['median_insert_size'].append(int(row['raw_data.MEDIAN_INSERT_SIZE']))
-            data['mean_coverage'].append(int(row['raw_data.MEDIAN_COVERAGE']))
+            data['median_insert_size'].append(
+                round(float(row['raw_data.MEDIAN_INSERT_SIZE']))
+            )
+            data['mean_coverage'].append(round(float(row['raw_data.MEDIAN_COVERAGE'])))
 
     csv_path = os.path.join(work_bucket, 'sample_qc_metrics.tsv')
     pd.DataFrame.from_dict(data).to_csv(csv_path, sep='\t', index=False)
