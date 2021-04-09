@@ -1,6 +1,8 @@
 """Utility functions for the cpg-qc module"""
 
 import os
+import tempfile
+
 import sys
 import time
 import hashlib
@@ -15,18 +17,22 @@ from google.cloud import storage
 DEFAULT_REF = 'GRCh38'
 
 
-def init_hail(name: str, local_tmp_dir: str):
+def init_hail(name: str, local_tmp_dir: str = None):
     """
     Initialize Hail and set up the directory for logs
     :param name: name to prefix the log file
     :param local_tmp_dir: local directory to write Hail logs
     :return:
     """
+    if not local_tmp_dir:
+        local_tmp_dir = tempfile.mkdtemp()
+
     timestamp = time.strftime('%Y%m%d-%H%M')
     hl_log = os.path.join(
         safe_mkdir(os.path.join(local_tmp_dir, 'log')), f'{name}-{timestamp}.log'
     )
     hl.init(default_reference=DEFAULT_REF, log=hl_log)
+    return local_tmp_dir
 
 
 def get_validation_callback(

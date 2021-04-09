@@ -62,7 +62,6 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--local-tmp-dir',
     'local_tmp_dir',
-    required=True,
     help='local directory for temporary files and Hail logs (must be local).',
 )
 @click.option(
@@ -82,7 +81,7 @@ def main(  # pylint: disable=missing-function-docstring
     local_tmp_dir: str,
     overwrite: bool,
 ):
-    utils.init_hail('load_data', local_tmp_dir)
+    local_tmp_dir = utils.init_hail('load_data', local_tmp_dir)
 
     logger.info(f'Importing VQSR annotations...')
     mt = hl.import_vcf(

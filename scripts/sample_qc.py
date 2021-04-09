@@ -69,7 +69,6 @@ logger.setLevel('INFO')
 @click.option(
     '--local-tmp-dir',
     'local_tmp_dir',
-    required=True,
     help='local directory for temporary files and Hail logs (must be local).',
 )
 @click.option(
@@ -129,7 +128,8 @@ def main(
     Run sample QC on a MatrixTable, hard filter samples and add soft filter labels,
     output a sample-level Hail Table
     """
-    utils.init_hail('sample_qc', local_tmp_dir)
+    local_tmp_dir = utils.init_hail('sample_qc', local_tmp_dir)
+
     mt = hl.read_matrix_table(mt_path).key_rows_by('locus', 'alleles')
     metadata_ht = hl.read_table(splitext(mt_path)[0] + '.metadata.ht')
 

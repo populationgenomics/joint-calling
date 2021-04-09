@@ -92,7 +92,6 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--local-tmp-dir',
     'local_tmp_dir',
-    required=True,
     help='local directory for temporary files and Hail logs (must be local).',
 )
 @click.option(
@@ -131,7 +130,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     vep_version: Optional[str],
     trios_fam_ped_file: Optional[str],
 ):
-    utils.init_hail('qc_annotations', local_tmp_dir)
+    local_tmp_dir = utils.init_hail('qc_annotations', local_tmp_dir)
 
     all_samples_mt = utils.get_mt(mt_path)
     hard_filtered_mt = utils.get_mt(

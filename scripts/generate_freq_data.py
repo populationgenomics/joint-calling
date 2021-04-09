@@ -94,7 +94,6 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--local-tmp-dir',
     'local_tmp_dir',
-    required=True,
     help='local directory for temporary files and Hail logs (must be local).',
 )
 @click.option(
@@ -116,7 +115,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     local_tmp_dir: str,
     overwrite: bool,
 ):
-    utils.init_hail(
+    local_tmp_dir = utils.init_hail(
         f'generate_frequency_data {("for " + subset) if subset else ""}', local_tmp_dir
     )
 

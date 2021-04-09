@@ -4,8 +4,6 @@
 Run sample QC on a MatrixTable, hard filter samples, add soft filter labels,
 and output a sample-level Hail Table
 """
-import shutil
-import tempfile
 from os.path import join
 from typing import List, Optional, Union, Tuple
 import json
@@ -287,12 +285,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     Run variant QC on a MatrixTable, hard filter samples and add soft filter labels,
     output a sample-level Hail Table
     """
-    local_dir_is_temp = False
-    if not local_tmp_dir:
-        local_tmp_dir = tempfile.mkdtemp()
-        local_dir_is_temp = True
-
-    utils.init_hail('variant_qc_random_forest', local_tmp_dir)
+    local_tmp_dir = utils.init_hail('variant_qc_random_forest', local_tmp_dir)
 
     # rf_annotations_path = join(
     #     work_bucket,
@@ -370,9 +363,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     ).aggregate(n=hl.agg.count())
 
     summary_ht.show(n=20)
-
-    if local_dir_is_temp:
-        shutil.rmtree(local_tmp_dir)
 
 
 def train_model(

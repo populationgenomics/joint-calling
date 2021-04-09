@@ -16,7 +16,6 @@ setuptools.setup(
     include_package_data=True,
     zip_safe=False,
     scripts=[
-        join('scripts', 'batch_workflow.py'),
         join('scripts', 'combine_gvcfs.py'),
         join('scripts', 'sample_qc.py'),
         join('scripts', 'mt_to_vcf.py'),

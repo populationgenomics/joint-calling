@@ -5,10 +5,7 @@ Combine a set of gVCFs and output a MatrixTable and a HailTable with metadata
 """
 
 import os
-import shutil
 import subprocess
-import tempfile
-
 from typing import List
 import logging
 import click
@@ -132,15 +129,7 @@ def main(
     the accompanying metadata HT tables and write the result with a
     `.metadata.ht` suffix.
     """
-    local_dir_is_temp = False
-    if not local_tmp_dir:
-        local_tmp_dir = tempfile.mkdtemp()
-        local_dir_is_temp = True
-
-    utils.init_hail(
-        name='combine_gvcfs',
-        local_tmp_dir=local_tmp_dir,
-    )
+    local_tmp_dir = utils.init_hail('combine_gvcfs', local_tmp_dir)
 
     # sample.id,sample.sample_name,sample.flowcell_lane,sample.library_id,sample.platform,sample.centre,sample.reference_genome,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
     # 613,TOB1529,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_H04,KCCG,hg38,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
@@ -197,9 +186,6 @@ def main(
     else:
         metadata_ht.write(metadata_ht_path, overwrite=True)
         logger.info(f'Written metadata table to {metadata_ht_path}')
-
-    if local_dir_is_temp:
-        shutil.rmtree(local_tmp_dir)
 
 
 def _combine_with_the_existing_mt(
