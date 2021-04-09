@@ -82,7 +82,7 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--subset',
     help='Name of subset for which to generate frequency data',
-    choices=SUBSETS,
+    type=click.Choice(SUBSETS),
 )
 @click.option(
     '--bucket',
