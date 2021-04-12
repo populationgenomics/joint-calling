@@ -349,9 +349,7 @@ def flag_related_samples(
         _read_if_exists=not overwrite,
     )
     filtered_samples = hl.literal(
-        rank_ht.aggregate(
-            hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))
-        )
+        rank_ht.aggregate(hl.agg.filter(rank_ht.filtered, hl.agg.collect(rank_ht.s)))
     )
     samples_to_drop_ht = compute_related_samples_to_drop(
         relatedness_ht,
@@ -421,7 +419,6 @@ def apply_regressed_filters(
           struct { n_snp: int64, n_singleton: int64, ... }
     :param pop_pca_scores_ht: table with a `scores` row field
     :param work_bucket: bucket to write checkpoints
-    :param filtering_qc_metrics: metrics to annotate with
     :param overwrite: overwrite checkpoints if they exist
     :return: a table with the folliwing structure:
         Global fields:
