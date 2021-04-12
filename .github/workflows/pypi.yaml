@@ -20,14 +20,11 @@ jobs:
       - name: bump2version
         run: |
           pip install bump2version
-          bump2version --new-version "$(python setup.py --version)-$GITHUB_SHA"
+          bump2version sha --no-commit --allow-dirty \
+          --new-version "$(python setup.py --version)-dev${GITHUB_SHA::8}"
+
       - uses: casperdcl/deploy-pypi@v2
         with:
           password: ${{ secrets.PYPI_TOKEN }}
           build: true
           upload: true
-
-      - name: Upload to anaconda package repository
-        run: |
-          anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
-          upload ${CONDA_PREFIX}/conda-bld/**/*.tar.bz2

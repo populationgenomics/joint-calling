@@ -14,7 +14,6 @@ jobs:
         shell: bash -l {0}
     env:
       package: "${{ github.event.repository.name }}"
-      version: $GITHUB_SHA
     steps:
       - uses: actions/checkout@main
 
@@ -28,6 +27,12 @@ jobs:
 
       - name: Setup build env
         run: mamba install pip conda-build anaconda-client
+
+      - name: bump2version
+        run: |
+          pip install bump2version
+          bump2version sha --no-commit --allow-dirty \
+          --new-version "$(python setup.py --version)-dev${GITHUB_SHA::8}"
 
       - name: Build package
         run: mamba build conda/${{ package }}
