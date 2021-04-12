@@ -1,4 +1,4 @@
-name: Condarise
+name: PyPI
 on:
   push:
     branches:
@@ -17,11 +17,13 @@ jobs:
       package: "${{ github.event.repository.name }}"
     steps:
       - uses: actions/checkout@v2
+
       - uses: actions/setup-python@v2
-      - name: bump2version
-        run: |
-          pip install bump2version
-          bump2version sha --no-commit --allow-dirty \
+
+      - name: Install bump2version
+
+      - name: Bump version
+        run: bump2version sha --no-commit --allow-dirty \
           --new-version "$(python setup.py --version)-dev${GITHUB_SHA::8}"
 
       - uses: casperdcl/deploy-pypi@v2
