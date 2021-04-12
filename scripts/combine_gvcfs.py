@@ -158,7 +158,10 @@ def main(
             work_bucket=work_bucket,
             overwrite=True,
         )
-        logger.info(f'Written samples into a MatrixTable {out_mt_path}')
+        new_mt = hl.read_matrix_table(new_mt_path)
+        logger.info(
+            f'Written {new_mt.cols().count()} samples into a MatrixTable {out_mt_path}'
+        )
         if existing_mt_path:
             _combine_with_the_existing_mt(
                 existing_mt=hl.read_matrix_table(existing_mt_path),
