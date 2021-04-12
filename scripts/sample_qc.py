@@ -32,7 +32,7 @@ logger.setLevel('INFO')
     'mt_path',
     required=True,
     callback=get_validation_callback(
-        ext='mt', must_exist=True, accompanying_metadata_suffix='.metadata.ht'
+        ext='mt', must_exist=True, accompanying_metadata_suffix='.qc.ht'
     ),
     help='path to the input MatrixTable. Must have an `.mt` extension. '
     'Can be a Google Storage URL (i.e. start with `gs://`). '
