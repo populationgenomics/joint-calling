@@ -42,8 +42,8 @@ def compute_hard_filters(
     :return: table with samples failed the filters, and the following structure:
         's': str
         'hard_filters': set<str>  # a non-empty subset of { ambiguous_sex,
-            sex_aneuploidy,  low_coverage, bad_qc_metrics, contamination, chimera,
-            coverage, insert_size }
+            sex_aneuploidy,  low_coverage, bad_biallelic_metrics, contamination,
+            chimera, coverage, insert_size }
     """
     logger.info('Generating hard filters')
     if not overwrite and file_exists(out_ht_path):
@@ -83,12 +83,12 @@ def compute_hard_filters(
     ht = add_filter(
         ht,
         (
-            (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp > 3.75e6)
+            (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp > 8.0e6)
             | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp < 2.4e6)
-            | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_singleton > 1e5)
+            | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_singleton > 3e5)
             | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.r_het_hom_var > 3.3)
         ),
-        'bad_qc_metrics',
+        'bad_biallelic_metrics',
     )
 
     # Remove samples that fail picard metric thresholds, percents are not divided
