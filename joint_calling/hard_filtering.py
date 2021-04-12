@@ -55,7 +55,7 @@ def compute_hard_filters(
     if not overwrite and file_exists(out_ht_path):
         return hl.read_table(out_ht_path)
 
-    metrics_ht = _parse_picard_metrics(metadata_ht, work_bucket, local_tmp_dir)
+    metrics_ht = _parse_picard_metrics(metadata_ht, local_tmp_dir)
     metrics_ht.checkpoint(
         join(work_bucket, 'picard_metrics.ht'),
         overwrite=overwrite,
@@ -108,9 +108,7 @@ def compute_hard_filters(
     return ht
 
 
-def _parse_picard_metrics(
-    metadata_ht: hl.Table, work_bucket: str, local_tmp_dir: str
-) -> hl.Table:
+def _parse_picard_metrics(metadata_ht: hl.Table, local_tmp_dir: str) -> hl.Table:
     """
     Reads Picard stats files from `metadata_ht`, and converts relevant
     stats into a Hail table.
@@ -191,7 +189,7 @@ def _parse_picard_metrics(
             )
             data['mean_coverage'].append(round(float(row['raw_data.MEDIAN_COVERAGE'])))
 
-    csv_path = os.path.join(work_bucket, 'sample_qc_metrics.tsv')
+    csv_path = os.path.join(local_tmp_dir, 'sample_qc_metrics.tsv')
     pd.DataFrame.from_dict(data).to_csv(csv_path, sep='\t', index=False)
     ht = hl.import_table(
         csv_path,
