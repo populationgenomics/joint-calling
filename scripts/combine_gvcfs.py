@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Combine a set of gVCFs and output a MatrixTable and a HailTable with metadata
+Combine a set of gVCFs and output a MatrixTable and a HailTable with QC metadata
 """
 
 import os
@@ -57,7 +57,7 @@ TARGET_RECORDS = 25_000
     callback=get_validation_callback(ext='mt'),
     help='path to write the MatrixTable. Must have an .mt extension. '
     'Can be a Google Storage URL (i.e. start with `gs://`). '
-    'An accompanying file with a `.metadata.ht` suffix will be written '
+    'An accompanying file with a `.qc.ht` suffix will be written '
     'at the same folder or bucket location, containing the same columns '
     'as the input sample map. This file is needed for further incremental '
     'extending of the MatrixTable using new GVCFs.',
@@ -71,7 +71,7 @@ TARGET_RECORDS = 25_000
     'If provided, will be read and used as a base to get extended with the '
     'samples in the input sample map. Can be read-only, as it will not '
     'be overwritten, instead the result will be written to the new location '
-    'provided with --out-mt. An accompanying `.metadata.ht` file is expected '
+    'provided with --out-mt. An accompanying `.qc.ht` file is expected '
     'to be present at the same folder or bucket location, containing the '
     'same set of samples, and the same columns as the input sample map.',
 )
@@ -119,17 +119,17 @@ def main(
     using the GVCF files specified in a `gvcf` column in the `sample_map_csv`
     CSV file as input, and generates a multi-sample MatrixTable in a sparse
     format, saved as `out_mt_path`. It also generates an accompanying table
-    in an HT format with a `.metadata.ht` suffix, with the contents of the
+    in an HT format with a `.qc.ht` suffix, with the contents of the
     sample map, which can be used for incremental adding of new samples,
     as well as for running the QC.
 
     If `existing_mt_path` is provided, uses that MatrixTable as a base to
     extend with new samples. However, it will not overwrite `existing_mt_path`,
     and instead write the new table to `out_mt_path`. It would also combine
-    the accompanying metadata HT tables and write the result with a
-    `.metadata.ht` suffix.
+    the accompanying QC metadata HT tables and write the result with a
+    `.qc.ht` suffix.
     """
-    local_tmp_dir = utils.init_hail('combine_gvcfs', local_tmp_dir)
+    utils.init_hail('combine_gvcfs', local_tmp_dir)
 
     # sample.id,sample.sample_name,sample.flowcell_lane,sample.library_id,sample.platform,sample.centre,sample.reference_genome,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
     # 613,TOB1529,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_H04,KCCG,hg38,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
@@ -144,7 +144,19 @@ def main(
         .decode()
         .split()
     ]
-    new_metadata_ht = hl.import_table(qc_csv, delimiter=',', key='sample.id')
+    new_qc_ht = hl.import_table(qc_csv, delimiter=',', impute=True)
+    new_qc_ht = (
+        new_qc_ht.select(
+            s=new_qc_ht['sample.id'],
+            freemix=new_qc_ht['raw_data.FREEMIX'],
+            pct_chimeras=new_qc_ht['raw_data.PCT_CHIMERAS'],
+            duplication=new_qc_ht['raw_data.PERCENT_DUPLICATION'],
+            median_insert_size=new_qc_ht['raw_data.MEDIAN_INSERT_SIZE'],
+            mean_coverage=new_qc_ht['raw_data.MEDIAN_COVERAGE'],
+        )
+        .key_by('s')
+        .drop('sample.id')
+    )
 
     if reuse and file_exists(existing_mt_path):
         logger.info(f'MatrixTable exists, reusing: {existing_mt_path}')
@@ -163,7 +175,7 @@ def main(
                 overwrite=True,
             )
             logger.info(
-                f'Written {new_metadata_ht.count()} new '
+                f'Written {new_qc_ht.count()} new '
                 f'samples into a MatrixTable {out_mt_path}'
             )
         if existing_mt_path:
@@ -173,19 +185,19 @@ def main(
                 out_mt_path=out_mt_path,
             )
 
-    # Write metadata
+    # Write QC metadata
     if existing_mt_path:
-        existing_meta_ht_path = os.path.splitext(existing_mt_path)[0] + '.metadata.ht'
-        existing_meta_ht = hl.read_table(existing_meta_ht_path)
-        metadata_ht = existing_meta_ht.union(new_metadata_ht)
+        existing_qc_ht_path = os.path.splitext(existing_mt_path)[0] + '.qc.ht'
+        existing_qc_ht = hl.read_table(existing_qc_ht_path)
+        qc_ht = existing_qc_ht.union(new_qc_ht)
     else:
-        metadata_ht = new_metadata_ht
-    metadata_ht_path = os.path.splitext(out_mt_path)[0] + '.metadata.ht'
-    if reuse and file_exists(metadata_ht_path):
-        logger.info(f'Metadata table exists, reusing: {metadata_ht_path}')
+        qc_ht = new_qc_ht
+    qc_ht_path = os.path.splitext(out_mt_path)[0] + '.qc.ht'
+    if reuse and file_exists(qc_ht_path):
+        logger.info(f'QC table exists, reusing: {qc_ht_path}')
     else:
-        metadata_ht.write(metadata_ht_path, overwrite=True)
-        logger.info(f'Written metadata table to {metadata_ht_path}')
+        qc_ht.write(qc_ht_path, overwrite=True)
+        logger.info(f'Written QC table to {qc_ht_path}')
 
 
 def _combine_with_the_existing_mt(
