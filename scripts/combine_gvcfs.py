@@ -182,6 +182,7 @@ def main(
             duplication=new_qc_ht['raw_data.PERCENT_DUPLICATION'],
             median_insert_size=new_qc_ht['raw_data.MEDIAN_INSERT_SIZE'],
             mean_coverage=new_qc_ht['raw_data.MEDIAN_COVERAGE'],
+            population='',
         ).key_by('s')
 
         if existing_mt_path:

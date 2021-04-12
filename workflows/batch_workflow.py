@@ -431,7 +431,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     sample_qc_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
-        f'sample_qc.py --overwrite '
+        f'sample_qc.py '
         f'--mt {combined_mt_path} '
         f'--bucket {combiner_bucket} '
         f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '

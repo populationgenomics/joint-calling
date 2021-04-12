@@ -131,7 +131,8 @@ def main(
     local_tmp_dir = utils.init_hail('sample_qc', local_tmp_dir)
 
     mt = hl.read_matrix_table(mt_path).key_rows_by('locus', 'alleles')
-    qc_ht = hl.read_table(splitext(mt_path)[0] + '.qc.ht')
+    mt_meta_ht = hl.read_table(splitext(mt_path)[0] + '.qc.ht')
+    mt_meta_ht = mt_meta_ht.annotate(population='')
 
     mt = _filter_callrate(mt, work_bucket, overwrite)
 
@@ -150,7 +151,7 @@ def main(
     # also includes only failed samples
     hard_filtered_samples_ht = hard_filtering.compute_hard_filters(
         mt,
-        qc_ht,
+        mt_meta_ht,
         sex_ht,
         hail_sample_qc_ht,
         out_ht_path=out_hardfiltered_samples_ht_path,
@@ -190,7 +191,7 @@ def main(
     # `population` tag, to assign population tags to remaining samples
     pop_ht = pop_strat_qc.assign_pops(
         pop_pca_scores_ht,
-        qc_ht,
+        mt_meta_ht,
         work_bucket=work_bucket,
         min_prob=min_pop_prob,
         overwrite=overwrite,
