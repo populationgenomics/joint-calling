@@ -23,6 +23,12 @@ jobs:
       - name: Install bump2version
         run: pip install bump2version
 
+      - name: Print version
+        run: python setup.py --version
+
+      - name: Print SHA
+        run: echo ${GITHUB_SHA::8}
+
       - name: Bump version
         run: |
           bump2version sha --no-commit --allow-dirty \
