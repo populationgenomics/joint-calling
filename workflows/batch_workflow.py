@@ -516,10 +516,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #     disk_size=small_disk,
     # )
     # intervals = split_intervals_job.intervals
-    # 
+    #
     # tabix_job = add_tabix_step(b, combined_vcf_path, medium_disk)
     # # tabix_job.depends_on(mt_to_vcf_job)
-    # 
+    #
     # gnarly_output_vcfs = [
     #     add_gnarly_genotyper_on_vcf_step(
     #         b,
@@ -531,7 +531,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #     ).output_vcf
     #     for idx in range(scatter_count)
     # ]
-    # 
+    #
     # if not is_small_callset:
     #     # ExcessHet filtering applies only to callsets with a large number of samples,
     #     # e.g. hundreds of unrelated samples. Small cohorts should not trigger ExcessHet
@@ -555,7 +555,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     # #         'vcf.gz.tbi': f'gs://playground-au/batch/859e9a/{idx + 2}/output_vcf.vcf.gz.tbi'})
     # #     for idx in range(scatter_count)
     # # ]
-    # 
+    #
     # sites_only_vcfs = [
     #     add_make_sites_only_vcf_step(
     #         b,
@@ -572,7 +572,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     # #             'sites_only_vcf.vcf.gz.tbi'})
     # #     for idx in range(scatter_count)
     # # ]
-    # 
+    #
     # sites_only_gathered_vcf = add_sites_only_gather_vcf_step(
     #     b,
     #     input_vcfs=sites_only_vcfs,
@@ -602,13 +602,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     # #     index='gs://playground-au/batch/859e9a/17/recalibration.idx',
     # # )
     # # indels_tranches = b.read_input('gs://playground-au/batch/859e9a/17/tranches')
-    # 
+    #
     # snp_max_gaussians = 6
     # if is_small_callset:
     #     snp_max_gaussians = 4
     # elif is_huge_callset:
     #     snp_max_gaussians = 8
-    # 
+    #
     # if is_huge_callset:
     #     # Run SNP recalibrator in a scattered mode
     #     model_file = add_snps_variant_recalibrator_create_model_step(
@@ -628,7 +628,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #         max_gaussians=snp_max_gaussians,
     #     ).model_file
     #     # model_file = b.read_input('gs://playground-au/batch/859e9a/18/model_report')
-    # 
+    #
     #     snps_recalibrator_jobs = [
     #         add_snps_variant_recalibrator_scattered_step(
     #             b,
@@ -661,7 +661,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #         tranches=snps_tranches,
     #         disk_size=small_disk,
     #     ).out_tranches
-    # 
+    #
     #     recalibrated_vcfs = [
     #         add_apply_recalibration_step(
     #             b,
@@ -685,7 +685,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #             output_bucket, callset_name + '-recalibrated.vcf.gz'
     #         ),
     #     ).output_vcf
-    # 
+    #
     # else:
     #     snps_recalibrator_job = add_snps_variant_recalibrator_step(
     #         b,
@@ -703,13 +703,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #     )
     #     snps_recalibration = snps_recalibrator_job.recalibration
     #     snps_tranches = snps_recalibrator_job.tranches
-    # 
+    #
     #     gathered_vcf = add_final_gather_vcf_step(
     #         b,
     #         input_vcfs=hard_filtered_vcfs,
     #         disk_size=huge_disk,
     #     ).output_vcf
-    # 
+    #
     #     final_gathered_vcf = add_apply_recalibration_step(
     #         b,
     #         input_vcf=gathered_vcf,
@@ -722,7 +722,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #         indel_filter_level=indel_filter_level,
     #         snp_filter_level=snp_filter_level,
     #     ).recalibrated_vcf
-    # 
+    #
     # add_variant_eval_step(
     #     b,
     #     input_vcf=final_gathered_vcf,
