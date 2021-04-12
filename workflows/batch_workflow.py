@@ -413,20 +413,20 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     hard_filtered_samples_ht_path = join(combiner_bucket, 'hard_filters.ht')
     meta_ht_path = join(combiner_bucket, 'meta.ht')
     combined_vcf_path = join(combiner_bucket, 'combined.vcf.gz')
-    combiner_job = dataproc.hail_dataproc_job(
-        b,
-        f'run_python_script.py '
-        f'combine_gvcfs.py --reuse '
-        f'--bucket-with-vcfs {combiner_bucket} '
-        f'--qc-csv {join(input_bucket, qc_csv_fname)} '
-        f'--out-mt {combined_mt_path} '
-        f'--bucket {combiner_bucket}/work '
-        f'--hail-billing {billing_project} ',
-        max_age='8h',
-        packages=DATAPROC_PACKAGES,
-        num_secondary_workers=10,
-        # depends_on=subset_gvcf_jobs,
-    )
+    # combiner_job = dataproc.hail_dataproc_job(
+    #     b,
+    #     f'run_python_script.py '
+    #     f'combine_gvcfs.py --reuse '
+    #     f'--bucket-with-vcfs {combiner_bucket} '
+    #     f'--qc-csv {join(input_bucket, qc_csv_fname)} '
+    #     f'--out-mt {combined_mt_path} '
+    #     f'--bucket {combiner_bucket}/work '
+    #     f'--hail-billing {billing_project} ',
+    #     max_age='8h',
+    #     packages=DATAPROC_PACKAGES,
+    #     num_secondary_workers=10,
+    #     depends_on=subset_gvcf_jobs,
+    # )
     sample_qc_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
@@ -439,7 +439,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         max_age='8h',
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
-        depends_on=[combiner_job],
+        # depends_on=[combiner_job],
     )
     # mt_to_vcf_job = dataproc.hail_dataproc_job(
     #     b,
