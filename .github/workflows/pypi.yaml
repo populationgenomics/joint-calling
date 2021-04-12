@@ -20,7 +20,7 @@ jobs:
       - name: Bump version
         run: |
           bump2version sha --no-commit --allow-dirty \
-          --new-version "$(python setup.py --version)-dev${GITHUB_SHA::8}"
+          --new-version "$(python setup.py --version).dev${GITHUB_SHA::8}"
 
       - name: Print new version
         run: |
