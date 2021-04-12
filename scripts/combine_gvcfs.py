@@ -145,18 +145,14 @@ def main(
         .split()
     ]
     new_qc_ht = hl.import_table(qc_csv, delimiter=',', impute=True)
-    new_qc_ht = (
-        new_qc_ht.select(
-            s=new_qc_ht['sample.id'],
-            freemix=new_qc_ht['raw_data.FREEMIX'],
-            pct_chimeras=new_qc_ht['raw_data.PCT_CHIMERAS'],
-            duplication=new_qc_ht['raw_data.PERCENT_DUPLICATION'],
-            median_insert_size=new_qc_ht['raw_data.MEDIAN_INSERT_SIZE'],
-            mean_coverage=new_qc_ht['raw_data.MEDIAN_COVERAGE'],
-        )
-        .key_by('s')
-        .drop('sample.id')
-    )
+    new_qc_ht = new_qc_ht.select(
+        s=new_qc_ht['sample.sample_name'],
+        freemix=new_qc_ht['raw_data.FREEMIX'],
+        pct_chimeras=new_qc_ht['raw_data.PCT_CHIMERAS'],
+        duplication=new_qc_ht['raw_data.PERCENT_DUPLICATION'],
+        median_insert_size=new_qc_ht['raw_data.MEDIAN_INSERT_SIZE'],
+        mean_coverage=new_qc_ht['raw_data.MEDIAN_COVERAGE'],
+    ).key_by('s')
 
     if reuse and file_exists(existing_mt_path):
         logger.info(f'MatrixTable exists, reusing: {existing_mt_path}')
