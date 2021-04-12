@@ -6,13 +6,7 @@ on:
       - develop
 jobs:
   pypi:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash -l {0}
+    runs-on: ubuntu-latest
     env:
       package: "${{ github.event.repository.name }}"
     steps:
@@ -24,7 +18,9 @@ jobs:
         run: pip install bump2version
 
       - name: Print version
-        run: python setup.py --version
+        run: |
+          cat setup.py
+          python3 setup.py --version
 
       - name: Print SHA
         run: echo ${GITHUB_SHA::8}

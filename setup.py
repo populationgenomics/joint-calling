@@ -10,7 +10,7 @@ setuptools.setup(
     'variant calling data',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
-    url=f'https://github.com/populationgenomics/joint-calling',
+    url='https://github.com/populationgenomics/joint-calling',
     license='MIT',
     packages=['joint_calling'],
     include_package_data=True,
