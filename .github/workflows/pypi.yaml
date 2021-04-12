@@ -1,0 +1,33 @@
+name: Condarise
+on:
+  push:
+    branches:
+      - main
+jobs:
+  condarise:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash -l {0}
+    env:
+      package: "${{ github.event.repository.name }}"
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+      - name: bump2version
+        run: |
+          pip install bump2version
+          bump2version --new-version "$(python setup.py --version)-$GITHUB_SHA"
+      - uses: casperdcl/deploy-pypi@v2
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
+          build: true
+          upload: true
+
+      - name: Upload to anaconda package repository
+        run: |
+          anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
+          upload ${CONDA_PREFIX}/conda-bld/**/*.tar.bz2
