@@ -132,7 +132,7 @@ def main(
 
     mt = hl.read_matrix_table(mt_path).key_rows_by('locus', 'alleles')
     mt_meta_ht = hl.read_table(splitext(mt_path)[0] + '.qc.ht')
-    mt_meta_ht = mt_meta_ht.annotate(population='')
+    mt_meta_ht = mt_meta_ht.annotate(population='EUR')
 
     mt = _filter_callrate(mt, work_bucket, overwrite)
 
