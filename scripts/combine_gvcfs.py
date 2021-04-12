@@ -144,36 +144,21 @@ def main(
         .decode()
         .split()
     ]
-    new_qc_ht = hl.import_table(qc_csv, delimiter=',', impute=True)
-    new_qc_ht = new_qc_ht.select(
-        s=new_qc_ht['sample.sample_name'],
-        freemix=new_qc_ht['raw_data.FREEMIX'],
-        pct_chimeras=new_qc_ht['raw_data.PCT_CHIMERAS'],
-        duplication=new_qc_ht['raw_data.PERCENT_DUPLICATION'],
-        median_insert_size=new_qc_ht['raw_data.MEDIAN_INSERT_SIZE'],
-        mean_coverage=new_qc_ht['raw_data.MEDIAN_COVERAGE'],
-    ).key_by('s')
 
-    if reuse and file_exists(existing_mt_path):
-        logger.info(f'MatrixTable exists, reusing: {existing_mt_path}')
+    if reuse and file_exists(out_mt_path):
+        logger.info(f'MatrixTable exists, reusing: {out_mt_path}')
     else:
         logger.info(f'Combining new samples')
         new_mt_path = (
             os.path.join(work_bucket, 'new.mt') if existing_mt_path else out_mt_path
         )
-        if reuse and file_exists(new_mt_path):
-            logger.info(f'MatrixTable with new samples exists, reusing: {new_mt_path}')
-        else:
-            combine_gvcfs(
-                gvcf_paths=new_gvcf_paths,
-                out_mt_path=new_mt_path,
-                work_bucket=work_bucket,
-                overwrite=True,
-            )
-            logger.info(
-                f'Written {new_qc_ht.count()} new '
-                f'samples into a MatrixTable {out_mt_path}'
-            )
+        combine_gvcfs(
+            gvcf_paths=new_gvcf_paths,
+            out_mt_path=new_mt_path,
+            work_bucket=work_bucket,
+            overwrite=True,
+        )
+        logger.info(f'Written samples into a MatrixTable {out_mt_path}')
         if existing_mt_path:
             _combine_with_the_existing_mt(
                 existing_mt=hl.read_matrix_table(existing_mt_path),
@@ -182,16 +167,27 @@ def main(
             )
 
     # Write QC metadata
-    if existing_mt_path:
-        existing_qc_ht_path = os.path.splitext(existing_mt_path)[0] + '.qc.ht'
-        existing_qc_ht = hl.read_table(existing_qc_ht_path)
-        qc_ht = existing_qc_ht.union(new_qc_ht)
-    else:
-        qc_ht = new_qc_ht
     qc_ht_path = os.path.splitext(out_mt_path)[0] + '.qc.ht'
     if reuse and file_exists(qc_ht_path):
         logger.info(f'QC table exists, reusing: {qc_ht_path}')
     else:
+        new_qc_ht = hl.import_table(qc_csv, delimiter=',', impute=True)
+        new_qc_ht = new_qc_ht.select(
+            s=new_qc_ht['sample.sample_name'],
+            freemix=new_qc_ht['raw_data.FREEMIX'],
+            pct_chimeras=new_qc_ht['raw_data.PCT_CHIMERAS'],
+            duplication=new_qc_ht['raw_data.PERCENT_DUPLICATION'],
+            median_insert_size=new_qc_ht['raw_data.MEDIAN_INSERT_SIZE'],
+            mean_coverage=new_qc_ht['raw_data.MEDIAN_COVERAGE'],
+        ).key_by('s')
+
+        if existing_mt_path:
+            existing_qc_ht_path = os.path.splitext(existing_mt_path)[0] + '.qc.ht'
+            existing_qc_ht = hl.read_table(existing_qc_ht_path)
+            qc_ht = existing_qc_ht.union(new_qc_ht)
+        else:
+            qc_ht = new_qc_ht
+
         qc_ht.write(qc_ht_path, overwrite=True)
         logger.info(f'Written QC table to {qc_ht_path}')
 
