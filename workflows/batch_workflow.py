@@ -390,11 +390,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #     add_reblock_gvcfs_step(b, gvcf, small_disk).output_gvcf for gvcf in gvcfs
     # ]
     combiner_bucket = os.path.join(output_bucket, 'combiner')
+    combiner_gvcf_bucket = os.path.join(output_bucket, 'combiner', 'gvcfs')
     # subset_gvcf_jobs = [
     #     add_subset_noalt_step(
     #         b,
     #         input_gvcf=gvcf,
-    #         output_gvcf_path=join(combiner_bucket, sample + '.g.vcf.gz'),
+    #         output_gvcf_path=join(combiner_gvcf_bucket, sample + '.g.vcf.gz'),
     #         disk_size=small_disk,
     #         noalt_regions=noalt_regions,
     #     )
@@ -417,7 +418,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #     b,
     #     f'run_python_script.py '
     #     f'combine_gvcfs.py --reuse '
-    #     f'--bucket-with-vcfs {combiner_bucket} '
+    #     f'--bucket-with-vcfs {combiner_gvcf_bucket} '
     #     f'--qc-csv {join(input_bucket, qc_csv_fname)} '
     #     f'--out-mt {combined_mt_path} '
     #     f'--bucket {combiner_bucket}/work '
