@@ -5,7 +5,7 @@ on:
       - main
       - develop
 jobs:
-  condarise:
+  pypi:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -24,7 +24,8 @@ jobs:
         run: pip install bump2version
 
       - name: Bump version
-        run: bump2version sha --no-commit --allow-dirty \
+        run: |
+          bump2version sha --no-commit --allow-dirty \
           --new-version "$(python setup.py --version)-dev${GITHUB_SHA::8}"
 
       - uses: casperdcl/deploy-pypi@v2
