@@ -59,16 +59,18 @@ DATAPROC_PACKAGES = [
 @click.option('--version', 'callset_version', type=str, required=True)
 @click.option('--batch', 'callset_batches', type=str, multiple=True, required=True)
 @click.option(
-    '--from-main',
-    'from_main',
-    is_flag=True,
-    help='Read from the main bucket (instead of the test bucket)',
+    '--from',
+    'input_bucket_suffix',
+    type=click.Choice(['main', 'test']),
+    default='test',
+    help='The bucket type to read from (default: test)',
 )
 @click.option(
-    '--to-analysis',
-    'to_analysis',
-    is_flag=True,
-    help='Write to the analysis bucket (instead of the temporary bucket)',
+    '--to',
+    'output_bucket_suffix',
+    type=click.Choice(['analysis', 'temporary']),
+    default='temporary',
+    help='The bucket type to write to (default: temporary)',
 )
 @click.option('--keep-scratch', 'keep_scratch', is_flag=True)
 @click.option('--dry-run', 'dry_run', is_flag=True)
@@ -275,8 +277,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     callset_name: str,
     callset_version: str,
     callset_batches: List[str],
-    from_main: bool,
-    to_analysis: bool,
+    input_bucket_suffix: str,
+    output_bucket_suffix: str,
     keep_scratch: bool,
     dry_run: bool,
     billing_project: str,
@@ -318,15 +320,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
                 '--billing-project has to be specified (unless --dry-run is set)'
             )
 
-    input_suffix = 'main' if from_main else 'test'
-    output_suffix = 'analysis' if to_analysis else 'temporary'
     input_buckets = []
     for cb in callset_batches:
         cb = f'batch{cb}' if not cb.startswith('batch') else cb
-        input_buckets.append(f'gs://cpg-{callset_name}-{input_suffix}/gvcf/{cb}/')
-    output_bucket = (
-        f'gs://cpg-{callset_name}-{output_suffix}/joint_vcf/{callset_version}/work'
-    )
+        input_buckets.append(
+            f'gs://cpg-{callset_name}-{input_bucket_suffix}/gvcf/{cb}/'
+        )
+    output_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/joint_vcf/{callset_version}/work'
 
     backend = hb.ServiceBackend(
         billing_project=billing_project,
