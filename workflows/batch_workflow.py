@@ -436,6 +436,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
         depends_on=subset_gvcf_jobs,
+        job_name='Combine GVCFs',
     )
     sample_qc_job = dataproc.hail_dataproc_job(
         b,
@@ -451,6 +452,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
         depends_on=[combiner_job],
+        job_name='Sample QC',
     )
     mt_to_vcf_job = dataproc.hail_dataproc_job(
         b,
@@ -462,6 +464,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
         depends_on=[combiner_job],
+        job_name='MT to VCF',
     )
 
     variant_qc_bucket = join(output_bucket, 'variant_qc')
@@ -486,6 +489,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
         depends_on=[sample_qc_job],
+        job_name='RF: gen QC anno',
     )
     rf_freq_data_job = dataproc.hail_dataproc_job(
         b,
@@ -500,6 +504,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
         depends_on=[rf_anno_job],
+        job_name='RF: gen freq data',
     )
     rf_job = dataproc.hail_dataproc_job(
         b,
@@ -516,6 +521,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
         depends_on=[rf_freq_data_job],
+        job_name='RF: main',
     )
     rf_job.always_run()
 
@@ -529,7 +535,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     intervals = split_intervals_job.intervals
 
     tabix_job = add_tabix_step(b, combined_vcf_path, medium_disk)
-    # tabix_job.depends_on(mt_to_vcf_job)
+    tabix_job.depends_on(mt_to_vcf_job)
 
     gnarly_output_vcfs = [
         add_gnarly_genotyper_on_vcf_step(
