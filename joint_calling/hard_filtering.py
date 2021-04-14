@@ -49,13 +49,6 @@ def compute_hard_filters(
     if not overwrite and file_exists(out_ht_path):
         return hl.read_table(out_ht_path)
 
-    # metrics_ht = _parse_picard_metrics(metadata_ht, local_tmp_dir)
-    # qc_ht.checkpoint(
-    #     join(work_bucket, 'picard_metrics.ht'),
-    #     overwrite=overwrite,
-    #     _read_if_exists=not overwrite,
-    # )
-
     ht = mt.cols()
     ht = ht.annotate(hard_filters=hl.empty_set(hl.tstr))
 

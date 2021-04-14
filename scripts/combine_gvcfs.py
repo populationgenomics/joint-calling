@@ -5,7 +5,6 @@ Combine a set of gVCFs and output a MatrixTable and a HailTable with QC metadata
 """
 
 import os
-import subprocess
 from typing import List
 import logging
 import click
@@ -38,8 +37,7 @@ TARGET_RECORDS = 25_000
 #     '--dataset-version', 'dataset_version', required=True,
 #     help='Name or subfolder to find VCFs'
 # )
-@click.option('--bucket-with-vcfs', 'vcf_bucket')
-@click.option('--qc-csv', 'qc_csv', required=True, help='File with QC metadata')
+@click.option('--bucket-with-vcfs', 'vcf_buckets', multiple=True)
 # @click.option(
 #     '--sample-map',
 #     'sample_map_csv_path',
@@ -55,25 +53,17 @@ TARGET_RECORDS = 25_000
     'out_mt_path',
     required=True,
     callback=get_validation_callback(ext='mt'),
-    help='path to write the MatrixTable. Must have an .mt extension. '
-    'Can be a Google Storage URL (i.e. start with `gs://`). '
-    'An accompanying file with a `.qc.ht` suffix will be written '
-    'at the same folder or bucket location, containing the same columns '
-    'as the input sample map. This file is needed for further incremental '
-    'extending of the MatrixTable using new GVCFs.',
+    help='path to write the combined MatrixTable',
 )
 @click.option(
     '--existing-mt',
     'existing_mt_path',
     callback=get_validation_callback(ext='mt', must_exist=True),
-    help='optional path to an existing MatrixTable. Must have an `.mt` '
-    'extension. Can be a Google Storage URL (i.e. start with `gs://`). '
+    help='optional path to an existing MatrixTable. '
     'If provided, will be read and used as a base to get extended with the '
     'samples in the input sample map. Can be read-only, as it will not '
     'be overwritten, instead the result will be written to the new location '
-    'provided with --out-mt. An accompanying `.qc.ht` file is expected '
-    'to be present at the same folder or bucket location, containing the '
-    'same set of samples, and the same columns as the input sample map.',
+    'provided with --out-mt',
 )
 @click.option(
     '--bucket',
@@ -100,12 +90,7 @@ TARGET_RECORDS = 25_000
     help='Hail billing account ID.',
 )
 def main(
-    # sample_map_csv_path: str,
-    # dataset: str,
-    # test: bool,
-    # dataset_version: str,
-    vcf_bucket: str,
-    qc_csv: str,
+    vcf_buckets: List[str],
     out_mt_path: str,
     existing_mt_path: str,
     work_bucket: str,
@@ -131,29 +116,16 @@ def main(
     """
     utils.init_hail('combine_gvcfs', local_tmp_dir)
 
-    # sample.id,sample.sample_name,sample.flowcell_lane,sample.library_id,sample.platform,sample.centre,sample.reference_genome,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
-    # 613,TOB1529,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_H04,KCCG,hg38,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
-    # 609,TOB1653,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_F03,KCCG,hg38,0.0060100100,F(-1),0.024802,0.165634,452.0,33.0
-    # 604,TOB1764,ILLUMINA,HVTV7DSXY.1-2-3-4,LP9000037-NTP_B02,KCCG,hg38,0.0078874400,F(-1),0.01684,0.116911,413.0,43.0
-    # 633,TOB1532,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_C05,KCCG,hg38,0.0121946000,F(-1),0.024425,0.151094,453.0,37.0
-    new_gvcf_paths = [
-        line.strip()
-        for line in subprocess.check_output(
-            f'gsutil ls \'{vcf_bucket}/*.g.vcf.gz\'', shell=True
-        )
-        .decode()
-        .split()
-    ]
-
     if reuse and file_exists(out_mt_path):
         logger.info(f'MatrixTable exists, reusing: {out_mt_path}')
     else:
         logger.info(f'Combining new samples')
+        new_samples_ht = utils.find_inputs(vcf_buckets)
         new_mt_path = (
             os.path.join(work_bucket, 'new.mt') if existing_mt_path else out_mt_path
         )
         combine_gvcfs(
-            gvcf_paths=new_gvcf_paths,
+            gvcf_paths=new_samples_ht.gvcf.collect(),
             out_mt_path=new_mt_path,
             work_bucket=work_bucket,
             overwrite=True,
@@ -163,37 +135,12 @@ def main(
             f'Written {new_mt.cols().count()} samples into a MatrixTable {out_mt_path}'
         )
         if existing_mt_path:
+            logger.info(f'Combining with the existing matrix table {existing_mt_path}')
             _combine_with_the_existing_mt(
                 existing_mt=hl.read_matrix_table(existing_mt_path),
                 new_mt_path=new_mt_path,
                 out_mt_path=out_mt_path,
             )
-
-    # Write QC metadata
-    qc_ht_path = os.path.splitext(out_mt_path)[0] + '.qc.ht'
-    if reuse and file_exists(qc_ht_path):
-        logger.info(f'QC table exists, reusing: {qc_ht_path}')
-    else:
-        new_qc_ht = hl.import_table(qc_csv, delimiter=',', impute=True)
-        new_qc_ht = new_qc_ht.select(
-            s=new_qc_ht['sample.sample_name'],
-            freemix=new_qc_ht['raw_data.FREEMIX'],
-            pct_chimeras=new_qc_ht['raw_data.PCT_CHIMERAS'],
-            duplication=new_qc_ht['raw_data.PERCENT_DUPLICATION'],
-            median_insert_size=new_qc_ht['raw_data.MEDIAN_INSERT_SIZE'],
-            mean_coverage=new_qc_ht['raw_data.MEDIAN_COVERAGE'],
-            population='',
-        ).key_by('s')
-
-        if existing_mt_path:
-            existing_qc_ht_path = os.path.splitext(existing_mt_path)[0] + '.qc.ht'
-            existing_qc_ht = hl.read_table(existing_qc_ht_path)
-            qc_ht = existing_qc_ht.union(new_qc_ht)
-        else:
-            qc_ht = new_qc_ht
-
-        qc_ht.write(qc_ht_path, overwrite=True)
-        logger.info(f'Written QC table to {qc_ht_path}')
 
 
 def _combine_with_the_existing_mt(
