@@ -27,11 +27,15 @@ and <output_bucket>/plot-indels-recal.Rscript
 import os
 from os.path import join
 from typing import List
+import logging
 import click
 import hailtop.batch as hb
 from hailtop.batch.job import Job
 from analysis_runner import dataproc
 from joint_calling import utils
+
+logger = logging.getLogger('joint-calling')
+logger.setLevel('INFO')
 
 
 GATK_VERSION = '4.2.0.0'
@@ -323,9 +327,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     input_buckets = []
     for cb in callset_batches:
         cb = f'batch{cb}' if not cb.startswith('batch') else cb
-        input_buckets.append(
-            f'gs://cpg-{callset_name}-{input_bucket_suffix}/gvcf/{cb}/'
-        )
+        input_buckets.append(f'gs://cpg-{callset_name}-{input_bucket_suffix}/gvcf/{cb}')
     output_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/joint_vcf/{callset_version}/work'
 
     backend = hb.ServiceBackend(
@@ -340,6 +342,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     samples_ht = utils.find_inputs(input_buckets)
     samples_ht_path = join(output_bucket, 'samples.ht')
     samples_ht.write(samples_ht_path)
+    logger.info(f'Saved metadata to {samples_ht_path}')
 
     gvcfs = [
         b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
