@@ -105,11 +105,11 @@ def find_inputs(
                 s=sample_names,
                 population='EUR',
                 gvcf=gvcf_paths,
-                freemix=pd.NaN,
-                pct_chimeras=pd.NaN,
-                duplication=pd.NaN,
-                median_insert_size=pd.NaN,
-                mean_coverage=pd.NaN,
+                freemix=pd.NA,
+                pct_chimeras=pd.NA,
+                duplication=pd.NA,
+                median_insert_size=pd.NA,
+                mean_coverage=pd.NA,
             )
         )
         samples_path = join(work_bucket, 'samples.csv')
