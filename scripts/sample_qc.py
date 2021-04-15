@@ -10,6 +10,7 @@ from typing import Optional
 import logging
 import click
 import hail as hl
+import pandas as pd
 
 from gnomad.resources.grch38 import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
@@ -38,10 +39,10 @@ logger.setLevel('INFO')
     'To generate it, run the `combine_gvcfs` script',
 )
 @click.option(
-    '--meta-ht',
-    'meta_ht_path',
+    '--meta-csv',
+    'meta_csv_path',
     required=True,
-    help='path to a Table with QC and population metadata for the samples '
+    help='path to a CSV with QC and population metadata for the samples '
     'in the input Matrix Table. The following columns are expected: '
     's,population,gvcf,freemix,pct_chimeras,'
     'duplication,median_insert_size,mean_coverage. '
@@ -113,7 +114,7 @@ logger.setLevel('INFO')
 )
 def main(
     mt_path: str,
-    meta_ht_path: str,
+    meta_csv_path: str,
     out_hardfiltered_samples_ht_path: str,
     out_meta_ht_path: str,
     work_bucket: str,
@@ -130,10 +131,11 @@ def main(
     Run sample QC on a MatrixTable, hard filter samples and add soft filter labels,
     output a sample-level Hail Table
     """
-    local_tmp_dir = utils.init_hail('sample_qc', local_tmp_dir)
+    utils.init_hail('sample_qc', local_tmp_dir)
 
     mt = hl.read_matrix_table(mt_path).key_rows_by('locus', 'alleles')
-    input_meta_ht = hl.read_table(meta_ht_path)
+    df = pd.read_table(meta_csv_path)
+    input_meta_ht = hl.Table.from_pandas(df)
 
     mt = _filter_callrate(mt, work_bucket, overwrite)
 

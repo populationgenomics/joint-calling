@@ -7,8 +7,9 @@ import logging
 import sys
 import time
 import hashlib
-from os.path import isdir, isfile, exists, join
+from os.path import isdir, isfile, exists, join, basename
 from typing import Any, Callable, List
+import pandas as pd
 
 import hail as hl
 import click
@@ -39,10 +40,16 @@ def init_hail(name: str, local_tmp_dir: str = None):
     return local_tmp_dir
 
 
-def find_inputs(input_buckets: List[str]) -> hl.Table:
+def find_inputs(
+    input_buckets: List[str],
+    work_bucket: str,
+    skip_qc: bool = False,
+) -> hl.Table:
     """
     Read the inputs assuming a standard CPG storage structure.
     :param input_buckets: buckets to find GVCFs and CSV metadata files.
+    :param work_bucket
+    :param skip_qc: don't attempt to find QC CSV
     :return: a Table with the following structure:
         s (key)
         population
@@ -61,40 +68,68 @@ def find_inputs(input_buckets: List[str]) -> hl.Table:
             for line in subprocess.check_output(cmd, shell=True).decode().split()
         )
 
-    qc_csvs: List[str] = []
-    for ib in input_buckets:
-        cmd = f'gsutil ls \'{ib}/*.csv\''
-        qc_csvs.extend(
-            line.strip()
-            for line in subprocess.check_output(cmd, shell=True).decode().split()
+    if not skip_qc:
+        qc_csvs: List[str] = []
+        for ib in input_buckets:
+            cmd = f'gsutil ls \'{ib}/*.csv\''
+            qc_csvs.extend(
+                line.strip()
+                for line in subprocess.check_output(cmd, shell=True).decode().split()
+            )
+
+        ht: hl.Table = None
+        for qc_csv in qc_csvs:
+            single_ht = hl.import_table(qc_csv, delimiter=',', impute=True)
+            # sample.id,sample.sample_name,sample.flowcell_lane,sample.library_id,sample.platform,sample.centre,sample.reference_genome,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
+            # 613,TOB1529,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_H04,KCCG,hg38,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
+            # 609,TOB1653,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_F03,KCCG,hg38,0.0060100100,F(-1),0.024802,0.165634,452.0,33.0
+            # 604,TOB1764,ILLUMINA,HVTV7DSXY.1-2-3-4,LP9000037-NTP_B02,KCCG,hg38,0.0078874400,F(-1),0.01684,0.116911,413.0,43.0
+            # 633,TOB1532,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_C05,KCCG,hg38,0.0121946000,F(-1),0.024425,0.151094,453.0,37.0
+            single_ht = single_ht.select(
+                s=single_ht['sample.sample_name'],
+                freemix=single_ht['raw_data.FREEMIX'],
+                pct_chimeras=single_ht['raw_data.PCT_CHIMERAS'],
+                duplication=single_ht['raw_data.PERCENT_DUPLICATION'],
+                median_insert_size=single_ht['raw_data.MEDIAN_INSERT_SIZE'],
+                mean_coverage=single_ht['raw_data.MEDIAN_COVERAGE'],
+                population='EUR',
+                gvcf='',
+            ).key_by('s')
+            ht = single_ht if ht is None else ht.union(single_ht)
+        ht = ht.distinct()
+        sample_names = ht.s.collect()
+    else:
+        sample_names = [basename(gp).replace('.g.vcf.gz', '') for gp in gvcf_paths]
+        df = pd.DataFrame(
+            data=dict(
+                s=sample_names,
+                population='EUR',
+                gvcf=gvcf_paths,
+                freemix=pd.NaN,
+                pct_chimeras=pd.NaN,
+                duplication=pd.NaN,
+                median_insert_size=pd.NaN,
+                mean_coverage=pd.NaN,
+            )
+        )
+        samples_path = join(work_bucket, 'samples.csv')
+        df.to_csv(samples_path, index=False, sep='\t', na_rep='NA')
+        ht = hl.import_table(
+            samples_path,
+            types={
+                's': hl.tstr,
+                'population': hl.tstr,
+                'gvcf': hl.tstr,
+                'freemix': hl.tfloat64,
+                'pct_chimeras': hl.tfloat64,
+                'duplication': hl.tfloat64,
+                'median_insert_size': hl.tfloat64,
+                'mean_coverage': hl.tfloat64,
+            },
+            missing='NA',
         )
 
-    ht: hl.Table = None
-    for qc_csv in qc_csvs:
-        single_ht = hl.import_table(qc_csv, delimiter=',', impute=True)
-        # sample.id,sample.sample_name,sample.flowcell_lane,sample.library_id,sample.platform,sample.centre,sample.reference_genome,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
-        # 613,TOB1529,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_H04,KCCG,hg38,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
-        # 609,TOB1653,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_F03,KCCG,hg38,0.0060100100,F(-1),0.024802,0.165634,452.0,33.0
-        # 604,TOB1764,ILLUMINA,HVTV7DSXY.1-2-3-4,LP9000037-NTP_B02,KCCG,hg38,0.0078874400,F(-1),0.01684,0.116911,413.0,43.0
-        # 633,TOB1532,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_C05,KCCG,hg38,0.0121946000,F(-1),0.024425,0.151094,453.0,37.0
-        single_ht = single_ht.select(
-            s=single_ht['sample.sample_name'],
-            freemix=single_ht['raw_data.FREEMIX'],
-            pct_chimeras=single_ht['raw_data.PCT_CHIMERAS'],
-            duplication=single_ht['raw_data.PERCENT_DUPLICATION'],
-            median_insert_size=single_ht['raw_data.MEDIAN_INSERT_SIZE'],
-            mean_coverage=single_ht['raw_data.MEDIAN_COVERAGE'],
-            population='EUR',
-            gvcf='',
-        ).key_by('s')
-        if ht is None:
-            ht = single_ht
-        else:
-            ht = ht.union(single_ht)
-    ht = ht.distinct()
-
     # Checking 1-to-1 match of sample names to GVCFs
-    sample_names = ht.s.collect()
     for sn in sample_names:
         matching_gvcfs = [gp for gp in gvcf_paths if sn in gp]
         if len(matching_gvcfs) > 1:
@@ -114,7 +149,7 @@ def find_inputs(input_buckets: List[str]) -> hl.Table:
         elif len(matching_sn) == 0:
             logging.warning(f'No samples found for the GVCF {gp}')
         else:
-            ht.filter(ht.s == matching_sn[0]).annotate(gvcf=gp)
+            ht = ht.filter(ht.s == matching_sn[0]).annotate(gvcf=gp)
     ht = ht.filter(ht.gvcf != '')
     return ht
 
