@@ -339,12 +339,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     )
     b = hb.Batch('Joint Calling', backend=backend)
 
-    os.system('echo "HAIL_QUERY_BACKEND=$HAIL_QUERY_BACKEND"')
-    os.environ['HAIL_QUERY_BACKEND'] = 'spark'
-    os.system('echo "HAIL_QUERY_BACKEND=$HAIL_QUERY_BACKEND"')
-    assert os.environ.get('HAIL_QUERY_BACKEND') != 'service'
-    utils.init_hail('joint-calling-workflow')
-
     # TODO: merge with existing data
     # TODO: fix impute_type
 

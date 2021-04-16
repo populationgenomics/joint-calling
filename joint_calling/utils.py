@@ -100,14 +100,11 @@ def find_inputs(
             single_df = single_df.rename(columns=columns)[columns.values()]
             single_df['population'] = 'EUR'
             single_df['gvcf'] = ''
+            single_df = single_df.set_index('s', drop=False)
             df = (
                 single_df
                 if df is None
-                else (
-                    pd.concat([df, single_df], ignore_index=True)
-                    .set_index('s', drop=False)
-                    .drop_duplicates()
-                )
+                else (pd.concat([df, single_df], ignore_index=True).drop_duplicates())
             )
         shutil.rmtree(local_tmp_dir)
         sample_names = list(df['s'])
