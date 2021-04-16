@@ -445,6 +445,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         f'run_python_script.py '
         f'combine_gvcfs.py --reuse '
         f'{vcf_buckets_cmdl} '
+        f'{"--skip-qc " if skip_qc else ""}'
         f'--out-mt {combined_mt_path} '
         f'--bucket {combiner_bucket}/work '
         f'--hail-billing {billing_project} ',

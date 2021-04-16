@@ -124,12 +124,12 @@ def main(
         logger.info(f'MatrixTable exists, reusing: {out_mt_path}')
     else:
         logger.info(f'Combining new samples')
-        new_samples_ht = utils.find_inputs(vcf_buckets, skip_qc=skip_qc)
+        new_samples_df = utils.find_inputs(vcf_buckets, skip_qc=skip_qc)
         new_mt_path = (
             os.path.join(work_bucket, 'new.mt') if existing_mt_path else out_mt_path
         )
         combine_gvcfs(
-            gvcf_paths=new_samples_ht.gvcf.collect(),
+            gvcf_paths=list(new_samples_df.gvcf),
             out_mt_path=new_mt_path,
             work_bucket=work_bucket,
             overwrite=True,
