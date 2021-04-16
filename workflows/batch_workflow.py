@@ -344,7 +344,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     os.system('echo "HAIL_QUERY_BACKEND=$HAIL_QUERY_BACKEND"')
     assert os.environ.get('HAIL_QUERY_BACKEND') != 'service'
     utils.init_hail('joint-calling-workflow')
-    raise AssertionError()
 
     # TODO: merge with existing data
     # TODO: fix impute_type
