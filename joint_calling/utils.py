@@ -9,8 +9,9 @@ import time
 import hashlib
 from os.path import isdir, isfile, exists, join, basename
 from typing import Any, Callable, List
-import pandas as pd
+import shutil
 
+import pandas as pd
 import hail as hl
 import click
 from google.cloud import storage
@@ -76,8 +77,13 @@ def find_inputs(
             )
 
         df: pd.DataFrame = None
+        local_tmp_dir = tempfile.mkdtemp()
         for qc_csv in qc_csvs:
-            single_df = pd.read_csv(qc_csv)
+            local_qc_csv_path = join(local_tmp_dir, basename(qc_csv))
+            subprocess.run(
+                f'gsutil cp {qc_csv} {local_qc_csv_path}', check=False, shell=True
+            )
+            single_df = pd.read_csv(local_qc_csv_path)
             # sample.id,sample.sample_name,sample.flowcell_lane,sample.library_id,sample.platform,sample.centre,sample.reference_genome,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
             # 613,TOB1529,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_H04,KCCG,hg38,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
             # 609,TOB1653,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_F03,KCCG,hg38,0.0060100100,F(-1),0.024802,0.165634,452.0,33.0
@@ -103,6 +109,7 @@ def find_inputs(
                     .drop_duplicates()
                 )
             )
+        shutil.rmtree(local_tmp_dir)
         sample_names = list(df['s'])
     else:
         sample_names = [basename(gp).replace('.g.vcf.gz', '') for gp in gvcf_paths]

@@ -7,6 +7,8 @@ Combine a set of gVCFs and output a MatrixTable and a HailTable with QC metadata
 import os
 from typing import List
 import logging
+import shutil
+
 import click
 import hail as hl
 from hail.experimental.vcf_combiner import vcf_combiner
@@ -116,7 +118,7 @@ def main(
     the accompanying QC metadata HT tables and write the result with a
     `.qc.ht` suffix.
     """
-    utils.init_hail('combine_gvcfs', local_tmp_dir)
+    local_tmp_dir = utils.init_hail('combine_gvcfs', local_tmp_dir)
 
     if reuse and file_exists(out_mt_path):
         logger.info(f'MatrixTable exists, reusing: {out_mt_path}')
@@ -143,6 +145,8 @@ def main(
                 new_mt_path=new_mt_path,
                 out_mt_path=out_mt_path,
             )
+
+    shutil.rmtree(local_tmp_dir)
 
 
 def _combine_with_the_existing_mt(
