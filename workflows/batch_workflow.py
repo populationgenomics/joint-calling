@@ -440,21 +440,22 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     meta_ht_path = join(combiner_bucket, 'meta.ht')
     combined_vcf_path = join(combiner_bucket, 'combined.vcf.gz')
     vcf_buckets_cmdl = ' '.join([f'--bucket-with-vcfs {ib}' for ib in input_buckets])
-    combiner_job = dataproc.hail_dataproc_job(
-        b,
-        f'run_python_script.py '
-        f'combine_gvcfs.py --reuse '
-        f'{vcf_buckets_cmdl} '
-        f'{"--skip-qc " if skip_qc else ""}'
-        f'--out-mt {combined_mt_path} '
-        f'--bucket {combiner_bucket}/work '
-        f'--hail-billing {billing_project} ',
-        max_age='8h',
-        packages=DATAPROC_PACKAGES,
-        num_secondary_workers=10,
-        # depends_on=subset_gvcf_jobs,
-        job_name='Combine GVCFs',
-    )
+    # combiner_job = dataproc.hail_dataproc_job(
+    #     b,
+    #     f'run_python_script.py '
+    #     f'combine_gvcfs.py --reuse '
+    #     f'{vcf_buckets_cmdl} '
+    #     f'{"--skip-qc " if skip_qc else ""}'
+    #     f'--out-mt {combined_mt_path} '
+    #     f'--bucket {combiner_bucket}/work '
+    #     f'--hail-billing {billing_project} ',
+    #     max_age='8h',
+    #     packages=DATAPROC_PACKAGES,
+    #     num_secondary_workers=10,
+    #     depends_on=subset_gvcf_jobs,
+    #     job_name='Combine GVCFs',
+    # )
+    combiner_job = b.new_job('Combiner')
     sample_qc_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '

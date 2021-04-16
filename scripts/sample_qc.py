@@ -32,9 +32,7 @@ logger.setLevel('INFO')
     '--mt',
     'mt_path',
     required=True,
-    callback=get_validation_callback(
-        ext='mt', must_exist=True, accompanying_metadata_suffix='.qc.ht'
-    ),
+    callback=get_validation_callback(ext='mt', must_exist=True),
     help='path to the input Matrix Table. '
     'To generate it, run the `combine_gvcfs` script',
 )
