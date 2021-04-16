@@ -5,7 +5,8 @@ Run sample QC on a MatrixTable, hard filter samples, add soft filter labels,
 and output a sample-level Hail Table
 """
 
-from os.path import join, splitext
+from os.path import join, splitext, basename
+import subprocess
 from typing import Optional
 import logging
 import click
@@ -132,7 +133,12 @@ def main(
     utils.init_hail('sample_qc', local_tmp_dir)
 
     mt = hl.read_matrix_table(mt_path).key_rows_by('locus', 'alleles')
-    df = pd.read_table(meta_csv_path)
+
+    local_meta_csv_path = join(local_tmp_dir, basename(meta_csv_path))
+    subprocess.run(
+        f'gsutil cp {meta_csv_path} {local_meta_csv_path}', check=False, shell=True
+    )
+    df = pd.read_table(local_meta_csv_path)
     input_meta_ht = hl.Table.from_pandas(df)
 
     mt = _filter_callrate(mt, work_bucket, overwrite)
