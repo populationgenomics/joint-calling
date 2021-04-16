@@ -38,6 +38,7 @@ TARGET_RECORDS = 25_000
 #     help='Name or subfolder to find VCFs'
 # )
 @click.option('--bucket-with-vcfs', 'vcf_buckets', multiple=True)
+@click.option('--skip-qc', 'skip_qc', is_flag=True)
 # @click.option(
 #     '--sample-map',
 #     'sample_map_csv_path',
@@ -91,6 +92,7 @@ TARGET_RECORDS = 25_000
 )
 def main(
     vcf_buckets: List[str],
+    skip_qc: bool,
     out_mt_path: str,
     existing_mt_path: str,
     work_bucket: str,
@@ -120,7 +122,7 @@ def main(
         logger.info(f'MatrixTable exists, reusing: {out_mt_path}')
     else:
         logger.info(f'Combining new samples')
-        new_samples_ht = utils.find_inputs(vcf_buckets)
+        new_samples_ht = utils.find_inputs(vcf_buckets, skip_qc=skip_qc)
         new_mt_path = (
             os.path.join(work_bucket, 'new.mt') if existing_mt_path else out_mt_path
         )

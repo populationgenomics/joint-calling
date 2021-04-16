@@ -348,10 +348,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     # TODO: merge with existing data
     # TODO: fix impute_type
 
-    samples_ht = utils.find_inputs(input_buckets, output_bucket, skip_qc=skip_qc)
+    samples_df = utils.find_inputs(input_buckets, skip_qc=skip_qc)
     samples_path = join(output_bucket, 'samples.csv')
     if not utils.file_exists(samples_path):
-        samples_ht.to_pandas().to_csv(samples_path, index=False, sep='\t', na_rep='NA')
+        samples_df.to_csv(samples_path, index=False, sep='\t', na_rep='NA')
     logger.info(f'Saved metadata to {samples_path}')
 
     # logger.info(f'Testing reading...')
@@ -362,7 +362,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     gvcfs = [
         b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
-        for gvcf in samples_ht.gvcf.collect()
+        for gvcf in list(samples_df.gvcf)
     ]
 
     # Make a 2.5:1 interval number to samples in callset ratio interval list.
@@ -432,7 +432,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             disk_size=small_disk,
             noalt_regions=noalt_regions,
         )
-        for sample, gvcf in zip(samples_ht.s.collect(), reblocked_gvcfs)
+        for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)
     ]
 
     combined_mt_path = join(combiner_bucket, 'genomes.mt')

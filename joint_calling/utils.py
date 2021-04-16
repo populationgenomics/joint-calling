@@ -42,15 +42,13 @@ def init_hail(name: str, local_tmp_dir: str = None):
 
 def find_inputs(
     input_buckets: List[str],
-    work_bucket: str,
     skip_qc: bool = False,
-) -> hl.Table:
+) -> pd.DataFrame:
     """
     Read the inputs assuming a standard CPG storage structure.
     :param input_buckets: buckets to find GVCFs and CSV metadata files.
-    :param work_bucket
     :param skip_qc: don't attempt to find QC CSV
-    :return: a Table with the following structure:
+    :return: a dataframe with the following structure:
         s (key)
         population
         gvcf
@@ -77,27 +75,35 @@ def find_inputs(
                 for line in subprocess.check_output(cmd, shell=True).decode().split()
             )
 
-        ht: hl.Table = None
+        df: pd.DataFrame = None
         for qc_csv in qc_csvs:
-            single_ht = hl.import_table(qc_csv, delimiter=',', impute=True)
+            single_df = pd.read_csv(qc_csv)
             # sample.id,sample.sample_name,sample.flowcell_lane,sample.library_id,sample.platform,sample.centre,sample.reference_genome,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
             # 613,TOB1529,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_H04,KCCG,hg38,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
             # 609,TOB1653,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_F03,KCCG,hg38,0.0060100100,F(-1),0.024802,0.165634,452.0,33.0
             # 604,TOB1764,ILLUMINA,HVTV7DSXY.1-2-3-4,LP9000037-NTP_B02,KCCG,hg38,0.0078874400,F(-1),0.01684,0.116911,413.0,43.0
             # 633,TOB1532,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_C05,KCCG,hg38,0.0121946000,F(-1),0.024425,0.151094,453.0,37.0
-            single_ht = single_ht.select(
-                s=single_ht['sample.sample_name'],
-                freemix=single_ht['raw_data.FREEMIX'],
-                pct_chimeras=single_ht['raw_data.PCT_CHIMERAS'],
-                duplication=single_ht['raw_data.PERCENT_DUPLICATION'],
-                median_insert_size=single_ht['raw_data.MEDIAN_INSERT_SIZE'],
-                mean_coverage=single_ht['raw_data.MEDIAN_COVERAGE'],
-                population='EUR',
-                gvcf='',
-            ).key_by('s')
-            ht = single_ht if ht is None else ht.union(single_ht)
-        ht = ht.distinct()
-        sample_names = ht.s.collect()
+            columns = {
+                'sample.sample_name': 's',
+                'raw_data.FREEMIX': 'freemix',
+                'raw_data.PCT_CHIMERAS': 'pct_chimeras',
+                'raw_data.PERCENT_DUPLICATION': 'duplication',
+                'raw_data.MEDIAN_INSERT_SIZE': 'median_insert_size',
+                'raw_data.MEDIAN_COVERAGE': 'mean_coverage',
+            }
+            single_df = single_df.rename(columns=columns)[columns.values()]
+            single_df['population'] = 'EUR'
+            single_df['gvcf'] = ''
+            df = (
+                single_df
+                if df is None
+                else (
+                    pd.concat([df, single_df], ignore_index=True)
+                    .set_index('s', drop=False)
+                    .drop_duplicates()
+                )
+            )
+        sample_names = list(df['s'])
     else:
         sample_names = [basename(gp).replace('.g.vcf.gz', '') for gp in gvcf_paths]
         df = pd.DataFrame(
@@ -111,23 +117,7 @@ def find_inputs(
                 median_insert_size=pd.NA,
                 mean_coverage=pd.NA,
             )
-        )
-        samples_path = join(work_bucket, 'samples.csv')
-        df.to_csv(samples_path, index=False, sep='\t', na_rep='NA')
-        ht = hl.import_table(
-            samples_path,
-            types={
-                's': hl.tstr,
-                'population': hl.tstr,
-                'gvcf': hl.tstr,
-                'freemix': hl.tfloat64,
-                'pct_chimeras': hl.tfloat64,
-                'duplication': hl.tfloat64,
-                'median_insert_size': hl.tfloat64,
-                'mean_coverage': hl.tfloat64,
-            },
-            missing='NA',
-        )
+        ).set_index('s', drop=False)
 
     # Checking 1-to-1 match of sample names to GVCFs
     for sn in sample_names:
@@ -149,9 +139,9 @@ def find_inputs(
         elif len(matching_sn) == 0:
             logging.warning(f'No samples found for the GVCF {gp}')
         else:
-            ht = ht.filter(ht.s == matching_sn[0]).annotate(gvcf=gp)
-    ht = ht.filter(ht.gvcf != '')
-    return ht
+            df.loc[matching_sn[0], ['gvcf']] = gp
+    df = df[df.gvcf.notnull()]
+    return df
 
 
 def get_validation_callback(
