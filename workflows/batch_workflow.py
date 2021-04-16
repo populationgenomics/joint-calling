@@ -419,21 +419,21 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     # pylint: disable=unused-variable
     noalt_regions = b.read_input('gs://cpg-reference/hg38/v0/noalt.bed')
 
-    reblocked_gvcfs = [
-        add_reblock_gvcfs_step(b, gvcf, small_disk).output_gvcf for gvcf in gvcfs
-    ]
+    # reblocked_gvcfs = [
+    #     add_reblock_gvcfs_step(b, gvcf, small_disk).output_gvcf for gvcf in gvcfs
+    # ]
     combiner_bucket = os.path.join(output_bucket, 'combiner')
-    combiner_gvcf_bucket = os.path.join(output_bucket, 'combiner', 'gvcfs')
-    subset_gvcf_jobs = [
-        add_subset_noalt_step(
-            b,
-            input_gvcf=gvcf,
-            output_gvcf_path=join(combiner_gvcf_bucket, sample + '.g.vcf.gz'),
-            disk_size=small_disk,
-            noalt_regions=noalt_regions,
-        )
-        for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)
-    ]
+    # combiner_gvcf_bucket = os.path.join(output_bucket, 'combiner', 'gvcfs')
+    # subset_gvcf_jobs = [
+    #     add_subset_noalt_step(
+    #         b,
+    #         input_gvcf=gvcf,
+    #         output_gvcf_path=join(combiner_gvcf_bucket, sample + '.g.vcf.gz'),
+    #         disk_size=small_disk,
+    #         noalt_regions=noalt_regions,
+    #     )
+    #     for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)
+    # ]
 
     combined_mt_path = join(combiner_bucket, 'genomes.mt')
     hard_filtered_samples_ht_path = join(combiner_bucket, 'hard_filters.ht')
@@ -451,7 +451,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         max_age='8h',
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
-        depends_on=subset_gvcf_jobs,
+        # depends_on=subset_gvcf_jobs,
         job_name='Combine GVCFs',
     )
     sample_qc_job = dataproc.hail_dataproc_job(
