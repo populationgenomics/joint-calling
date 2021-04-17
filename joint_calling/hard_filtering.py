@@ -85,22 +85,23 @@ def compute_hard_filters(
     # by 100, e.g. 5% == 5.00, 5% != 0.05
     ht = add_filter(
         ht,
-        hl.is_missing(qc_ht.freemix) | (qc_ht[ht.key].freemix > 5.00),
+        hl.is_missing(qc_ht[ht.key].freemix) | (qc_ht[ht.key].freemix > 5.00),
         'contamination',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(qc_ht.pct_chimeras) | (qc_ht[ht.key].pct_chimeras > 5.00),
+        hl.is_missing(qc_ht[ht.key].pct_chimeras) | (qc_ht[ht.key].pct_chimeras > 5.00),
         'chimera',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(qc_ht.mean_coverage) | (qc_ht[ht.key].mean_coverage < 15.0),
+        hl.is_missing(qc_ht[ht.key].mean_coverage)
+        | (qc_ht[ht.key].mean_coverage < 15.0),
         'coverage',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(qc_ht.median_insert_size)
+        hl.is_missing(qc_ht[ht.key].median_insert_size)
         | (qc_ht[ht.key].median_insert_size < 250.9),
         'insert_size',
     )
