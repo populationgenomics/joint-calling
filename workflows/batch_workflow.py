@@ -480,56 +480,56 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     qc_ac_ht_path = join(variant_qc_bucket, 'qc_ac.ht')
     # vep_ht = join(variant_qc_bucket, 'vep.ht')
     rf_result_ht_path = join(variant_qc_bucket, 'rf_result.ht')
-    rf_anno_job = dataproc.hail_dataproc_job(
-        b,
-        f'run_python_script.py '
-        f'generate_qc_annotations.py --split-multiallelic --overwrite '
-        f'--mt {combined_mt_path} '
-        f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
-        f'--meta-ht {meta_ht_path} '
-        f'--out-info-ht {info_ht_path} '
-        f'--out-allele-data-ht {allele_data_ht_path} '
-        f'--out-qc-ac-ht {qc_ac_ht_path} '
-        f'--bucket {combiner_bucket} ',
-        max_age='8h',
-        packages=DATAPROC_PACKAGES,
-        num_secondary_workers=10,
-        depends_on=[sample_qc_job],
-        job_name='RF: gen QC anno',
-    )
-    rf_freq_data_job = dataproc.hail_dataproc_job(
-        b,
-        f'run_python_script.py '
-        f'generate_freq_data.py --overwrite '
-        f'--mt {combined_mt_path} '
-        f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
-        f'--meta-ht {meta_ht_path} '
-        f'--out-ht {freq_ht_path} '
-        f'--bucket {combiner_bucket} ',
-        max_age='8h',
-        packages=DATAPROC_PACKAGES,
-        num_secondary_workers=10,
-        depends_on=[rf_anno_job],
-        job_name='RF: gen freq data',
-    )
-    rf_job = dataproc.hail_dataproc_job(
-        b,
-        f'run_python_script.py '
-        f'random_forest.py --overwrite '
-        f'--info-ht {info_ht_path} '
-        f'--freq-ht {freq_ht_path} '
-        f'--allele-data-ht {allele_data_ht_path} '
-        f'--qc-ac-ht {qc_ac_ht_path} '
-        f'--out-ht {rf_result_ht_path} '
-        f'--bucket {combiner_bucket} '
-        f'-o {rf_result_ht_path} ',
-        max_age='8h',
-        packages=DATAPROC_PACKAGES,
-        num_secondary_workers=10,
-        depends_on=[rf_freq_data_job],
-        job_name='RF: main',
-    )
-    rf_job.always_run()
+    # rf_anno_job = dataproc.hail_dataproc_job(
+    #     b,
+    #     f'run_python_script.py '
+    #     f'generate_qc_annotations.py --split-multiallelic --overwrite '
+    #     f'--mt {combined_mt_path} '
+    #     f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
+    #     f'--meta-ht {meta_ht_path} '
+    #     f'--out-info-ht {info_ht_path} '
+    #     f'--out-allele-data-ht {allele_data_ht_path} '
+    #     f'--out-qc-ac-ht {qc_ac_ht_path} '
+    #     f'--bucket {combiner_bucket} ',
+    #     max_age='8h',
+    #     packages=DATAPROC_PACKAGES,
+    #     num_secondary_workers=10,
+    #     depends_on=[sample_qc_job],
+    #     job_name='RF: gen QC anno',
+    # )
+    # rf_freq_data_job = dataproc.hail_dataproc_job(
+    #     b,
+    #     f'run_python_script.py '
+    #     f'generate_freq_data.py --overwrite '
+    #     f'--mt {combined_mt_path} '
+    #     f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
+    #     f'--meta-ht {meta_ht_path} '
+    #     f'--out-ht {freq_ht_path} '
+    #     f'--bucket {combiner_bucket} ',
+    #     max_age='8h',
+    #     packages=DATAPROC_PACKAGES,
+    #     num_secondary_workers=10,
+    #     depends_on=[rf_anno_job],
+    #     job_name='RF: gen freq data',
+    # )
+    # rf_job = dataproc.hail_dataproc_job(
+    #     b,
+    #     f'run_python_script.py '
+    #     f'random_forest.py --overwrite '
+    #     f'--info-ht {info_ht_path} '
+    #     f'--freq-ht {freq_ht_path} '
+    #     f'--allele-data-ht {allele_data_ht_path} '
+    #     f'--qc-ac-ht {qc_ac_ht_path} '
+    #     f'--out-ht {rf_result_ht_path} '
+    #     f'--bucket {combiner_bucket} '
+    #     f'-o {rf_result_ht_path} ',
+    #     max_age='8h',
+    #     packages=DATAPROC_PACKAGES,
+    #     num_secondary_workers=10,
+    #     depends_on=[rf_freq_data_job],
+    #     job_name='RF: main',
+    # )
+    # rf_job.always_run()
 
     split_intervals_job = add_split_intervals_step(
         b,
