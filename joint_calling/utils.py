@@ -44,11 +44,13 @@ def init_hail(name: str, local_tmp_dir: str = None):
 def find_inputs(
     input_buckets: List[str],
     skip_qc: bool = False,
-) -> pd.DataFrame:
+    meta_csv: str = None,
+) -> pd.DataFrame:  # pylint disable=too-many-branches
     """
     Read the inputs assuming a standard CPG storage structure.
     :param input_buckets: buckets to find GVCFs and CSV metadata files.
     :param skip_qc: don't attempt to find QC CSV
+    :params meta_csv: already previously prepared metadata file
     :return: a dataframe with the following structure:
         s (key)
         population
@@ -67,7 +69,7 @@ def find_inputs(
             for line in subprocess.check_output(cmd, shell=True).decode().split()
         )
 
-    if not skip_qc:
+    if not skip_qc and meta_csv is None:
         qc_csvs: List[str] = []
         for ib in input_buckets:
             cmd = f'gsutil ls \'{ib}/*.csv\''
@@ -107,6 +109,9 @@ def find_inputs(
                 else (pd.concat([df, single_df], ignore_index=True).drop_duplicates())
             )
         shutil.rmtree(local_tmp_dir)
+        sample_names = list(df['s'])
+    elif meta_csv is not None:
+        df = pd.read_table(meta_csv)
         sample_names = list(df['s'])
     else:
         sample_names = [basename(gp).replace('.g.vcf.gz', '') for gp in gvcf_paths]

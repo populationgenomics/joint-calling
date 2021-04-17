@@ -411,7 +411,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #     add_reblock_gvcfs_step(b, gvcf, small_disk).output_gvcf for gvcf in gvcfs
     # ]
     combiner_bucket = os.path.join(output_bucket, 'combiner')
-    # combiner_gvcf_bucket = os.path.join(output_bucket, 'combiner', 'gvcfs')
+    combiner_gvcf_bucket = os.path.join(output_bucket, 'combiner', 'gvcfs')
     # subset_gvcf_jobs = [
     #     add_subset_noalt_step(
     #         b,
@@ -426,24 +426,24 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     combined_mt_path = join(combiner_bucket, 'genomes.mt')
     hard_filtered_samples_ht_path = join(combiner_bucket, 'hard_filters.ht')
     meta_ht_path = join(combiner_bucket, 'meta.ht')
-    combined_vcf_path = join(combiner_bucket, 'combined.vcf.gz')
-    vcf_buckets_cmdl = ' '.join([f'--bucket-with-vcfs {ib}' for ib in input_buckets])
-    # combiner_job = dataproc.hail_dataproc_job(
-    #     b,
-    #     f'run_python_script.py '
-    #     f'combine_gvcfs.py --reuse '
-    #     f'{vcf_buckets_cmdl} '
-    #     f'{"--skip-qc " if skip_qc else ""}'
-    #     f'--out-mt {combined_mt_path} '
-    #     f'--bucket {combiner_bucket}/work '
-    #     f'--hail-billing {billing_project} ',
-    #     max_age='8h',
-    #     packages=DATAPROC_PACKAGES,
-    #     num_secondary_workers=10,
-    #     depends_on=subset_gvcf_jobs,
-    #     job_name='Combine GVCFs',
-    # )
-    combiner_job = b.new_job('Combiner')
+    combined_vcf_path = join(combiner_bucket, 'genomes.vcf.gz')
+    vcf_buckets_cmdl = f'--bucket-with-vcfs {combiner_gvcf_bucket}'
+    combiner_job = dataproc.hail_dataproc_job(
+        b,
+        f'run_python_script.py '
+        f'combine_gvcfs.py --reuse '
+        f'{vcf_buckets_cmdl} '
+        f'--meta-csv {samples_path} '
+        f'--out-mt {combined_mt_path} '
+        f'--bucket {combiner_bucket}/work '
+        f'--hail-billing {billing_project} ',
+        max_age='8h',
+        packages=DATAPROC_PACKAGES,
+        num_secondary_workers=10,
+        # depends_on=subset_gvcf_jobs,
+        job_name='Combine GVCFs',
+    )
+    # combiner_job = b.new_job('Combiner')
     sample_qc_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
