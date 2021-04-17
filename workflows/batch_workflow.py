@@ -348,12 +348,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         samples_df.to_csv(samples_path, index=False, sep='\t', na_rep='NA')
     logger.info(f'Saved metadata to {samples_path}')
 
-    # logger.info(f'Testing reading...')
-    # df = pd.read_table(samples_path)
-    # print(df)
-    # input_meta_ht = hl.Table.from_pandas(df)
-    # input_meta_ht.show()
-
     gvcfs = [
         b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
         for gvcf in list(samples_df.gvcf)

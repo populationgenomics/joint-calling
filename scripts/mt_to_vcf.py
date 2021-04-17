@@ -29,10 +29,8 @@ logger.setLevel(logging.INFO)
     '--mt',
     'mt_path',
     required=True,
-    callback=get_validation_callback(
-        ext='mt', must_exist=True, accompanying_metadata_suffix='.metadata.ht'
-    ),
-    help='path to the input MatrixTable. Must have an `.mt` extension',
+    callback=get_validation_callback(ext='mt', must_exist=True),
+    help='path to the input MatrixTable',
 )
 @click.option(
     '-o',

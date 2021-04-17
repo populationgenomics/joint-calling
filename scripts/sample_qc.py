@@ -139,7 +139,7 @@ def main(
         f'gsutil cp {meta_csv_path} {local_meta_csv_path}', check=False, shell=True
     )
     df = pd.read_table(local_meta_csv_path)
-    input_meta_ht = hl.Table.from_pandas(df)
+    input_meta_ht = hl.Table.from_pandas(df).key_by('s')
 
     mt = _filter_callrate(mt, work_bucket, overwrite)
 
