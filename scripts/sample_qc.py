@@ -273,7 +273,6 @@ def _compute_hail_sample_qc(
         ~hl.is_defined(telomeres_and_centromeres.ht()[mt.locus])
         & (hl.len(mt.alleles) > 1)
     )
-    mt = mt.select_entries(GT=mt.LGT)
 
     sample_qc_ht = compute_stratified_sample_qc(
         mt,
