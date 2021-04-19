@@ -15,6 +15,8 @@ import pandas as pd
 import hail as hl
 import click
 from google.cloud import storage
+from joint_calling import _version
+
 
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
@@ -38,6 +40,7 @@ def init_hail(name: str, local_tmp_dir: str = None):
         safe_mkdir(os.path.join(local_tmp_dir, 'log')), f'{name}-{timestamp}.log'
     )
     hl.init(default_reference=DEFAULT_REF, log=hl_log)
+    logger.info(f'Running joint-calling version {_version.__version__}')
     return local_tmp_dir
 
 
