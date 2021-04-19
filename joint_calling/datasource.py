@@ -87,7 +87,7 @@ class AirTableDatasource:
 
         """
         table = self._get_table()
-        formula = get_formula(filters)
+        formula = _get_formula(filters)
         sample_files = []
         for page in table.get_iter(formula=formula):
             for record in page:
@@ -97,7 +97,7 @@ class AirTableDatasource:
         return sample_files
 
 
-def get_formula(filters: Dict[TableColumn, Any]) -> str:
+def _get_formula(filters: Dict[TableColumn, Any]) -> str:
     """Creates a forumula with the appropriate syntax for the datasource.
     Given a dictionary of filters, the function returns a formatted string
     in accordance with the guidelines of the datasource.
