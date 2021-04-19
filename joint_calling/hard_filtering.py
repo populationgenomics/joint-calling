@@ -75,7 +75,7 @@ def compute_hard_filters(
         (
             (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp > 8.0e6)
             | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp < 2.4e6)
-            | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_singleton > 3e5)
+            | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_singleton > 4e5)
             | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.r_het_hom_var > 3.3)
         ),
         'bad_biallelic_metrics',

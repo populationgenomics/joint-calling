@@ -1513,9 +1513,10 @@ def add_final_gather_vcf_step(
     j.command(
         f"""set -euo pipefail
 
-    # --ignore-safety-checks makes a big performance difference so we include it in our invocation.
-    # This argument disables expensive checks that the file headers contain the same set of
-    # genotyped samples and that files are in order by position of first record.
+    # --ignore-safety-checks makes a big performance difference so we include it in 
+    # our invocation. This argument disables expensive checks that the file headers 
+    # contain the same set of genotyped samples and that files are in order 
+    # by position of first record.
     gatk --java-options -Xms6g \\
       GatherVcfsCloud \\
       --ignore-safety-checks \\
