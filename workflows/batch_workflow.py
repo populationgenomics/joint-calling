@@ -431,7 +431,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     combiner_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
-        f'combine_gvcfs.py --reuse '
+        f'combine_gvcfs.py '
         f'{vcf_buckets_cmdl} '
         f'--meta-csv {samples_path} '
         f'--out-mt {combined_mt_path} '
