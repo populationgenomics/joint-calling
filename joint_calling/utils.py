@@ -114,7 +114,7 @@ def find_inputs(
         subprocess.run(
             f'gsutil cp {meta_csv_path} {local_meta_csv_path}', check=False, shell=True
         )
-        df = pd.read_table(meta_csv_path)
+        df = pd.read_table(local_meta_csv_path)
         sample_names = list(df['s'])
     else:
         sample_names = [basename(gp).replace('.g.vcf.gz', '') for gp in gvcf_paths]
