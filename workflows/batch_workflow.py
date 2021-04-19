@@ -426,25 +426,25 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     hard_filtered_samples_ht_path = join(combiner_bucket, 'hard_filters.ht')
     meta_ht_path = join(combiner_bucket, 'meta.ht')
     combined_vcf_path = join(combiner_bucket, 'genomes.vcf.gz')
-    combiner_job = dataproc.hail_dataproc_job(
-        b,
-        f'run_python_script.py '
-        f'combine_gvcfs.py '
-        f'--meta-csv {samples_path} '
-        f'--out-mt {combined_mt_path} '
-        f'--bucket {combiner_bucket}/work '
-        f'--hail-billing {billing_project} ',
-        max_age='8h',
-        packages=DATAPROC_PACKAGES,
-        num_secondary_workers=10,
-        # depends_on=subset_gvcf_jobs,
-        job_name='Combine GVCFs',
-    )
-    # combiner_job = b.new_job('Combiner')
+    # combiner_job = dataproc.hail_dataproc_job(
+    #     b,
+    #     f'run_python_script.py '
+    #     f'combine_gvcfs.py '
+    #     f'--meta-csv {samples_path} '
+    #     f'--out-mt {combined_mt_path} '
+    #     f'--bucket {combiner_bucket}/work '
+    #     f'--hail-billing {billing_project} ',
+    #     max_age='8h',
+    #     packages=DATAPROC_PACKAGES,
+    #     num_secondary_workers=10,
+    #     # depends_on=subset_gvcf_jobs,
+    #     job_name='Combine GVCFs',
+    # )
+    combiner_job = b.new_job('Combiner')
     sample_qc_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
-        f'sample_qc.py '
+        f'sample_qc.py --overwrite '
         f'--mt {combined_mt_path} '
         f'--meta-csv {samples_path} '
         f'--bucket {combiner_bucket} '
