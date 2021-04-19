@@ -5,10 +5,13 @@ Combine a set of gVCFs and output a MatrixTable and a HailTable with QC metadata
 """
 
 import os
+from os.path import join, basename
+import subprocess
 from typing import List
 import logging
 import shutil
 
+import pandas as pd
 import click
 import hail as hl
 from hail.experimental.vcf_combiner import vcf_combiner
@@ -40,7 +43,16 @@ TARGET_RECORDS = 25_000
 #     help='Name or subfolder to find VCFs'
 # )
 @click.option('--bucket-with-vcfs', 'vcf_buckets', multiple=True)
-@click.option('--meta-csv', 'meta_csv')
+@click.option(
+    '--skip-qc',
+    'skip_qc',
+    help='Extract sample names from the GVCF paths, don\'t attempt to find QC CSV files',
+)
+@click.option(
+    '--meta-csv',
+    'meta_csv',
+    help='Previously prepared meta CSV path. Don\'t attempt to find GVCFs or QC CSV files.',
+)
 # @click.option(
 #     '--sample-map',
 #     'sample_map_csv_path',
@@ -94,7 +106,8 @@ TARGET_RECORDS = 25_000
 )
 def main(
     vcf_buckets: List[str],
-    meta_csv: str,
+    skip_qc: bool,
+    meta_csv_path: str,
     out_mt_path: str,
     existing_mt_path: str,
     work_bucket: str,
@@ -121,7 +134,16 @@ def main(
     local_tmp_dir = utils.init_hail('combine_gvcfs', local_tmp_dir)
 
     logger.info(f'Combining new samples')
-    new_samples_df = utils.find_inputs(vcf_buckets, meta_csv_path=meta_csv)
+
+    if meta_csv_path:
+        local_meta_csv_path = join(local_tmp_dir, basename(meta_csv_path))
+        subprocess.run(
+            f'gsutil cp {meta_csv_path} {local_meta_csv_path}', check=False, shell=True
+        )
+        new_samples_df = pd.read_table(local_meta_csv_path)
+    else:
+        new_samples_df = utils.find_inputs(vcf_buckets, skip_qc=skip_qc)
+
     new_mt_path = (
         os.path.join(work_bucket, 'new.mt') if existing_mt_path else out_mt_path
     )

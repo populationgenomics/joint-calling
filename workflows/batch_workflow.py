@@ -344,10 +344,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     samples_df = utils.find_inputs(input_buckets, skip_qc=skip_qc)
     samples_path = join(output_bucket, 'samples.csv')
-    if not utils.file_exists(samples_path):
-        samples_df.to_csv(samples_path, index=False, sep='\t', na_rep='NA')
-    logger.info(f'Saved metadata to {samples_path}')
-
     gvcfs = [
         b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
         for gvcf in list(samples_df.gvcf)
@@ -422,17 +418,18 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #     )
     #     for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)
     # ]
-
+    for sn in samples_df.s:
+        samples_df.loc[sn, ['gvcf']] = join(combiner_gvcf_bucket, sn + '.g.vcf.gz')
+    samples_df.to_csv(samples_path, index=False, sep='\t', na_rep='NA')
+    logger.info(f'Saved metadata with updated GVCFs to {samples_path}')
     combined_mt_path = join(combiner_bucket, 'genomes.mt')
     hard_filtered_samples_ht_path = join(combiner_bucket, 'hard_filters.ht')
     meta_ht_path = join(combiner_bucket, 'meta.ht')
     combined_vcf_path = join(combiner_bucket, 'genomes.vcf.gz')
-    vcf_buckets_cmdl = f'--bucket-with-vcfs {combiner_gvcf_bucket}'
     combiner_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
         f'combine_gvcfs.py '
-        f'{vcf_buckets_cmdl} '
         f'--meta-csv {samples_path} '
         f'--out-mt {combined_mt_path} '
         f'--bucket {combiner_bucket}/work '

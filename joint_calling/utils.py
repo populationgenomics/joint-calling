@@ -44,13 +44,11 @@ def init_hail(name: str, local_tmp_dir: str = None):
 def find_inputs(
     input_buckets: List[str],
     skip_qc: bool = False,
-    meta_csv_path: str = None,
 ) -> pd.DataFrame:  # pylint disable=too-many-branches
     """
     Read the inputs assuming a standard CPG storage structure.
     :param input_buckets: buckets to find GVCFs and CSV metadata files.
     :param skip_qc: don't attempt to find QC CSV
-    :params meta_csv: already previously prepared metadata file
     :return: a dataframe with the following structure:
         s (key)
         population
@@ -70,7 +68,7 @@ def find_inputs(
         )
 
     local_tmp_dir = tempfile.mkdtemp()
-    if not skip_qc and meta_csv_path is None:
+    if not skip_qc:
         qc_csvs: List[str] = []
         for ib in input_buckets:
             cmd = f'gsutil ls \'{ib}/*.csv\''
@@ -108,13 +106,6 @@ def find_inputs(
                 if df is None
                 else (pd.concat([df, single_df], ignore_index=True).drop_duplicates())
             )
-        sample_names = list(df['s'])
-    elif meta_csv_path is not None:
-        local_meta_csv_path = join(local_tmp_dir, basename(meta_csv_path))
-        subprocess.run(
-            f'gsutil cp {meta_csv_path} {local_meta_csv_path}', check=False, shell=True
-        )
-        df = pd.read_table(local_meta_csv_path)
         sample_names = list(df['s'])
     else:
         sample_names = [basename(gp).replace('.g.vcf.gz', '') for gp in gvcf_paths]
