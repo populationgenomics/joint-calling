@@ -50,7 +50,7 @@ TARGET_RECORDS = 25_000
 )
 @click.option(
     '--meta-csv',
-    'meta_csv',
+    'meta_csv_path',
     help='Previously prepared meta CSV path. Don\'t attempt to find GVCFs or QC CSV files.',
 )
 # @click.option(
