@@ -20,7 +20,7 @@ from gnomad.utils.annotations import bi_allelic_expr
 from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.filtering import add_filters_expr
 
-from joint_calling.utils import file_exists, get_validation_callback
+from joint_calling.utils import file_exists, get_validation_callback, get_mt
 from joint_calling import hard_filtering, pop_strat_qc, utils, _version
 
 logger = logging.getLogger('joint-calling')
@@ -132,7 +132,8 @@ def main(
     """
     local_tmp_dir = utils.init_hail('sample_qc', local_tmp_dir)
 
-    mt = hl.read_matrix_table(mt_path).key_rows_by('locus', 'alleles')
+    mt = get_mt(mt_path)
+    mt_split = get_mt(mt_path, split=True)
 
     local_meta_csv_path = join(local_tmp_dir, basename(meta_csv_path))
     subprocess.run(
@@ -141,10 +142,10 @@ def main(
     df = pd.read_table(local_meta_csv_path)
     input_meta_ht = hl.Table.from_pandas(df).key_by('s')
 
-    mt = _filter_callrate(mt, work_bucket, overwrite)
-
     # `hail_sample_qc_ht` row fields: sample_qc, bi_allelic_sample_qc
-    hail_sample_qc_ht = _compute_hail_sample_qc(mt, work_bucket, overwrite)
+    hail_sample_qc_ht = _compute_hail_sample_qc(mt_split, work_bucket, overwrite)
+
+    # mt = _filter_callrate(mt, work_bucket, overwrite)
 
     # `sex_ht` row fields: is_female, chr20_mean_dp, sex_karyotype
     sex_ht = _infer_sex(
@@ -239,37 +240,6 @@ def main(
     )
 
 
-def _filter_callrate(
-    mt: hl.MatrixTable,
-    work_bucket: str,
-    overwrite: bool = False,
-) -> hl.MatrixTable:
-    """
-    Filter non-common variants, and annotate the sample callrate
-    :param mt: input matrix table
-    :param work_bucket: bucket path to write checkpoints
-    :param overwrite: overwrite checkpoints if they exist
-    :return: a new MatrixTable with a callrate column field
-    """
-    logger.info('Sample QC')
-    out_mt_path = join(work_bucket, 'high_callrate_common_biallelic_snps.mt')
-    if not overwrite and file_exists(out_mt_path):
-        return hl.read_matrix_table(out_mt_path)
-
-    logger.info('Filtering to bi-allelic, high-callrate, common SNPs for sample QC...')
-    mt = mt.filter_rows(
-        (hl.len(mt.alleles) == 2)
-        & hl.is_snp(mt.alleles[0], mt.alleles[1])
-        & (hl.agg.mean(mt.LGT.n_alt_alleles()) / 2 > 0.001)
-        & (hl.agg.fraction(hl.is_defined(mt.LGT)) > 0.99)
-    )
-    mt = mt.annotate_cols(
-        callrate=hl.agg.fraction(hl.is_defined(mt.LGT))
-    ).naive_coalesce(5000)
-    mt.write(out_mt_path, overwrite=overwrite)
-    return mt
-
-
 def _compute_hail_sample_qc(
     mt: hl.MatrixTable,
     work_bucket: str,
@@ -304,9 +274,6 @@ def _compute_hail_sample_qc(
         & (hl.len(mt.alleles) > 1)
     )
     mt = mt.select_entries(GT=mt.LGT)
-
-    regular_sample_qc_ht = hl.sample_qc(mt).cols()
-    regular_sample_qc_ht.write(out_ht_path.replace('.ht', '.regular.ht'))
 
     sample_qc_ht = compute_stratified_sample_qc(
         mt,
