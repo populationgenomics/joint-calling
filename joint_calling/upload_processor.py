@@ -5,6 +5,7 @@
     they should be combined with in this case. Following a successful
     run all uploaded files will be moved to archival storage."""
 
+import os
 import subprocess
 from typing import List
 from google.cloud import storage
@@ -83,12 +84,12 @@ def move_files(
 def batch_move_files(
     batch: hb.batch,
     sample_files: List[str],
-    source_bucket_name: str,
-    destination_bucket_name: str,
+    source_bucket: str,
+    destination_bucket: str,
     docker_image: str,
-    dest_path: str = '',
     key: str = None,
-) -> hb.batch.job:
+    dest_path: str = '',
+) -> List:
     """Moving files between buckets
 
     Parameters
@@ -98,10 +99,10 @@ def batch_move_files(
     sample_files: List[str]
         A list of the file names to be moved.
         For example ["TOB1543","TOB2314","TOB3423"]
-    source_bucket_name: str
+    source_bucket: str
         The name of the bucket where the files are initially located.
         For example "cpg-tob-wgs-upload"
-    destination_bucket_name: str
+    destination_bucket: str
         The name of the bucket where files are to be moved.
         For example "cpg-tob-wgs-main"
     docker_image: str
@@ -127,21 +128,21 @@ def batch_move_files(
 
     Returns
     =======
-    Returns a sink, i.e. a job that is dependent on the array of
-    jobs that are defined to move each sample.
+    Returns a list of batch jobs. Each job consists of
+    a gsutil move command for each valid file. When run,
+    these jobs will perform the batch move file operation.
 
     Notes
     =====
     The function assumes that the file names have
     been validated at an earlier stage."""
 
-    source_bucket = 'gs://' + source_bucket_name
-    destination_bucket = 'gs://' + destination_bucket_name
     jobs = []
 
     for sample in sample_files:
-        previous_location = source_bucket + f'/{sample}'
-        new_location = destination_bucket + dest_path + f'/{sample}'
+
+        previous_location = os.path.join('gs://', source_bucket, sample)
+        new_location = os.path.join('gs://', destination_bucket, dest_path, sample)
 
         # Checks if the files exist at the source and destination
         get_file_source = subprocess.run(
@@ -173,7 +174,4 @@ def batch_move_files(
         j.command(f'gsutil -m mv {previous_location} {new_location}')
         jobs.append(j)
 
-    upload_sink = batch.new_job(name='upload_sink')
-    upload_sink.depends_on(*jobs)
-
-    return upload_sink
+    return jobs
