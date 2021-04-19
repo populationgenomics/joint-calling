@@ -44,7 +44,7 @@ def init_hail(name: str, local_tmp_dir: str = None):
 def find_inputs(
     input_buckets: List[str],
     skip_qc: bool = False,
-    meta_csv: str = None,
+    meta_csv_path: str = None,
 ) -> pd.DataFrame:  # pylint disable=too-many-branches
     """
     Read the inputs assuming a standard CPG storage structure.
@@ -69,7 +69,8 @@ def find_inputs(
             for line in subprocess.check_output(cmd, shell=True).decode().split()
         )
 
-    if not skip_qc and meta_csv is None:
+    local_tmp_dir = tempfile.mkdtemp()
+    if not skip_qc and meta_csv_path is None:
         qc_csvs: List[str] = []
         for ib in input_buckets:
             cmd = f'gsutil ls \'{ib}/*.csv\''
@@ -79,7 +80,6 @@ def find_inputs(
             )
 
         df: pd.DataFrame = None
-        local_tmp_dir = tempfile.mkdtemp()
         for qc_csv in qc_csvs:
             local_qc_csv_path = join(local_tmp_dir, basename(qc_csv))
             subprocess.run(
@@ -108,10 +108,13 @@ def find_inputs(
                 if df is None
                 else (pd.concat([df, single_df], ignore_index=True).drop_duplicates())
             )
-        shutil.rmtree(local_tmp_dir)
         sample_names = list(df['s'])
-    elif meta_csv is not None:
-        df = pd.read_table(meta_csv)
+    elif meta_csv_path is not None:
+        local_meta_csv_path = join(local_tmp_dir, basename(meta_csv_path))
+        subprocess.run(
+            f'gsutil cp {meta_csv_path} {local_meta_csv_path}', check=False, shell=True
+        )
+        df = pd.read_table(meta_csv_path)
         sample_names = list(df['s'])
     else:
         sample_names = [basename(gp).replace('.g.vcf.gz', '') for gp in gvcf_paths]
@@ -127,6 +130,8 @@ def find_inputs(
                 mean_coverage=pd.NA,
             )
         ).set_index('s', drop=False)
+
+    shutil.rmtree(local_tmp_dir)
 
     # Checking 1-to-1 match of sample names to GVCFs
     for sn in sample_names:

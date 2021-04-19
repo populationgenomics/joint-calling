@@ -13,7 +13,7 @@ import click
 import hail as hl
 from hail.experimental.vcf_combiner import vcf_combiner
 
-from joint_calling.utils import get_validation_callback, file_exists
+from joint_calling.utils import get_validation_callback
 from joint_calling import utils
 from joint_calling import _version
 
@@ -99,7 +99,7 @@ def main(
     existing_mt_path: str,
     work_bucket: str,
     local_tmp_dir: str,
-    reuse: bool,
+    reuse: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
 ):
     """
@@ -120,31 +120,28 @@ def main(
     """
     local_tmp_dir = utils.init_hail('combine_gvcfs', local_tmp_dir)
 
-    if reuse and file_exists(out_mt_path):
-        logger.info(f'MatrixTable exists, reusing: {out_mt_path}')
-    else:
-        logger.info(f'Combining new samples')
-        new_samples_df = utils.find_inputs(vcf_buckets, meta_csv=meta_csv)
-        new_mt_path = (
-            os.path.join(work_bucket, 'new.mt') if existing_mt_path else out_mt_path
+    logger.info(f'Combining new samples')
+    new_samples_df = utils.find_inputs(vcf_buckets, meta_csv_path=meta_csv)
+    new_mt_path = (
+        os.path.join(work_bucket, 'new.mt') if existing_mt_path else out_mt_path
+    )
+    combine_gvcfs(
+        gvcf_paths=list(new_samples_df.gvcf),
+        out_mt_path=new_mt_path,
+        work_bucket=work_bucket,
+        overwrite=True,
+    )
+    new_mt = hl.read_matrix_table(new_mt_path)
+    logger.info(
+        f'Written {new_mt.cols().count()} samples into a MatrixTable {out_mt_path}'
+    )
+    if existing_mt_path:
+        logger.info(f'Combining with the existing matrix table {existing_mt_path}')
+        _combine_with_the_existing_mt(
+            existing_mt=hl.read_matrix_table(existing_mt_path),
+            new_mt_path=new_mt_path,
+            out_mt_path=out_mt_path,
         )
-        combine_gvcfs(
-            gvcf_paths=list(new_samples_df.gvcf),
-            out_mt_path=new_mt_path,
-            work_bucket=work_bucket,
-            overwrite=True,
-        )
-        new_mt = hl.read_matrix_table(new_mt_path)
-        logger.info(
-            f'Written {new_mt.cols().count()} samples into a MatrixTable {out_mt_path}'
-        )
-        if existing_mt_path:
-            logger.info(f'Combining with the existing matrix table {existing_mt_path}')
-            _combine_with_the_existing_mt(
-                existing_mt=hl.read_matrix_table(existing_mt_path),
-                new_mt_path=new_mt_path,
-                out_mt_path=out_mt_path,
-            )
 
     shutil.rmtree(local_tmp_dir)
 
