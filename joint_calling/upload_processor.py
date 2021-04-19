@@ -86,8 +86,8 @@ def batch_move_files(
     source_bucket_name: str,
     destination_bucket_name: str,
     docker_image: str,
-    dest_path: str = '',
     key: str = None,
+    dest_path: str = '',
 ) -> hb.batch.job:
     """Moving files between buckets
 
