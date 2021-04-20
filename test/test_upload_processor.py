@@ -45,6 +45,15 @@ def validate_move(
     return False
 
 
+def cleanup(bucket: str, samples: List[str], path: str = ''):
+    """Clean up function that deletes remaining files after
+    test run"""
+
+    for sample in samples:
+        full_path = os.path.join('gs://', bucket, path, sample)
+        subprocess.run(['gsutil', 'rm', full_path], check=False)
+
+
 def upload_files(files: List[str], upload_bucket: str):
     """A function to mimic file upload. Takes a list of
     file names, creates these files, then moved them into
@@ -89,6 +98,8 @@ class TestUploadProcessor(unittest.TestCase):
                 validate_move(self.upload_bucket, self.main_bucket, sample, batch_path)
             )
 
+        cleanup(self.main_bucket, sample_list, batch_path)
+
     def test_batch_move_recovery(self):
         """Test cases that handles previous partially successful run.
         In this case, the file would not exist at the source
@@ -111,6 +122,8 @@ class TestUploadProcessor(unittest.TestCase):
         # Check that the files have been moved to main
         for sample in sample_list:
             self.assertTrue(validate_move(self.upload_bucket, self.main_bucket, sample))
+
+        cleanup(self.main_bucket, sample_list)
 
     def test_invalid_samples(self):
         """Test case that handles invalid sample ID's i.e. samples that don't exist
@@ -164,3 +177,5 @@ class TestUploadProcessor(unittest.TestCase):
 
         for sample in sample_list:
             self.assertTrue(validate_move(self.upload_bucket, self.main_bucket, sample))
+
+        cleanup(self.main_bucket, sample_list)
