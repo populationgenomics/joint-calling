@@ -79,28 +79,27 @@ def find_inputs(
                 line.strip()
                 for line in subprocess.check_output(cmd, shell=True).decode().split()
             )
-            qc_csvs = [q for q in qc_csvs if 'batch1' in q]
 
         df: pd.DataFrame = None
+        # sample.id,sample.sample_name,sample.flowcell_lane,sample.library_id,sample.platform,sample.centre,sample.reference_genome,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
+        # 613,TOB1529,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_H04,KCCG,hg38,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
+        # 609,TOB1653,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_F03,KCCG,hg38,0.0060100100,F(-1),0.024802,0.165634,452.0,33.0
+        # 604,TOB1764,ILLUMINA,HVTV7DSXY.1-2-3-4,LP9000037-NTP_B02,KCCG,hg38,0.0078874400,F(-1),0.01684,0.116911,413.0,43.0
+        # 633,TOB1532,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_C05,KCCG,hg38,0.0121946000,F(-1),0.024425,0.151094,453.0,37.0
+        columns = {
+            'sample.sample_name': 's',
+            'raw_data.FREEMIX': 'freemix',
+            'raw_data.PCT_CHIMERAS': 'pct_chimeras',
+            'raw_data.PERCENT_DUPLICATION': 'duplication',
+            'raw_data.MEDIAN_INSERT_SIZE': 'median_insert_size',
+            'raw_data.MEDIAN_COVERAGE': 'mean_coverage',
+        }
         for qc_csv in qc_csvs:
             local_qc_csv_path = join(local_tmp_dir, basename(qc_csv))
             subprocess.run(
                 f'gsutil cp {qc_csv} {local_qc_csv_path}', check=False, shell=True
             )
             single_df = pd.read_csv(local_qc_csv_path)
-            # sample.id,sample.sample_name,sample.flowcell_lane,sample.library_id,sample.platform,sample.centre,sample.reference_genome,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
-            # 613,TOB1529,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_H04,KCCG,hg38,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
-            # 609,TOB1653,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_F03,KCCG,hg38,0.0060100100,F(-1),0.024802,0.165634,452.0,33.0
-            # 604,TOB1764,ILLUMINA,HVTV7DSXY.1-2-3-4,LP9000037-NTP_B02,KCCG,hg38,0.0078874400,F(-1),0.01684,0.116911,413.0,43.0
-            # 633,TOB1532,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_C05,KCCG,hg38,0.0121946000,F(-1),0.024425,0.151094,453.0,37.0
-            columns = {
-                'sample.sample_name': 's',
-                'raw_data.FREEMIX': 'freemix',
-                'raw_data.PCT_CHIMERAS': 'pct_chimeras',
-                'raw_data.PERCENT_DUPLICATION': 'duplication',
-                'raw_data.MEDIAN_INSERT_SIZE': 'median_insert_size',
-                'raw_data.MEDIAN_COVERAGE': 'mean_coverage',
-            }
             single_df = single_df.rename(columns=columns)[columns.values()]
             single_df['population'] = 'EUR'
             single_df['gvcf'] = ''
@@ -108,7 +107,7 @@ def find_inputs(
             df = (
                 single_df
                 if df is None
-                else (pd.concat([df, single_df], ignore_index=True).drop_duplicates())
+                else (pd.concat([df, single_df], ignore_index=False).drop_duplicates())
             )
         sample_names = list(df['s'])
     else:
