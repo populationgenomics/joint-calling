@@ -1,27 +1,32 @@
 """
-Hail Batch workflow to perform VQSR on a WGS germline callset.
-Compilation from the following two WDL workflows:
-1. hail-ukbb-200k-callset/GenotypeAndFilter.AS.wdl
-2. The Broad VQSR workflow:
+Hail Batch workflow to perform joint calling, sample QC, and variant QC with VQSR and 
+random forest methods on a WGS germline callset.
+1. For the sample QC and the random forest variant QC, mostly re-implementation of 
+https://github.com/broadinstitute/gnomad_qc
+2. For VQSR, compilation from the following 2 WDL workflows:
+a. hail-ukbb-200k-callset/GenotypeAndFilter.AS.wdl
+b. The Broad VQSR workflow:
    https://github.com/broadinstitute/warp/blob/develop/pipelines/broad/dna_seq/germline/joint_genotyping/JointGenotyping.wdl
    documented here:
    https://gatk.broadinstitute.org/hc/en-us/articles/360035531112--How-to-Filter-variants-either-with-VQSR-or-by-hard-filtering
 Translated from WDL with a help of Janis:
 https://github.com/PMCC-BioinformaticsCore/janis
 
-The input is a VCF file, build the following way:
-1. called variants in single samples with GATK HaplotypeCaller
-2. post-process GVCFs with GATK ReblockGVCF
-3. combine the GVCFs with Hail combiner into a Hail Matrix Table
-   using `scripts/combine_gvcfs.py`
-4. optionally, perform sample-level filtering with `scripts/sample_qc.py`
-5. export the Matrix Table to a multi-sample site-only VCF with
-   `scripts/mt_to_vcf.py`
-
-The output is a VCF file <output_bucket>/<callset>-recalibrated.vcf.gz,
+Output
+* The output of sample QC is a CSV file:
+`<output_bucket>/meta.tsv`
+* The output of VQSR is a VCF file <output_bucket>/<callset>-recalibrated.vcf.gz,
 as well as a QC file <output_bucket>/<callset>-eval.txt
 and R scripts to plot VQSR models: <output_bucket>/plot-snps-recal.Rscript
 and <output_bucket>/plot-indels-recal.Rscript
+
+The workflow is parametrised by the dataset name, batch names and the output version.
+$ python scripts/batch_workflow.py --callset fewgenomes \
+     --version v0 --batch 0 --batch 1 --billing-project test --skip-qc
+Will read the inputs from:
+gs://cpg-fewgenomes-test/gvcf/batch0/*.g.vcf.gz
+And write into the following output bucket:
+gs://cpg-fewgenomes-temporary/joint_vcf/v0/work/combiner
 """
 
 import os
@@ -41,12 +46,11 @@ logger.setLevel('INFO')
 
 GATK_VERSION = '4.2.0.0'
 GATK_DOCKER = f'us.gcr.io/broad-gatk/gatk:{GATK_VERSION}'
-# GnarlyGenotyper crashes with NullPointerException when using GATK docker
+# GnarlyGenotyper is in Beta and crashes with NullPointerException when using the
+# official GATK docker, that's why using a separate image for it:
 GNARLY_DOCKER = 'gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K'
 DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
-
 BROAD_REF_BUCKET = 'gs://gcp-public-data--broad-references/hg38/v0'
-
 DATAPROC_PACKAGES = [
     'joint-calling',
     'click',
@@ -86,7 +90,7 @@ DATAPROC_PACKAGES = [
     type=str,
     default=os.getenv('HAIL_BILLING_PROJECT'),
 )
-# Reference files
+# Reference files. All options have defaults.
 @click.option(
     '--unpadded_intervals_file',
     'unpadded_intervals_file',
@@ -318,8 +322,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     skip_allele_specific_annotations: bool,
 ):
     """
-    Run a Hail Batch workflow that performs the VQSR filtering on a WGS
-    germline callset
+    Drive a Hail Batch workflow that creates and submits jobs. A job usually runs
+    either a Hail Query script from the scripts folder in this repo using a Dataproc
+    cluster; or a GATK command using the GATK or Gnarly image.
     """
     if not dry_run:
         if not billing_project:
@@ -340,8 +345,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     b = hb.Batch('Joint Calling', backend=backend)
 
     # TODO: merge with existing data
-    # TODO: fix impute_type
-
     samples_df = utils.find_inputs(input_buckets, skip_qc=skip_qc)
     samples_path = join(output_bucket, 'samples.csv')
     gvcfs = [
@@ -442,7 +445,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         depends_on=subset_gvcf_jobs,
         job_name='Combine GVCFs',
     )
-    # combiner_job = b.new_job('Combiner')
     sample_qc_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
