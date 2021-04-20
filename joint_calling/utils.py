@@ -51,7 +51,7 @@ def find_inputs(
     """
     Read the inputs assuming a standard CPG storage structure.
     :param input_buckets: buckets to find GVCFs and CSV metadata files.
-    :param skip_qc: don't attempt to find QC CSV
+    :param skip_qc: don't attempt to find QC CSV files
     :return: a dataframe with the following structure:
         s (key)
         population
