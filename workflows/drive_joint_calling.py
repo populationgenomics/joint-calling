@@ -27,12 +27,6 @@ $ analysis-runner \
 import subprocess
 import click
 
-DATASET = 'tob-wgs'
-VERSION = 'v0'
-PROD_BATCHES = '--batch 0 --batch 1'
-PROD_READ_FROM = 'main'
-PROD_OUTPUT_TO = 'temporary'
-
 
 def run_cmd(cmd):
     """Print the command and run"""
