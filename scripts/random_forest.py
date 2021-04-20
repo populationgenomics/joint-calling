@@ -196,7 +196,7 @@ TRUTH_DATA = ['hapmap', 'omni', 'mills', 'kgp_phase1_hc']
     'test_intervals',
     help='The specified interval(s) will be held out for testing and '
     'evaluation only. (default to "chr20")',
-    nargs=-1,
+    multiple=True,
     type=click.STRING,
     default='chr20',
 )
@@ -272,7 +272,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     model_id: Optional[str],
     training_ht_path: Optional[str],
     fp_to_tp: Optional[float],
-    test_intervals: Optional[str],
+    test_intervals: Optional[List[str]],
     num_trees: Optional[int],
     max_depth: Optional[int],
     use_adj_genotypes: bool,

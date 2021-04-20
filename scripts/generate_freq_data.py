@@ -50,9 +50,7 @@ logger.setLevel(logging.INFO)
     '--mt',
     'mt_path',
     required=True,
-    callback=utils.get_validation_callback(
-        ext='mt', must_exist=True, accompanying_metadata_suffix='.metadata.ht'
-    ),
+    callback=utils.get_validation_callback(ext='mt', must_exist=True),
     help='path to the input MatrixTable',
 )
 @click.option(
