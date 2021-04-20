@@ -79,6 +79,7 @@ def find_inputs(
                 line.strip()
                 for line in subprocess.check_output(cmd, shell=True).decode().split()
             )
+            qc_csvs = [q for q in qc_csvs if 'batch1' in q]
 
         df: pd.DataFrame = None
         for qc_csv in qc_csvs:
