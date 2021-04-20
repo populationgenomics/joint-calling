@@ -216,19 +216,19 @@ def compute_info(
 
         # Compute AS and site level info expr
         # Note that production defaults have changed:
-        # For new releases, the `RAWMQ_andDP` field replaces the `RAW_MQ` and `MQ_DP` fields
+        # For new releases, the `RAW_MQandDP` field replaces the `RAW_MQ` and `MQ_DP` fields
         info_expr = get_site_info_expr(
             mt,
-            sum_agg_fields=INFO_SUM_AGG_FIELDS + ['RAW_MQ'],
-            int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ['MQ_DP'],
-            array_sum_agg_fields=['SB'],
+            sum_agg_fields=INFO_SUM_AGG_FIELDS,
+            int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS,
+            array_sum_agg_fields=['SB', 'RAW_MQandDP'],
         )
         info_expr = info_expr.annotate(
             **get_as_info_expr(
                 mt,
-                sum_agg_fields=INFO_SUM_AGG_FIELDS + ['RAW_MQ'],
-                int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ['MQ_DP'],
-                array_sum_agg_fields=['SB'],
+                sum_agg_fields=INFO_SUM_AGG_FIELDS,
+                int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS,
+                array_sum_agg_fields=['SB', 'RAW_MQandDP'],
             )
         )
 
