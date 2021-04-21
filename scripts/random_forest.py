@@ -134,7 +134,7 @@ TRUTH_DATA = ['hapmap', 'omni', 'mills', 'kgp_phase1_hc']
     help='local directory for temporary files and Hail logs (must be local).',
 )
 @click.option(
-    '--overwrite',
+    '--overwrite/--reuse',
     'overwrite',
     is_flag=True,
     help='if an intermediate or a final file exists, skip running the code '

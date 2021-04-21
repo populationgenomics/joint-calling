@@ -95,7 +95,7 @@ logger.setLevel(logging.INFO)
     help='local directory for temporary files and Hail logs (must be local).',
 )
 @click.option(
-    '--overwrite',
+    '--overwrite/--reuse',
     'overwrite',
     is_flag=True,
     help='if an intermediate or a final file exists, skip running the code '
@@ -390,7 +390,7 @@ def generate_ac(out_ht_path: str, mt: hl.MatrixTable, overwrite: bool) -> hl.Tab
     mt = mt.annotate_rows(
         ac_qc_samples_raw=hl.agg.sum(mt.GT.n_alt_alleles()),
         ac_qc_samples_unrelated_raw=hl.agg.filter(
-            ~mt.meta.sample_filters.all_samples_related,
+            ~mt.meta.all_samples_related,
             hl.agg.sum(mt.GT.n_alt_alleles()),
         ),
         ac_release_samples_raw=hl.agg.filter(
@@ -398,7 +398,7 @@ def generate_ac(out_ht_path: str, mt: hl.MatrixTable, overwrite: bool) -> hl.Tab
         ),
         ac_qc_samples_adj=hl.agg.filter(mt.adj, hl.agg.sum(mt.GT.n_alt_alleles())),
         ac_qc_samples_unrelated_adj=hl.agg.filter(
-            ~mt.meta.sample_filters.all_samples_related & mt.adj,
+            ~mt.meta.all_samples_related & mt.adj,
             hl.agg.sum(mt.GT.n_alt_alleles()),
         ),
         ac_release_samples_adj=hl.agg.filter(

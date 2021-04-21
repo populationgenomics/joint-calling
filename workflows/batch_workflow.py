@@ -482,7 +482,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     rf_anno_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
-        f'generate_qc_annotations.py --split-multiallelic --overwrite '
+        f'generate_qc_annotations.py --split-multiallelic --reuse '
         f'--mt {combined_mt_path} '
         f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
         f'--meta-ht {meta_ht_path} '
@@ -499,7 +499,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     rf_freq_data_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
-        f'generate_freq_data.py --overwrite '
+        f'generate_freq_data.py --reuse '
         f'--mt {combined_mt_path} '
         f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
         f'--meta-ht {meta_ht_path} '
@@ -514,7 +514,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     rf_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
-        f'random_forest.py --overwrite '
+        f'random_forest.py --reuse '
         f'--info-ht {info_ht_path} '
         f'--freq-ht {freq_ht_path} '
         f'--allele-data-ht {allele_data_ht_path} '
