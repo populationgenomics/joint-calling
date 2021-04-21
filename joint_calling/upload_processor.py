@@ -40,7 +40,7 @@ def batch_move_files(
         An object representing the DAG of jobs to run.
     files: List[str]
         A list of the file names to be moved.
-        For example ["TOB1543","TOB2314","TOB3423"]
+        For example ["TOB1543.g.vcf.gz","TOB2314.g.vcf.gz","TOB3423.g.vcf.gz"]
     source_bucket: str
         The name of the bucket where the files are initially located.
         For example "cpg-tob-wgs-upload"
