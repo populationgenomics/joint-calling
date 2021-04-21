@@ -66,11 +66,7 @@ def batch_move_files(
             "project_id": "",
             "private_key_id": "" ...
         }
-        "
-    Notes
-    =====
-    The function assumes that the file names have
-    been validated at an earlier stage."""
+        " """
 
     jobs = []
 
