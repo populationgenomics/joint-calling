@@ -3,7 +3,14 @@
     The upload processor will determine when samples should be added
     to existing MatrixTables where appropriate and which MatrixTables
     they should be combined with in this case. Following a successful
-    run all uploaded files will be moved to archival storage."""
+    run all uploaded files will be moved to archival storage.
+
+    Assumptions
+    ===========
+    - Specified files must exist in either the source or the destination
+      bucket
+    - Source and destination bucket must exist
+    - User must be authenticated with appropriate permissions """
 
 import errno
 import os
