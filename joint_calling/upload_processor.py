@@ -84,8 +84,8 @@ def batch_move_files(
             # i.e. it exists at the destination and not the source.
             if get_file_destination.returncode == 0:
                 continue
-            # Invalid - the file does not exist at either location
 
+            # Invalid - the file does not exist at either location
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), sample)
 
         j = batch.new_job(name=f'moving_{sample}')
