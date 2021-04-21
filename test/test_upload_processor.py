@@ -76,7 +76,7 @@ class TestUploadProcessor(unittest.TestCase):
 
             self.assertTrue(validate_move(self.upload_prefix, self.main_prefix, sample))
 
-        cleanup(self.main_prefix, sample_list)
+        # cleanup(self.main_prefix, sample_list)
 
     def test_batch_move_recovery(self):
         """Test cases that handles previous partially successful run.
