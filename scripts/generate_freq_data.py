@@ -228,34 +228,38 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
 def _compute_age_hists(mt: hl.MatrixTable) -> hl.Table:
     logger.info('Computing age histograms for each variant...')
-    mt = mt.annotate_cols(
-        age=hl.if_else(
-            hl.is_defined(mt.meta.project_meta.age),
-            mt.meta.project_meta.age,
-            mt.meta.project_meta.age_alt,
-            # NOTE: most age data is stored as integers in 'age' annotation,
-            # but for a select number of samples, age is stored as a bin range
-            # and 'age_alt' corresponds to an integer in the middle of the bin
-        )
-    )
-    mt = mt.annotate_rows(
-        **age_hists_expr(
-            mt.adj,
-            mt.GT,
-            mt.age,
-        )
-    )
-    # Compute callset-wide age histogram global
-    mt = mt.annotate_globals(
-        age_distribution=mt.aggregate_cols(
-            hl.agg.hist(
-                mt.age,
-                30,
-                80,
-                10,
+    try:
+        mt = mt.annotate_cols(
+            age=hl.if_else(
+                hl.is_defined(mt.meta.project_meta.age),
+                mt.meta.project_meta.age,
+                mt.meta.project_meta.age_alt,
+                # NOTE: most age data is stored as integers in 'age' annotation,
+                # but for a select number of samples, age is stored as a bin range
+                # and 'age_alt' corresponds to an integer in the middle of the bin
             )
         )
-    )
+    except hl.ExpressionException:
+        pass
+    else:
+        mt = mt.annotate_rows(
+            **age_hists_expr(
+                mt.adj,
+                mt.GT,
+                mt.age,
+            )
+        )
+        # Compute callset-wide age histogram global
+        mt = mt.annotate_globals(
+            age_distribution=mt.aggregate_cols(
+                hl.agg.hist(
+                    mt.age,
+                    30,
+                    80,
+                    10,
+                )
+            )
+        )
     return mt
 
 

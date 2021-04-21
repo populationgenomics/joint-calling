@@ -348,9 +348,14 @@ def flag_related_samples(
         overwrite=overwrite,
         _read_if_exists=not overwrite,
     )
-    filtered_samples = hl.literal(
-        rank_ht.aggregate(hl.agg.filter(rank_ht.filtered, hl.agg.collect(rank_ht.s)))
-    )
+    try:
+        filtered_samples = hl.literal(
+            rank_ht.aggregate(
+                hl.agg.filter(rank_ht.filtered, hl.agg.collect(rank_ht.s))
+            )
+        )
+    except hl.ExpressionException:
+        filtered_samples = hl.empty_array('tstr')
     samples_to_drop_ht = compute_related_samples_to_drop(
         relatedness_ht,
         rank_ht,
