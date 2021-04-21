@@ -160,9 +160,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     logger.info('Computing adj and sex adjusted genotypes...')
     mt = mt.annotate_entries(
-        GT=adjusted_sex_ploidy_expr(
-            mt.locus, mt.GT, mt.meta.sex_karyotype
-        ),
+        GT=adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.meta.sex_karyotype),
         adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
     )
 
