@@ -59,7 +59,7 @@ def batch_move_files(
     key: str, optional
         key-file for the service account used for authentication. In the case that this
         is not provided as an input, it is assumed that this key will exist at
-        gsa-key/key.json. This is the case when using the hail batch service backend.
+        /gsa-key/key.json. This is the case when using the hail batch service backend.
         For example:
         "{
             "type": "service_account",
