@@ -21,20 +21,24 @@ import hailtop.batch as hb
 
 def batch_move_files(
     batch: hb.batch,
-    sample_files: List[str],
+    files: List[str],
     source_bucket: str,
     destination_bucket: str,
     docker_image: str,
     key: str = None,
     dest_path: str = '',
 ) -> List:
-    """Moving files between buckets
+    """This script takes a Hail.Batch workflow and a list of files to
+    move between buckets. It adds 1 job per file to the workflow, and
+    runs in a docker_image. It returns the list of created jobs. Each
+    job consists of a gsutil move command for each valid file.
+    When run, these jobs will perform the batch move file operation.
 
     Parameters
     ==========
     batch: hb.Batch
         An object representing the DAG of jobs to run.
-    sample_files: List[str]
+    files: List[str]
         A list of the file names to be moved.
         For example ["TOB1543","TOB2314","TOB3423"]
     source_bucket: str
@@ -63,13 +67,6 @@ def batch_move_files(
             "private_key_id": "" ...
         }
         "
-
-    Returns
-    =======
-    Returns a list of batch jobs. Each job consists of
-    a gsutil move command for each valid file. When run,
-    these jobs will perform the batch move file operation.
-
     Notes
     =====
     The function assumes that the file names have
@@ -77,7 +74,7 @@ def batch_move_files(
 
     jobs = []
 
-    for sample in sample_files:
+    for sample in files:
 
         previous_location = os.path.join('gs://', source_bucket, sample)
         new_location = os.path.join('gs://', destination_bucket, dest_path, sample)
