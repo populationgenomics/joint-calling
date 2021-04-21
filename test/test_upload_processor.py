@@ -52,8 +52,8 @@ class TestUploadProcessor(unittest.TestCase):
 
     def setUp(self):
         """ Initialises standard variables for testing """
-        self.upload_prefix = 'upload-processor-test-upload/test'
-        self.main_prefix = 'upload-processor-test-main/batch1'
+        self.upload_prefix = 'cpg-fewgenomes-temporary/vivian-test/test-upload'
+        self.main_prefix = 'cpg-fewgenomes-temporary/vivian-test/test-main'
         self.docker_image = os.environ.get('DOCKER_IMAGE')
         self.key = os.environ.get('GSA_KEY')
 
