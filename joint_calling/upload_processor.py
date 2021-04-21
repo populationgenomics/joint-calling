@@ -5,6 +5,7 @@
     they should be combined with in this case. Following a successful
     run all uploaded files will be moved to archival storage."""
 
+import errno
 import os
 import subprocess
 from typing import List
@@ -86,6 +87,10 @@ def batch_move_files(
         # i.e. it exists at the destination and not the source.
         if get_file_source.returncode == 1 and get_file_destination.returncode == 0:
             continue
+
+        # Invalid - the file does not exist at either location
+        if get_file_source.returncode == 1 and get_file_destination.returncode == 1:
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), sample)
 
         j = batch.new_job(name=f'moving_{sample}')
         j.image(docker_image)

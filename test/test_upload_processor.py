@@ -130,20 +130,17 @@ class TestUploadProcessor(unittest.TestCase):
         in the upload bucket"""
         sample_list = ['Sample8.gVCF', 'Sample9.gVCF']
         invalid_batch = hb.Batch(name='Invalid Batch')
-        batch_move_files(
-            invalid_batch,
-            sample_list,
-            self.upload_bucket,
-            self.main_bucket,
-            self.docker_image,
-            self.key,
-        )
-
         assertion_called = False
-
         try:
-            invalid_batch.run()
-        except subprocess.CalledProcessError:
+            batch_move_files(
+                invalid_batch,
+                sample_list,
+                self.upload_bucket,
+                self.main_bucket,
+                self.docker_image,
+                self.key,
+            )
+        except FileNotFoundError:
             assertion_called = True
 
         self.assertTrue(assertion_called)
