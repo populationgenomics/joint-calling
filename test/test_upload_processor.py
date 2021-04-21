@@ -9,8 +9,8 @@ from joint_calling.upload_processor import batch_move_files
 
 
 def validate_move(upload_prefix: str, main_prefix: str, sample: str) -> bool:
-    """Checks that a given file exists in the main bucket
-    and no longer exists in the upload bucket.
+    """Checks that a given file exists at the location in
+    the main bucket and no longer exists in the upload bucket.
     Returns True if this is the case and False otherwise.
     """
 
@@ -54,7 +54,7 @@ class TestUploadProcessor(unittest.TestCase):
         self.upload_prefix = 'upload-processor-test-upload/test'
         self.main_prefix = 'upload-processor-test-main/batch1'
         self.docker_image = os.environ.get('DOCKER_IMAGE')
-        self.key = os.environ.get('KEY')
+        self.key = os.environ.get('GSA_KEY')
 
     def test_batch_move_standard(self):
         """ Testing standard case of moving a list of files with valid inputs"""
