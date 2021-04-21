@@ -78,13 +78,14 @@ def batch_move_files(
             ['gsutil', '-q', 'stat', new_location], check=False
         )
 
-        # Handles case where the file has already been moved in a previous run.
-        # i.e. it exists at the destination and not the source.
-        if get_file_source.returncode == 1 and get_file_destination.returncode == 0:
-            continue
+        # In the case that the file is not found at the source
+        if get_file_source.returncode == 1:
+            # Valid - File has already been moved in a previous run.
+            # i.e. it exists at the destination and not the source.
+            if get_file_destination.returncode == 0:
+                continue
+            # Invalid - the file does not exist at either location
 
-        # Invalid - the file does not exist at either location
-        if get_file_source.returncode == 1 and get_file_destination.returncode == 1:
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), sample)
 
         j = batch.new_job(name=f'moving_{sample}')
