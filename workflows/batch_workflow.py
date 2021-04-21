@@ -482,7 +482,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     rf_anno_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
-        f'generate_qc_annotations.py --split-multiallelic --overwrite '
+        f'generate_qc_annotations.py --split-multiallelic --reuse '
         f'--mt {combined_mt_path} '
         f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
         f'--meta-ht {meta_ht_path} '
