@@ -11,26 +11,9 @@ from joint_calling.upload_processor import batch_move_files
 def validate_move(
     upload_bucket: str, main_bucket: str, sample: str, batch_path: str = ''
 ) -> bool:
-    """Checks that a given sample file exists in the main bucket
-    and no longer exists in the upload bucket
-
-    Parameters
-    ==========
-    upload_bucket:
-        str, the name of the upload bucket, for example "TOB-upload"
-    main_bucket:
-        str, the name of the main bucket, for example "fewgenomes-main"
-    sample:
-        the name of the file to be checked.
-    batch_path:
-        str, the path to the specific sub-directory where the file
-        should be moved.
-
-
-    Returns
-    =======
-    True when the file exists in the main bucket and not the upload bucket
-    False otherwise.
+    """Checks that a given file exists in the main bucket
+    and no longer exists in the upload bucket.
+    Returns True if this is the case and False otherwise.
     """
 
     upload_path = os.path.join('gs://', upload_bucket, sample)
