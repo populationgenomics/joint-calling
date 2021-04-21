@@ -24,7 +24,7 @@ def batch_move_files(
     files: List[str],
     source_prefix: str,
     destination_prefix: str,
-    docker_image: str,
+    docker_image: str = None,
     key: str = None,
 ) -> List:
     """This script takes a Hail.Batch workflow and a list of files to
@@ -46,7 +46,7 @@ def batch_move_files(
     destination_prefix: str
         The path to the sub-directory where the files should be moved.
         For example "cpg-tob-wgs-main" or "cpg-tob-wgs-upload/batch0"
-    docker_image: str
+    docker_image: str, optional
         The address and tag of a previously built docker image, within the
         artifact registry.
         For example;
@@ -89,7 +89,9 @@ def batch_move_files(
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), sample)
 
         j = batch.new_job(name=f'moving_{sample}')
-        j.image(docker_image)
+
+        if docker_image is not None:
+            j.image(docker_image)
 
         # Authenticate to service account.
         if key is not None:
