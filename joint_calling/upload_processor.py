@@ -22,11 +22,10 @@ import hailtop.batch as hb
 def batch_move_files(
     batch: hb.batch,
     files: List[str],
-    source_bucket: str,
-    destination_bucket: str,
+    source_prefix: str,
+    destination_prefix: str,
     docker_image: str,
     key: str = None,
-    dest_path: str = '',
 ) -> List:
     """This script takes a Hail.Batch workflow and a list of files to
     move between buckets. It adds 1 job per file to the workflow, and
@@ -41,21 +40,17 @@ def batch_move_files(
     files: List[str]
         A list of the file names to be moved.
         For example ["TOB1543.g.vcf.gz","TOB2314.g.vcf.gz","TOB3423.g.vcf.gz"]
-    source_bucket: str
-        The name of the bucket where the files are initially located.
-        For example "cpg-tob-wgs-upload"
-    destination_bucket: str
-        The name of the bucket where files are to be moved.
-        For example "cpg-tob-wgs-main"
+    source_prefix: str
+        The path to the sub-directory where the files are initially located.
+        For example "cpg-tob-wgs-upload" or "cpg-tob-wgs-upload/v1"
+    destination_prefix: str
+        The path to the sub-directory where the files should be moved.
+        For example "cpg-tob-wgs-main" or "cpg-tob-wgs-upload/batch0"
     docker_image: str
         The address and tag of a previously built docker image, within the
         artifact registry.
         For example;
         australia-southeast1-docker.pkg.dev/project/images/driver:version'
-    dest_path: str, optional
-        The path to the specific sub-directory where the file should be moved.
-        By default no sub-directory is specified. This may correspond to the version.
-        For example, "/v1"
     key: str, optional
         key-file for the service account used for authentication. In the case that this
         is not provided as an input, it is assumed that this key will exist at
@@ -72,8 +67,8 @@ def batch_move_files(
 
     for sample in files:
 
-        previous_location = os.path.join('gs://', source_bucket, sample)
-        new_location = os.path.join('gs://', destination_bucket, dest_path, sample)
+        previous_location = os.path.join('gs://', source_prefix, sample)
+        new_location = os.path.join('gs://', destination_prefix, sample)
 
         # Checks if the files exist at the source and destination
         get_file_source = subprocess.run(
