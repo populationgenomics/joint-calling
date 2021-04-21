@@ -20,6 +20,7 @@ def validate_move(upload_prefix: str, main_prefix: str, sample: str) -> bool:
     exists_main = subprocess.run(['gsutil', '-q', 'stat', main_path], check=False)
     exists_upload = subprocess.run(['gsutil', '-q', 'stat', upload_path], check=False)
 
+    # Exists at destination and not at source
     if exists_upload.returncode == 1 and exists_main.returncode == 0:
         return True
 
