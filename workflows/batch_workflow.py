@@ -443,22 +443,22 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #     depends_on=subset_gvcf_jobs,
     #     job_name='Combine GVCFs',
     # )
-    # sample_qc_job = dataproc.hail_dataproc_job(
-    #     b,
-    #     f'run_python_script.py '
-    #     f'sample_qc.py --overwrite '
-    #     f'--mt {combined_mt_path} '
-    #     f'--meta-csv {samples_path} '
-    #     f'--bucket {combiner_bucket} '
-    #     f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
-    #     f'--out-meta-ht {meta_ht_path} '
-    #     f'--hail-billing {billing_project} ',
-    #     max_age='8h',
-    #     packages=DATAPROC_PACKAGES,
-    #     num_secondary_workers=10,
-    #     depends_on=[combiner_job],
-    #     job_name='Sample QC',
-    # )
+    sample_qc_job = dataproc.hail_dataproc_job(
+        b,
+        f'run_python_script.py '
+        f'sample_qc.py --overwrite '
+        f'--mt {combined_mt_path} '
+        f'--meta-csv {samples_path} '
+        f'--bucket {combiner_bucket} '
+        f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
+        f'--out-meta-ht {meta_ht_path} '
+        f'--hail-billing {billing_project} ',
+        max_age='8h',
+        packages=DATAPROC_PACKAGES,
+        num_secondary_workers=10,
+        # depends_on=[combiner_job],
+        job_name='Sample QC',
+    )
     # mt_to_vcf_job = dataproc.hail_dataproc_job(
     #     b,
     #     f'run_python_script.py '
@@ -482,7 +482,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     rf_anno_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
-        f'generate_qc_annotations.py --split-multiallelic --reuse '
+        f'generate_qc_annotations.py --split-multiallelic --overwrite '
         f'--mt {combined_mt_path} '
         f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
         f'--meta-ht {meta_ht_path} '
@@ -493,13 +493,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         max_age='8h',
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
-        # depends_on=[sample_qc_job],
+        depends_on=[sample_qc_job],
         job_name='RF: gen QC anno',
     )
     rf_freq_data_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
-        f'generate_freq_data.py --reuse '
+        f'generate_freq_data.py --overwrite '
         f'--mt {combined_mt_path} '
         f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
         f'--meta-ht {meta_ht_path} '
@@ -514,7 +514,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     rf_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
-        f'random_forest.py --reuse '
+        f'random_forest.py --overwrite '
         f'--info-ht {info_ht_path} '
         f'--freq-ht {freq_ht_path} '
         f'--allele-data-ht {allele_data_ht_path} '

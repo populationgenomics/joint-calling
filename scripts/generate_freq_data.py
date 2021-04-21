@@ -161,7 +161,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     logger.info('Computing adj and sex adjusted genotypes...')
     mt = mt.annotate_entries(
         GT=adjusted_sex_ploidy_expr(
-            mt.locus, mt.GT, mt.meta.sex_imputation.sex_karyotype
+            mt.locus, mt.GT, mt.meta.sex_karyotype
         ),
         adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
     )
@@ -192,8 +192,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     if subset:
         mt = annotate_freq(
             mt,
-            sex_expr=mt.meta.sex_imputation.sex_karyotype,
-            pop_expr=mt.meta.population_inference.pop
+            sex_expr=mt.meta.sex_karyotype,
+            pop_expr=mt.meta.pop
             if subset not in COHORTS_WITH_POP_STORED_AS_SUBPOP
             else mt.meta.project_meta.project_subpop,
             # NOTE: TGP and HGDP labeled populations are highly specific
@@ -211,8 +211,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
         mt = annotate_freq(
             mt,
-            sex_expr=mt.meta.sex_imputation.sex_karyotype,
-            pop_expr=mt.meta.population_inference.pop,
+            sex_expr=mt.meta.sex_karyotype,
+            pop_expr=mt.meta.pop,
             downsamplings=DOWNSAMPLINGS,
         )
         # Remove all loci with raw AC=0
