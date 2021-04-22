@@ -150,5 +150,6 @@ class TestUploadProcessor(unittest.TestCase):
         cleanup(self.main_prefix, sample_list)
 
 
+# Executed here so that the test file can be run with the analysis runner
 if __name__ == '__main__':
     unittest.main()
