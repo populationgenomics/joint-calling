@@ -358,6 +358,7 @@ def generate_allele_data(
             allele_type=allele_type, was_mixed=ht.allele_data.variant_type == 'mixed'
         )
     )
+    ht.write(out_ht_path, overwrite=True)
     return ht
 
 
@@ -406,7 +407,8 @@ def generate_ac(out_ht_path: str, mt: hl.MatrixTable, overwrite: bool) -> hl.Tab
         ),
     )
     ht = mt.rows()
-    ht = ht.repartition(10000, shuffle=False).write(out_ht_path, overwrite=True)
+    ht = ht.repartition(10000, shuffle=False)
+    ht.write(out_ht_path, overwrite=True)
     return ht
 
 
