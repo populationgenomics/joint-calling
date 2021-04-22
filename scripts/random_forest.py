@@ -262,6 +262,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     allele_data_ht_path: str,
     qc_ac_ht_path: str,
     vqsr_filters_split_ht_path: Optional[str],
+    out_ht_path: str,  # pylint: disable=unused-argument
     work_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,

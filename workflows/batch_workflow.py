@@ -34,6 +34,7 @@ from os.path import join
 from typing import List
 import logging
 import click
+import pandas as pd
 import hailtop.batch as hb
 from hailtop.batch.job import Job
 from analysis_runner import dataproc
@@ -347,8 +348,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     b = hb.Batch('Joint Calling', backend=backend)
 
     # TODO: merge with existing data
-    samples_df = utils.find_inputs(input_buckets, skip_qc=skip_qc)
+
     samples_path = join(output_bucket, 'samples.csv')
+    if not utils.file_exists(samples_path):
+        samples_df = utils.find_inputs(input_buckets, skip_qc=skip_qc)
+    else:
+        samples_df = pd.read_csv(samples_path, sep='\t')
+
     gvcfs = [
         b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
         for gvcf in list(samples_df.gvcf)
@@ -450,23 +456,23 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         age_csv_param = f'--age-csv {age_csv} '
     else:
         age_csv_param = ''
-    sample_qc_job = dataproc.hail_dataproc_job(
-        b,
-        f'run_python_script.py '
-        f'sample_qc.py --overwrite '
-        f'--mt {combined_mt_path} '
-        f'{age_csv_param}'
-        f'--meta-csv {samples_path} '
-        f'--bucket {combiner_bucket} '
-        f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
-        f'--out-meta-ht {meta_ht_path} '
-        f'--hail-billing {billing_project} ',
-        max_age='8h',
-        packages=DATAPROC_PACKAGES,
-        num_secondary_workers=10,
-        # depends_on=[combiner_job],
-        job_name='Sample QC',
-    )
+    # sample_qc_job = dataproc.hail_dataproc_job(
+    #     b,
+    #     f'run_python_script.py '
+    #     f'sample_qc.py --overwrite '
+    #     f'--mt {combined_mt_path} '
+    #     f'{age_csv_param}'
+    #     f'--meta-csv {samples_path} '
+    #     f'--bucket {combiner_bucket} '
+    #     f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
+    #     f'--out-meta-ht {meta_ht_path} '
+    #     f'--hail-billing {billing_project} ',
+    #     max_age='8h',
+    #     packages=DATAPROC_PACKAGES,
+    #     num_secondary_workers=10,
+    #     # depends_on=[combiner_job],
+    #     job_name='Sample QC',
+    # )
     # mt_to_vcf_job = dataproc.hail_dataproc_job(
     #     b,
     #     f'run_python_script.py '
@@ -503,7 +509,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         max_age='8h',
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
-        depends_on=[sample_qc_job],
+        # depends_on=[sample_qc_job],
         job_name='RF: gen QC anno',
         vep='GRCh38',
     )
@@ -519,7 +525,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         max_age='8h',
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
-        depends_on=[sample_qc_job],
+        # depends_on=[sample_qc_job],
         job_name='RF: gen freq data',
     )
     rf_job = dataproc.hail_dataproc_job(
@@ -530,7 +536,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         f'--freq-ht {freq_ht_path} '
         f'--allele-data-ht {allele_data_ht_path} '
         f'--qc-ac-ht {qc_ac_ht_path} '
-        f'--out-ht {rf_result_ht_path} '
         f'--bucket {combiner_bucket} '
         f'--out-ht {rf_result_ht_path} ',
         max_age='8h',

@@ -240,7 +240,7 @@ def main(
         final_related_samples_to_drop_ht=final_related_samples_to_drop_ht,
         out_ht_path=out_meta_ht_path,
         overwrite=overwrite,
-        age_ht=hl.import_table(age_csv, delimiter=',')
+        age_ht=hl.import_table(age_csv, delimiter=',', types={'age': 'float'})
         .rename({'TOBIID': 's'})
         .key_by('s')
         if age_csv
