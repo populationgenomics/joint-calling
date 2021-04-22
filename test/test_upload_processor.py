@@ -73,10 +73,9 @@ class TestUploadProcessor(unittest.TestCase):
         batch.run()
         # Check that the files have been moved to main
         for sample in sample_list:
-
             self.assertTrue(validate_move(self.upload_prefix, self.main_prefix, sample))
 
-        # cleanup(self.main_prefix, sample_list)
+        cleanup(self.main_prefix, sample_list)
 
     def test_batch_move_recovery(self):
         """Test cases that handles previous partially successful run.
