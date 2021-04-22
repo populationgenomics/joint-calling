@@ -489,7 +489,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         f'--out-info-ht {info_ht_path} '
         f'--out-allele-data-ht {allele_data_ht_path} '
         f'--out-qc-ac-ht {qc_ac_ht_path} '
-        f'--bucket {combiner_bucket} ',
+        f'--bucket {combiner_bucket} '
+        f'--vep-version 95 ',
         max_age='8h',
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
@@ -521,8 +522,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         f'--qc-ac-ht {qc_ac_ht_path} '
         f'--out-ht {rf_result_ht_path} '
         f'--bucket {combiner_bucket} '
-        f'--out-ht {rf_result_ht_path} '
-        f'--vep-version 95 ',
+        f'--out-ht {rf_result_ht_path} ',
         max_age='8h',
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
