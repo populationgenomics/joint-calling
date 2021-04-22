@@ -178,8 +178,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             work_bucket=work_bucket,
             overwrite=overwrite,
         )
-
-    if vep_version:
+    
+    if vep_version or out_vep_ht_path:
+        if not out_vep_ht_path:
+            logger.critical('--out-vep-ht must be specified along with --vep-version')
         run_vep(
             out_ht_path=out_vep_ht_path,
             mt=all_samples_mt,

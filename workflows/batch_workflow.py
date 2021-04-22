@@ -477,7 +477,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     info_ht_path = join(variant_qc_bucket, 'info.ht')
     allele_data_ht_path = join(variant_qc_bucket, 'allele_data.ht')
     qc_ac_ht_path = join(variant_qc_bucket, 'qc_ac.ht')
-    # vep_ht = join(variant_qc_bucket, 'vep.ht')
+    vep_ht = join(variant_qc_bucket, 'vep.ht')
     rf_result_ht_path = join(variant_qc_bucket, 'rf_result.ht')
     rf_anno_job = dataproc.hail_dataproc_job(
         b,
@@ -490,7 +490,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         f'--out-allele-data-ht {allele_data_ht_path} '
         f'--out-qc-ac-ht {qc_ac_ht_path} '
         f'--bucket {combiner_bucket} '
-        f'--vep-version 95 ',
+        f'--vep-version 95 '
+        f'--out-vep-ht {vep_ht} ',
         max_age='8h',
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
