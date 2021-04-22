@@ -61,6 +61,10 @@ logger.setLevel('INFO')
     required=True,
 )
 @click.option(
+    '--age-csv',
+    'age_csv',
+)
+@click.option(
     '--bucket',
     'work_bucket',
     required=True,
@@ -116,6 +120,7 @@ def main(
     meta_csv_path: str,
     out_hardfiltered_samples_ht_path: str,
     out_meta_ht_path: str,
+    age_csv: str,
     work_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,
@@ -144,8 +149,6 @@ def main(
 
     # `hail_sample_qc_ht` row fields: sample_qc, bi_allelic_sample_qc
     hail_sample_qc_ht = _compute_hail_sample_qc(mt_split, work_bucket, overwrite)
-
-    # mt = _filter_callrate(mt, work_bucket, overwrite)
 
     # `sex_ht` row fields: is_female, chr20_mean_dp, sex_karyotype
     sex_ht = _infer_sex(
@@ -237,6 +240,11 @@ def main(
         final_related_samples_to_drop_ht=final_related_samples_to_drop_ht,
         out_ht_path=out_meta_ht_path,
         overwrite=overwrite,
+        age_ht=hl.import_table(age_csv, delimiter=',')
+        .rename({'TOBIID': 's'})
+        .key_by('s')
+        if age_csv
+        else None,
     )
 
 
@@ -348,6 +356,7 @@ def _generate_metadata(
     final_related_samples_to_drop_ht: hl.Table,
     out_ht_path: str,
     overwrite: bool = False,
+    age_ht: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
     Combine all intermediate tables into a single metadata table
@@ -370,6 +379,7 @@ def _generate_metadata(
         on population-stratified QC
     :param work_bucket: bucket to write checkpoints
     :param overwrite: overwrite checkpoints if they exist
+    :param age_ht: optional: Table with a field "age"
     :return: table with relevant fields from input tables,
         annotated with the following row fields:
             'release_related': bool = in `final_related_samples_to_drop_ht`
@@ -408,6 +418,11 @@ def _generate_metadata(
                 all_related_samples_to_drop_ht[meta_ht.key]
             ),
         )
+
+        if age_ht is not None:
+            meta_ht = meta_ht.annotate(
+                age=age_ht[meta_ht.key].age,
+            )
 
         meta_ht = meta_ht.annotate(
             hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),

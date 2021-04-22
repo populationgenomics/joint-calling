@@ -229,16 +229,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 def _compute_age_hists(mt: hl.MatrixTable) -> hl.Table:
     logger.info('Computing age histograms for each variant...')
     try:
-        mt = mt.annotate_cols(
-            age=hl.if_else(
-                hl.is_defined(mt.meta.project_meta.age),
-                mt.meta.project_meta.age,
-                mt.meta.project_meta.age_alt,
-                # NOTE: most age data is stored as integers in 'age' annotation,
-                # but for a select number of samples, age is stored as a bin range
-                # and 'age_alt' corresponds to an integer in the middle of the bin
-            )
-        )
+        mt = mt.annotate_cols(age=mt.meta.age)
     except AttributeError:
         pass
     else:

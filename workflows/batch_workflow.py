@@ -336,7 +336,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     for cb in callset_batches:
         cb = f'batch{cb}' if not cb.startswith('batch') else cb
         input_buckets.append(f'gs://cpg-{callset_name}-{input_bucket_suffix}/gvcf/{cb}')
-    output_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/joint_vcf/{callset_version}/work'
+
+    base_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/joint_vcf'
+    output_bucket = join(base_bucket, f'{callset_version}/work')
 
     backend = hb.ServiceBackend(
         billing_project=billing_project,
@@ -443,22 +445,28 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #     depends_on=subset_gvcf_jobs,
     #     job_name='Combine GVCFs',
     # )
-    # sample_qc_job = dataproc.hail_dataproc_job(
-    #     b,
-    #     f'run_python_script.py '
-    #     f'sample_qc.py --overwrite '
-    #     f'--mt {combined_mt_path} '
-    #     f'--meta-csv {samples_path} '
-    #     f'--bucket {combiner_bucket} '
-    #     f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
-    #     f'--out-meta-ht {meta_ht_path} '
-    #     f'--hail-billing {billing_project} ',
-    #     max_age='8h',
-    #     packages=DATAPROC_PACKAGES,
-    #     num_secondary_workers=10,
-    #     # depends_on=[combiner_job],
-    #     job_name='Sample QC',
-    # )
+    age_csv = join(base_bucket, 'age.csv')
+    if utils.file_exists(age_csv):
+        age_csv_param = f'--age-csv {age_csv} '
+    else:
+        age_csv_param = ''
+    sample_qc_job = dataproc.hail_dataproc_job(
+        b,
+        f'run_python_script.py '
+        f'sample_qc.py --overwrite '
+        f'--mt {combined_mt_path} '
+        f'{age_csv_param}'
+        f'--meta-csv {samples_path} '
+        f'--bucket {combiner_bucket} '
+        f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
+        f'--out-meta-ht {meta_ht_path} '
+        f'--hail-billing {billing_project} ',
+        max_age='8h',
+        packages=DATAPROC_PACKAGES,
+        num_secondary_workers=10,
+        # depends_on=[combiner_job],
+        job_name='Sample QC',
+    )
     # mt_to_vcf_job = dataproc.hail_dataproc_job(
     #     b,
     #     f'run_python_script.py '
@@ -495,24 +503,25 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         max_age='8h',
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
-        # depends_on=[sample_qc_job],
+        depends_on=[sample_qc_job],
         job_name='RF: gen QC anno',
+        vep='GRCh38',
     )
-    # rf_freq_data_job = dataproc.hail_dataproc_job(
-    #     b,
-    #     f'run_python_script.py '
-    #     f'generate_freq_data.py --overwrite '
-    #     f'--mt {combined_mt_path} '
-    #     f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
-    #     f'--meta-ht {meta_ht_path} '
-    #     f'--out-ht {freq_ht_path} '
-    #     f'--bucket {combiner_bucket} ',
-    #     max_age='8h',
-    #     packages=DATAPROC_PACKAGES,
-    #     num_secondary_workers=10,
-    #     # depends_on=[sample_qc_job],
-    #     job_name='RF: gen freq data',
-    # )
+    rf_freq_data_job = dataproc.hail_dataproc_job(
+        b,
+        f'run_python_script.py '
+        f'generate_freq_data.py --overwrite '
+        f'--mt {combined_mt_path} '
+        f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
+        f'--meta-ht {meta_ht_path} '
+        f'--out-ht {freq_ht_path} '
+        f'--bucket {combiner_bucket} ',
+        max_age='8h',
+        packages=DATAPROC_PACKAGES,
+        num_secondary_workers=10,
+        depends_on=[sample_qc_job],
+        job_name='RF: gen freq data',
+    )
     rf_job = dataproc.hail_dataproc_job(
         b,
         f'run_python_script.py '
@@ -527,9 +536,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         max_age='8h',
         packages=DATAPROC_PACKAGES,
         num_secondary_workers=10,
-        depends_on=[rf_anno_job],
+        depends_on=[rf_freq_data_job, rf_anno_job],
         job_name='RF: main',
-        # vep='GRCh38',
     )
     rf_job.always_run()
 
