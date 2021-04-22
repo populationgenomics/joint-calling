@@ -6,8 +6,9 @@ Generates input for random_forest.py
 """
 
 import logging
-from os.path import join
+from os.path import join, basename
 from typing import Dict, Optional
+import subprocess
 import click
 import hail as hl
 
@@ -32,6 +33,7 @@ from gnomad.utils.vep import vep_or_lookup_vep
 
 from joint_calling.utils import file_exists
 from joint_calling import utils, _version
+import joint_calling
 
 logger = logging.getLogger('qc-annotations')
 logger.setLevel(logging.INFO)
@@ -178,7 +180,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             work_bucket=work_bucket,
             overwrite=overwrite,
         )
-    
+
     if vep_version or out_vep_ht_path:
         if not out_vep_ht_path:
             logger.critical('--out-vep-ht must be specified along with --vep-version')
@@ -186,6 +188,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             out_ht_path=out_vep_ht_path,
             mt=all_samples_mt,
             vep_version=vep_version,
+            work_bucket=work_bucket,
             overwrite=overwrite,
         )
 
@@ -509,7 +512,8 @@ def export_transmitted_singletons_vcf(
 def run_vep(
     out_ht_path: str,
     mt: hl.MatrixTable,
-    vep_version: str,
+    vep_version: Optional[str],
+    work_bucket: str,
     overwrite: bool = False,
 ) -> hl.Table:
     """
@@ -520,10 +524,15 @@ def run_vep(
     """
     if not overwrite and file_exists(out_ht_path):
         return hl.read_table(out_ht_path)
+    vep_config_local = join(joint_calling.package_path(), 'vep-config.json')
+    vep_config_gs = join(work_bucket, basename(vep_config_local))
+    subprocess.run(
+        f'gsutil cp {vep_config_local} {vep_config_gs}', check=False, shell=True
+    )
     ht = mt.rows()
     ht = ht.filter(hl.len(ht.alleles) > 1)
     ht = hl.split_multi_hts(ht)
-    ht = vep_or_lookup_vep(ht, vep_version=vep_version)
+    ht = vep_or_lookup_vep(ht, vep_version=vep_version, vep_config_path=vep_config_gs)
     ht = ht.annotate_globals(version=f'v{vep_version}')
     ht.write(out_ht_path, overwrite=True)
     return ht

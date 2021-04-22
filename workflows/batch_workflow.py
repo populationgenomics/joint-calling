@@ -529,7 +529,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         num_secondary_workers=10,
         depends_on=[rf_anno_job],
         job_name='RF: main',
-        vep='GRCh38',
+        # vep='GRCh38',
     )
     rf_job.always_run()
 
