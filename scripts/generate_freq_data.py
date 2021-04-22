@@ -239,7 +239,7 @@ def _compute_age_hists(mt: hl.MatrixTable) -> hl.Table:
                 # and 'age_alt' corresponds to an integer in the middle of the bin
             )
         )
-    except hl.AttributeError:
+    except AttributeError:
         pass
     else:
         mt = mt.annotate_rows(
