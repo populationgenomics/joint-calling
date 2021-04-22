@@ -48,7 +48,7 @@ def batch_move_files(
         For example "cpg-tob-wgs-main" or "cpg-tob-wgs-upload/batch0"
     docker_image: str, optional
         The address and tag of a previously built docker image, within the
-        artifact registry.
+        artifact registry. Each batch job will run in this image.
         For example;
         australia-southeast1-docker.pkg.dev/project/images/driver:version'
     key: str, optional

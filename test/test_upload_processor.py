@@ -107,8 +107,7 @@ class TestUploadProcessor(unittest.TestCase):
         in the upload bucket"""
         sample_list = ['Sample8.gVCF', 'Sample9.gVCF']
         invalid_batch = hb.Batch(name='Invalid Batch')
-        assertion_called = False
-        try:
+        with self.assertRaises(FileNotFoundError):
             batch_move_files(
                 invalid_batch,
                 sample_list,
@@ -117,10 +116,6 @@ class TestUploadProcessor(unittest.TestCase):
                 self.docker_image,
                 self.key,
             )
-        except FileNotFoundError:
-            assertion_called = True
-
-        self.assertTrue(assertion_called)
 
     def test_partial_recovery(self):
         """Another partial recovery test case. In this scenario,
