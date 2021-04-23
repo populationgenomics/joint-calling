@@ -532,6 +532,7 @@ def run_vep(
     ht = mt.rows()
     ht = ht.filter(hl.len(ht.alleles) > 1)
     ht = hl.split_multi_hts(ht)
+    # TODO: rerun VEP instead of reading gnomAD vep reference file
     ht = vep_or_lookup_vep(ht, vep_version=vep_version, vep_config_path=vep_config_gs)
     ht = ht.annotate_globals(version=f'v{vep_version}')
     ht.write(out_ht_path, overwrite=True)

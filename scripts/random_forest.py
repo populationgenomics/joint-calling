@@ -348,8 +348,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     logger.info('Finished applying RF model')
     ht = ht.annotate_globals(rf_model_id=model_id)
 
-    rf_result_path = f'rf/models/{model_id}/rf_result.ht'
-    ht = ht.checkpoint(rf_result_path, overwrite=overwrite)
+    ht = ht.checkpoint(out_ht_path, overwrite=overwrite)
 
     summary_ht = ht.group_by(
         'tp', 'fp', TRAIN_COL, LABEL_COL, PREDICTION_COL
