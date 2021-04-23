@@ -27,11 +27,8 @@ def batch_move_files(
     docker_image: Optional[str] = None,
     key: Optional[str] = None,
 ) -> List:
-    """This script takes a Hail.Batch workflow and a list of files to
-    move between buckets. It adds 1 job per file to the workflow, and
-    runs in a docker_image. It returns the list of created jobs. Each
-    job consists of a gsutil move command for each valid file.
-    When run, these jobs will perform the batch move file operation.
+    """Creates a list of jobs to perform a batch move operation
+    to move files from a source location to a destination.
 
     Parameters
     ==========
