@@ -95,8 +95,10 @@ def batch_move_files(
 
         # Authenticate to service account.
         if key is not None:
-            j.command(f"echo '{key}' > key.json")
-            j.command(f'gcloud -q auth activate-service-account --key-file=key.json')
+            j.command(f"echo '{key}' > /tmp/key.json")
+            j.command(
+                f'gcloud -q auth activate-service-account --key-file=/tmp/key.json'
+            )
         # Handles service backend, or a key in the same default location.
         else:
             j.command(
