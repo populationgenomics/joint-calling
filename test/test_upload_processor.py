@@ -1,5 +1,7 @@
 """ This file tests the functions defined in upload_processor """
 
+import random
+import string
 import unittest
 import subprocess
 import os
@@ -49,8 +51,13 @@ class TestUploadProcessor(unittest.TestCase):
 
     def setUp(self):
         """Initialises standard variables for testing"""
-        self.upload_prefix = 'cpg-fewgenomes-upload'
-        self.main_prefix = 'cpg-fewgenomes-main'
+
+        # Create random string of digits to label current test folder
+        random_digits = ''.join(random.choice(string.digits) for i in range(5))
+        test_folder = 'test' + random_digits
+
+        self.upload_prefix = os.path.join('cpg-fewgenomes-upload', test_folder)
+        self.main_prefix = os.path.join('cpg-fewgenomes-main', test_folder)
         self.docker_image = os.environ.get('DOCKER_IMAGE')
         self.key = os.environ.get('GSA_KEY')
 
@@ -71,8 +78,6 @@ class TestUploadProcessor(unittest.TestCase):
         # Check that the files have been moved to main
         for sample in sample_list:
             self.assertTrue(validate_move(self.upload_prefix, self.main_prefix, sample))
-
-        cleanup(self.main_prefix, sample_list)
 
     def test_batch_move_recovery(self):
         """Test cases that handles previous partially successful run.
@@ -96,8 +101,6 @@ class TestUploadProcessor(unittest.TestCase):
         # Check that the files have been moved to main
         for sample in sample_list:
             self.assertTrue(validate_move(self.upload_prefix, self.main_prefix, sample))
-
-        cleanup(self.main_prefix, sample_list)
 
     def test_invalid_samples(self):
         """Test case that handles invalid sample ID's i.e. samples that don't exist
@@ -144,7 +147,11 @@ class TestUploadProcessor(unittest.TestCase):
         for sample in sample_list:
             self.assertTrue(validate_move(self.upload_prefix, self.main_prefix, sample))
 
-        cleanup(self.main_prefix, sample_list)
+    def tearDown(self):
+
+        # Deleting files created in test run
+        full_path = os.path.join('gs://', self.main_prefix, '*')
+        subprocess.run(['gsutil', 'rm', full_path], check=False)
 
 
 # Executed here so that the test file can be run with the analysis runner
