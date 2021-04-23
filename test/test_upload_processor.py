@@ -14,17 +14,14 @@ def validate_move(upload_prefix: str, main_prefix: str, sample: str) -> bool:
     Returns True if this is the case and False otherwise.
     """
 
-    upload_path = os.path.join('gs://', upload_prefix, sample)
     main_path = os.path.join('gs://', main_prefix, sample)
+    upload_path = os.path.join('gs://', upload_prefix, sample)
 
     exists_main = subprocess.run(['gsutil', '-q', 'stat', main_path], check=False)
     exists_upload = subprocess.run(['gsutil', '-q', 'stat', upload_path], check=False)
 
     # Exists at destination and not at source
-    if exists_upload.returncode == 1 and exists_main.returncode == 0:
-        return True
-
-    return False
+    return exists_upload.returncode != 0 and exists_main.returncode == 0
 
 
 def cleanup(bucket: str, samples: List[str]):
@@ -38,7 +35,7 @@ def cleanup(bucket: str, samples: List[str]):
 
 def upload_files(files: List[str], upload_prefix: str):
     """A function to mimic file upload. Takes a list of
-    file names, creates these files, then moved them into
+    file names, creates these files, then moves them into
     the upload bucket used for further testing."""
 
     for f in files:
@@ -51,14 +48,14 @@ class TestUploadProcessor(unittest.TestCase):
     """Test cases for the upload processor"""
 
     def setUp(self):
-        """ Initialises standard variables for testing """
+        """Initialises standard variables for testing"""
         self.upload_prefix = 'cpg-fewgenomes-temporary/vivian-test/test-upload'
         self.main_prefix = 'cpg-fewgenomes-temporary/vivian-test/test-main'
         self.docker_image = os.environ.get('DOCKER_IMAGE')
         self.key = os.environ.get('GSA_KEY')
 
     def test_batch_move_standard(self):
-        """ Testing standard case of moving a list of files with valid inputs"""
+        """Testing standard case of moving a list of files with valid inputs"""
         sample_list = ['Sample5.gVCF', 'Sample6.gVCF', 'Sample7.gVCF']
         upload_files(sample_list, self.upload_prefix)
         batch = hb.Batch(name='Test Batch Move Standard')

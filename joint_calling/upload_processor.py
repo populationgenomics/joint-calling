@@ -1,9 +1,9 @@
-""" This function prepares gVCF's uploaded to GCS, based off sample status
+""" This function prepares gVCFs uploaded to GCS, based off sample status
     logged in a database, for further QC and downstream analysis.
     The upload processor will determine when samples should be added
     to existing MatrixTables where appropriate and which MatrixTables
     they should be combined with in this case. Following a successful
-    run all uploaded files will be moved to archival storage.
+    run, all uploaded files will be moved to archival storage.
 
     Assumptions
     ===========
@@ -79,16 +79,16 @@ def batch_move_files(
         )
 
         # In the case that the file is not found at the source
-        if get_file_source.returncode == 1:
-            # Valid - File has already been moved in a previous run.
-            # i.e. it exists at the destination and not the source.
+        if get_file_source.returncode != 0:
             if get_file_destination.returncode == 0:
+                # Valid - File has already been moved in a previous run.
+                # i.e. it exists at the destination and not the source.
                 continue
 
             # Invalid - the file does not exist at either location
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), sample)
 
-        j = batch.new_job(name=f'moving_{sample}')
+        j = batch.new_job(name=f'move {sample}')
 
         if docker_image is not None:
             j.image(docker_image)
