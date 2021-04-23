@@ -103,8 +103,7 @@ def batch_move_files(
                 'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
             )
 
-        # -m performs a multi-threaded/multi-processing move
-        j.command(f'gsutil -m mv {previous_location} {new_location}')
+        j.command(f'gsutil mv {previous_location} {new_location}')
         jobs.append(j)
 
     return jobs
