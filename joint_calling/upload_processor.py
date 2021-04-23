@@ -15,7 +15,7 @@
 import errno
 import os
 import subprocess
-from typing import List
+from typing import List, Optional
 import hailtop.batch as hb
 
 
@@ -24,8 +24,8 @@ def batch_move_files(
     files: List[str],
     source_prefix: str,
     destination_prefix: str,
-    docker_image: str = None,
-    key: str = None,
+    docker_image: Optional[str] = None,
+    key: Optional[str] = None,
 ) -> List:
     """This script takes a Hail.Batch workflow and a list of files to
     move between buckets. It adds 1 job per file to the workflow, and
