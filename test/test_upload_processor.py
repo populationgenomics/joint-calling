@@ -26,15 +26,6 @@ def validate_move(upload_prefix: str, main_prefix: str, sample: str) -> bool:
     return exists_upload.returncode != 0 and exists_main.returncode == 0
 
 
-def cleanup(bucket: str, samples: List[str]):
-    """Clean up function that deletes remaining files after
-    test run"""
-
-    for sample in samples:
-        full_path = os.path.join('gs://', bucket, sample)
-        subprocess.run(['gsutil', 'rm', full_path], check=False)
-
-
 def upload_files(files: List[str], upload_prefix: str):
     """A function to mimic file upload. Takes a list of
     file names, creates these files, then moves them into
