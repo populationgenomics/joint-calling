@@ -361,6 +361,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         samples_df = utils.find_inputs(input_buckets, skip_qc=skip_qc)
     else:
         samples_df = pd.read_csv(samples_path, sep='\t').set_index('s', drop=False)
+    samples_df = samples_df[pd.notnull(samples_df.s)]
 
     gvcfs = [
         b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
@@ -457,7 +458,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         )
         for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)
     ]
-    for sn in list(samples_df.s):
+    for sn in samples_df.s:
         samples_df.loc[sn, ['gvcf']] = join(combiner_gvcf_bucket, sn + '.g.vcf.gz')
     samples_df.to_csv(samples_path, index=False, sep='\t', na_rep='NA')
     logger.info(f'Saved metadata with updated GVCFs to {samples_path}')
