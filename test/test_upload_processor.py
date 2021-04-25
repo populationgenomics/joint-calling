@@ -65,7 +65,12 @@ class TestUploadProcessor(unittest.TestCase):
             self.docker_image,
             self.key,
         )
-        batch.run()
+
+        try:
+            batch.run()
+        except subprocess.CalledProcessError:
+            self.fail('Batch failed to run')
+
         # Check that the files have been moved to main
         for sample in sample_list:
             self.assertTrue(validate_move(self.upload_prefix, self.main_prefix, sample))
@@ -88,7 +93,12 @@ class TestUploadProcessor(unittest.TestCase):
             self.docker_image,
             self.key,
         )
-        recovery_batch.run()
+
+        try:
+            recovery_batch.run()
+        except subprocess.CalledProcessError:
+            self.fail('Batch failed to run')
+
         # Check that the files have been moved to main
         for sample in sample_list:
             self.assertTrue(validate_move(self.upload_prefix, self.main_prefix, sample))
@@ -133,7 +143,11 @@ class TestUploadProcessor(unittest.TestCase):
             self.docker_image,
             self.key,
         )
-        partial_batch.run()
+
+        try:
+            partial_batch.run()
+        except subprocess.CalledProcessError:
+            self.fail('Batch failed to run')
 
         for sample in sample_list:
             self.assertTrue(validate_move(self.upload_prefix, self.main_prefix, sample))
