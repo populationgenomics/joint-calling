@@ -468,7 +468,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     if not utils.file_exists(combined_mt_path):
         combiner_job = dataproc.hail_dataproc_job(
             b,
-            f'joint_calling/workflows/run_python_script.py '
+            f'scripts/run_python_script.py '
             f'combine_gvcfs.py '
             f'--meta-csv {samples_path} '
             f'--out-mt {combined_mt_path} '
@@ -495,7 +495,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             age_csv_param = ''
         sample_qc_job = dataproc.hail_dataproc_job(
             b,
-            f'joint_calling/workflows/run_python_script.py '
+            f'scripts/run_python_script.py '
             f'sample_qc.py --overwrite '
             f'--mt {combined_mt_path} '
             f'{age_csv_param}'
@@ -517,7 +517,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     if not utils.file_exists(combined_vcf_path):
         mt_to_vcf_job = dataproc.hail_dataproc_job(
             b,
-            f'joint_calling/workflows/run_python_script.py '
+            f'scripts/run_python_script.py '
             f'mt_to_vcf.py --overwrite '
             f'--mt {combined_mt_path} '
             f'-o {combined_vcf_path} ',
@@ -543,7 +543,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     ):
         rf_anno_job = dataproc.hail_dataproc_job(
             b,
-            f'joint_calling/workflows/run_python_script.py '
+            f'scripts/run_python_script.py '
             f'generate_qc_annotations.py --reuse '
             f'--split-multiallelic '
             f'--mt {combined_mt_path} '
@@ -568,7 +568,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     if not utils.file_exists(freq_ht_path):
         rf_freq_data_job = dataproc.hail_dataproc_job(
             b,
-            f'run_python_script.py '
+            f'scripts/run_python_script.py '
             f'generate_freq_data.py --reuse '
             f'--mt {combined_mt_path} '
             f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
@@ -584,13 +584,30 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     else:
         rf_freq_data_job = b.new_job('RF: gen freq data')
 
+    rf_job = dataproc.hail_dataproc_job(
+        b,
+        f'scripts/run_python_script.py '
+        f'random_forest.py --reuse '
+        f'--info-ht {info_ht_path} '
+        f'--freq-ht {freq_ht_path} '
+        f'--allele-data-ht {allele_data_ht_path} '
+        f'--qc-ac-ht {qc_ac_ht_path} '
+        f'--bucket {combiner_bucket} '
+        f'--out-ht {rf_result_ht_path} ',
+        max_age='8h',
+        packages=DATAPROC_PACKAGES,
+        num_secondary_workers=10,
+        # depends_on=[rf_freq_data_job, rf_anno_job],
+        job_name='RF: run',
+    )
+    
     if not utils.file_exists(rf_result_ht_path):
-        subprocess.run(
-            f'pwd; ls', check=False, shell=True
-        )
+        print('pwd; ls')
+        subprocess.run(f'pwd', check=False, shell=True)
+        subprocess.run(f'ls', check=False, shell=True)
         rf_job = dataproc.hail_dataproc_job(
             b,
-            f'run_python_script.py '
+            f'scripts/run_python_script.py '
             f'random_forest.py --reuse '
             f'--info-ht {info_ht_path} '
             f'--freq-ht {freq_ht_path} '
