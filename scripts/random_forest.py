@@ -430,10 +430,6 @@ def train_model(
     return model, model_id, training_ht
 
 
-if __name__ == '__main__':
-    main()  # pylint: disable=E1120
-
-
 def create_rf_ht(
     info_ht: hl.Table,
     inbreeding_ht: hl.Table,
