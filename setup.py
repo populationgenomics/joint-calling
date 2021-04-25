@@ -18,7 +18,7 @@ def find_package_files(dirpath, package, skip_exts=None):
 
 setuptools.setup(
     name='joint-calling',
-    version='0.1.57',
+    version='0.1.58',
     description='Pipeline for joint calling, sample and variant QC for WGS germline '
     'variant calling data',
     long_description=open('README.md').read(),
