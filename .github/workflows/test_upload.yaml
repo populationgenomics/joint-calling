@@ -1,3 +1,5 @@
+# This workflow automatically tests the upload processor
+
 name: Test Upload Processor
 on: [push]
 jobs:
