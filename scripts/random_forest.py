@@ -63,13 +63,6 @@ TRUTH_DATA = ['hapmap', 'omni', 'mills', 'kgp_phase1_hc']
 
 @click.command()
 @click.version_option(_version.__version__)
-# @click.option(
-#     '--list-rf-runs',
-#     'list_rf_runs',
-#     is_flag=True,
-#     help='List all previous RF runs, along with their model ID, parameters '
-#     'and testing results.',
-# )
 @click.option(
     '--info-ht',
     'info_split_ht_path',
@@ -329,10 +322,15 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
             assert model_id
             assert model_file_path and file_exists(model_file_path)
             assert model_training_ht_path and file_exists(model_training_ht_path)
+            logger.info(
+                f'Loading provided model file {model_file_path}, '
+                f'model id {model_id}, training ht {model_training_ht_path}'
+            )
             model = load_model(model_file_path)
             training_ht = hl.read_table(model_training_ht_path)
         else:
             # Train a new model
+            logger.info('Training new model')
             model, model_id, training_ht = train_model(
                 annotations_ht=annotations_ht,
                 rf_json_path=rf_json_path,
@@ -348,8 +346,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
                 test_intervals=test_intervals,
                 vqsr_filters_split_ht_path=vqsr_filters_split_ht_path,
             )
+            logger.info('Done training model')
 
         logger.info(f'Applying RF model...')
+        training_ht.describe()
         ht = apply_rf_model(training_ht, model, label=LABEL_COL)
 
         logger.info('Finished applying RF model')
