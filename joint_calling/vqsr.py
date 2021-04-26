@@ -115,7 +115,7 @@ def make_vqsr_jobs(
     hapmap_resource_vcf_index = os.path.join(
         BROAD_REF_BUCKET, 'hapmap_3.3.hg38.vcf.gz.tbi'
     )
-    omni_resource_vcf = (os.path.join(BROAD_REF_BUCKET, '1000G_omni2.5.hg38.vcf.gz'),)
+    omni_resource_vcf = os.path.join(BROAD_REF_BUCKET, '1000G_omni2.5.hg38.vcf.gz')
     omni_resource_vcf_index = os.path.join(
         BROAD_REF_BUCKET, '1000G_omni2.5.hg38.vcf.gz.tbi'
     )
