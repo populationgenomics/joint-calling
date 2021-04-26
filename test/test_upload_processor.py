@@ -152,7 +152,6 @@ class TestUploadProcessor(unittest.TestCase):
             self.assertTrue(validate_move(self.upload_prefix, self.main_prefix, sample))
 
     def tearDown(self):
-
         # Deleting files created in test run
         full_path = os.path.join('gs://', self.main_prefix, '*')
         subprocess.run(['gsutil', 'rm', full_path], check=False)
