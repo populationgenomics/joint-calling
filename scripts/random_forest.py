@@ -413,7 +413,8 @@ def train_model(
         filter_centromere_telomere=filter_centromere_telomere,
         test_intervals=test_intervals,
     )
-    training_ht_path = join(work_bucket, f'rf/models/{model_id}/training.ht')
+    training_ht_path = join(work_bucket, f'models/{model_id}/training.ht')
+    logger.info(f'Saving training Table to {training_ht_path}')
     training_ht = training_ht.checkpoint(training_ht_path, overwrite=overwrite)
     logger.info('Adding run to RF run list')
     rf_runs[model_id] = get_run_data(
@@ -431,8 +432,8 @@ def train_model(
     )
     with hl.hadoop_open(rf_json_path, 'w') as f:
         json.dump(rf_runs, f)
-    logger.info('Saving RF model')
-    model_path = join(work_bucket, f'rf/models/{model_id}/rf.model')
+    model_path = join(work_bucket, f'models/{model_id}/rf.model')
+    logger.info(f'Saving RF model to {model_path}')
     save_model(model, model_path, overwrite=overwrite)
     return model, model_id, training_ht
 
@@ -618,7 +619,7 @@ def train_rf(
     )
     logger.info('Joining original RF Table with training information')
     ht = ht.join(trained_rf_ht, how='left')
-
+    ht = ht.annotate(features=features)
     return ht, rf_model
 
 
