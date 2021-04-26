@@ -79,8 +79,8 @@ logger.setLevel('INFO')
     type=str,
     default=os.getenv('HAIL_BILLING_PROJECT'),
 )
-@click.option('--run-vqsr/skip-vqsr', 'run_vqsr', is_flag=True, default=True)
-@click.option('--run-rf/skip-rf', 'run_rf', is_flag=True, default=True)
+@click.option('--run-vqsr/--skip-vqsr', 'run_vqsr', is_flag=True, default=True)
+@click.option('--run-rf/--skip-rf', 'run_rf', is_flag=True, default=True)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     callset_name: str,
     callset_version: str,
@@ -100,6 +100,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     either a Hail Query script from the scripts folder in this repo using a Dataproc
     cluster; or a GATK command using the GATK or Gnarly image.
     """
+    print('run_rf', run_rf)
+    print('run_vqsr', run_vqsr)
+    
     if not dry_run:
         if not billing_project:
             raise click.BadParameter(
