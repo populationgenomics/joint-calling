@@ -27,8 +27,9 @@ jobs:
       - name: "test upload processor"
         run: |
           TOKEN=$(gcloud auth print-identity-token)
+          URL=$(gcloud run services describe server-test --region australia-southeast1 --platform managed --format "value(status.url)")
           curl --fail --silent --show-error -X POST \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type:application/json" \
             -d '{"output": "gs://cpg-fewgenomes-temporary/upload-main", "dataset": "fewgenomes", "accessLevel": "test", "repo": "fewgenomes", "commit": "${{ github.sha }}", "cwd": null, "script": ["test/test_upload_processor.py], "description": "test-file", "wait": true}' \
-            https://server-a2pko7ameq-ts.a.run.app/
+            $URL
