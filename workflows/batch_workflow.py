@@ -30,6 +30,7 @@ gs://cpg-fewgenomes-temporary/joint_vcf/v0/work/combiner
 """
 
 import os
+import uuid
 from os.path import join
 from typing import List
 import logging
@@ -334,7 +335,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #         f'--out-info-ht {info_ht_path} '
     #         f'--out-allele-data-ht {allele_data_ht_path} '
     #         f'--out-qc-ac-ht {qc_ac_ht_path} '
-    #         f'--bucket {combiner_bucket} ',
+    #         f'--bucket {variant_qc_bucket} ',
     #         max_age='8h',
     #         packages=utils.DATAPROC_PACKAGES,
     #         num_secondary_workers=10,
@@ -354,7 +355,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #         f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
     #         f'--meta-ht {meta_ht_path} '
     #         f'--out-ht {freq_ht_path} '
-    #         f'--bucket {combiner_bucket} ',
+    #         f'--bucket {variant_qc_bucket} ',
     #         max_age='8h',
     #         packages=utils.DATAPROC_PACKAGES,
     #         num_secondary_workers=10,
@@ -363,11 +364,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #     )
     # else:
     #     rf_freq_data_job = b.new_job('RF: gen freq data')
-
+    
     if not utils.file_exists(rf_result_ht_path):
-        print('pwd; ls')
-        subprocess.run(f'pwd', check=False, shell=True)
-        subprocess.run(f'ls', check=False, shell=True)
         rf_job = dataproc.hail_dataproc_job(
             b,
             f'scripts/run_python_script.py '
@@ -376,7 +374,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--freq-ht {freq_ht_path} '
             f'--allele-data-ht {allele_data_ht_path} '
             f'--qc-ac-ht {qc_ac_ht_path} '
-            f'--bucket {combiner_bucket} '
+            f'--bucket {variant_qc_bucket} '
+            '--use-adj-genotypes '
             f'--out-ht {rf_result_ht_path} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,

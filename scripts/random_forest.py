@@ -4,7 +4,7 @@
 Run sample QC on a MatrixTable, hard filter samples, add soft filter labels,
 and output a sample-level Hail Table
 """
-from os.path import join
+from os.path import join, splitext
 from typing import List, Optional, Union, Tuple
 import json
 import logging
@@ -63,13 +63,13 @@ TRUTH_DATA = ['hapmap', 'omni', 'mills', 'kgp_phase1_hc']
 
 @click.command()
 @click.version_option(_version.__version__)
-@click.option(
-    '--list-rf-runs',
-    'list_rf_runs',
-    is_flag=True,
-    help='List all previous RF runs, along with their model ID, parameters '
-    'and testing results.',
-)
+# @click.option(
+#     '--list-rf-runs',
+#     'list_rf_runs',
+#     is_flag=True,
+#     help='List all previous RF runs, along with their model ID, parameters '
+#     'and testing results.',
+# )
 @click.option(
     '--info-ht',
     'info_split_ht_path',
@@ -253,7 +253,7 @@ TRUTH_DATA = ['hapmap', 'omni', 'mills', 'kgp_phase1_hc']
     is_flag=True,
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals
-    list_rf_runs: bool,
+    # list_rf_runs: bool,
     info_split_ht_path: str,
     freq_ht_path: str,
     fam_stats_ht_path: str,
@@ -286,15 +286,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     local_tmp_dir = utils.init_hail('variant_qc_random_forest', local_tmp_dir)
 
     rf_json_path = join(work_bucket, 'rf/rf_runs.json')
-    if list_rf_runs:
-        logger.info(f'RF runs:')
-        rf_runs = get_rf_runs(rf_json_path)
-        pretty_print_runs(rf_runs)
+    logger.info(f'RF runs:')
+    rf_runs = get_rf_runs(rf_json_path)
+    pretty_print_runs(rf_runs)
 
     # Annotate for random forest
     annotations_ht_path = join(
         work_bucket,
-        f'variant_qc/rf/rf_annotations.{"adj" if use_adj_genotypes else "raw"}.ht',
+        f'rf_annotations-{"adj" if use_adj_genotypes else "raw"}.ht',
     )
     if not overwrite and file_exists(annotations_ht_path):
         logger.info(f'Reusing {annotations_ht_path}')
@@ -312,53 +311,58 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
             impute_features=impute_features,
             use_adj_genotypes=use_adj_genotypes,
             n_partitions=n_partitions,
-            checkpoint_path=join(work_bucket, 'rf_annotation.ht'),
+            checkpoint_path=splitext(annotations_ht_path)[0] + '-before-impute.ht',
         )
-    annotations_ht.write(annotations_ht_path, overwrite=True)
-    logger.info(f'Completed annotation wrangling for random forests model training')
-
-    # Train random forest model
-    if model_file_path:
-        assert model_id
-        assert model_file_path and file_exists(model_file_path)
-        assert model_training_ht_path and file_exists(model_training_ht_path)
-        model = load_model(model_file_path)
-        training_ht = hl.read_table(model_training_ht_path)
+        annotations_ht.write(annotations_ht_path, overwrite=True)
+        logger.info(f'Completed annotation wrangling for random '
+                    f'forests model training, written to {annotations_ht_path}')
+    
+    if not overwrite and utils.file_exists(out_ht_path):
+        # Results already exist
+        logger.info(f'Reusing {out_ht_path}')
     else:
-        model, model_id, training_ht = train_model(
-            annotations_ht_path=annotations_ht_path,
-            rf_json_path=rf_json_path,
-            overwrite=overwrite,
-            work_bucket=work_bucket,
-            use_adj_genotypes=use_adj_genotypes,
-            filter_centromere_telomere=filter_centromere_telomere,
-            no_transmitted_singletons=no_transmitted_singletons,
-            no_inbreeding_coeff=no_inbreeding_coeff,
-            fp_to_tp=fp_to_tp,
-            max_depth=max_depth,
-            num_trees=num_trees,
-            test_intervals=test_intervals,
-            vqsr_filters_split_ht_path=vqsr_filters_split_ht_path,
-        )
+        if model_file_path:
+            # Overwriting, but want to reuse preexisting model
+            assert model_id
+            assert model_file_path and file_exists(model_file_path)
+            assert model_training_ht_path and file_exists(model_training_ht_path)
+            model = load_model(model_file_path)
+            training_ht = hl.read_table(model_training_ht_path)
+        else:
+            # Train a new model
+            model, model_id, training_ht = train_model(
+                annotations_ht=annotations_ht,
+                rf_json_path=rf_json_path,
+                overwrite=overwrite,
+                work_bucket=work_bucket,
+                use_adj_genotypes=use_adj_genotypes,
+                filter_centromere_telomere=filter_centromere_telomere,
+                no_transmitted_singletons=no_transmitted_singletons,
+                no_inbreeding_coeff=no_inbreeding_coeff,
+                fp_to_tp=fp_to_tp,
+                max_depth=max_depth,
+                num_trees=num_trees,
+                test_intervals=test_intervals,
+                vqsr_filters_split_ht_path=vqsr_filters_split_ht_path,
+            )
+    
+        logger.info(f'Applying RF model...')
+        ht = apply_rf_model(training_ht, model, label=LABEL_COL)
+    
+        logger.info('Finished applying RF model')
+        ht = ht.annotate_globals(rf_model_id=model_id)
+    
+        ht.write(out_ht_path, overwrite=True)
 
-    # if do_apply_rf:
-    logger.info(f'Applying RF model...')
-    ht = apply_rf_model(training_ht, model, label=LABEL_COL)
+        summary_ht = ht.group_by(
+            'tp', 'fp', TRAIN_COL, LABEL_COL, PREDICTION_COL
+        ).aggregate(n=hl.agg.count())
 
-    logger.info('Finished applying RF model')
-    ht = ht.annotate_globals(rf_model_id=model_id)
-
-    ht = ht.checkpoint(out_ht_path, overwrite=overwrite)
-
-    summary_ht = ht.group_by(
-        'tp', 'fp', TRAIN_COL, LABEL_COL, PREDICTION_COL
-    ).aggregate(n=hl.agg.count())
-
-    summary_ht.show(n=20)
+        summary_ht.show(n=20)
 
 
 def train_model(
-    annotations_ht_path: str,
+    annotations_ht: hl.Table,
     rf_json_path: str,
     overwrite: bool,
     work_bucket: str,
@@ -374,7 +378,7 @@ def train_model(
 ) -> Tuple[hl.Table, str, pyspark.ml.PipelineModel]:
     """
     Train RF model
-    :param annotations_ht_path:
+    :param annotations_ht:
     :param rf_json_path:
     :param overwrite:
     :param work_bucket:
@@ -394,7 +398,7 @@ def train_model(
     while model_id in rf_runs:
         model_id = f'rf_{str(uuid.uuid4())[:8]}'
     training_ht, model = train_rf(
-        annotations_ht_path,
+        annotations_ht,
         vqsr_filters_split_ht=hl.read_table(vqsr_filters_split_ht_path)
         if vqsr_filters_split_ht_path
         else None,
