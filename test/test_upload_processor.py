@@ -49,8 +49,12 @@ class TestUploadProcessor(unittest.TestCase):
         random_digits = ''.join(random.choice(string.digits) for i in range(5))
         test_folder = 'test' + random_digits
 
-        self.upload_prefix = os.path.join('cpg-fewgenomes-upload', test_folder)
-        self.main_prefix = os.path.join('cpg-fewgenomes-main', test_folder)
+        self.upload_prefix = os.path.join(
+            'cpg-fewgenomes-temporary/test-upload', test_folder
+        )
+        self.main_prefix = os.path.join(
+            'cpg-fewgenomes-temporary/test-main', test_folder
+        )
         self.docker_image = os.environ.get('DOCKER_IMAGE')
         self.key = os.environ.get('GSA_KEY')
 
