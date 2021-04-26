@@ -103,7 +103,6 @@ def make_rf_jobs(
     else:
         rf_job = b.new_job('RF: run')
 
-    score_bins_ht = join(work_bucket, 'score_bins', {model_id}.{'aggregated' if aggregated else 'bins'}.ht"
-
+    # rf_result_ht_path
 
     return rf_job

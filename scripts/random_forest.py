@@ -349,8 +349,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
             logger.info('Done training model')
 
         logger.info(f'Applying RF model...')
-        training_ht.describe()
-        ht = apply_rf_model(training_ht, model, label=LABEL_COL)
+        ht = apply_rf_model(
+            training_ht,
+            rf_model=model,
+            features=hl.eval(training_ht.features),
+            label=LABEL_COL,
+        )
 
         logger.info('Finished applying RF model')
         ht = ht.annotate_globals(rf_model_id=model_id)
