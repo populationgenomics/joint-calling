@@ -203,6 +203,7 @@ def combine_gvcfs(
         use_genome_default_intervals=True,
         tmp_path=os.path.join(work_bucket, 'tmp'),
         overwrite=overwrite,
+        key_by_locus_and_alleles=True,
     )
 
 
