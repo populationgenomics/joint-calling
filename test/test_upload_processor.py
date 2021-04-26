@@ -156,8 +156,3 @@ class TestUploadProcessor(unittest.TestCase):
         # Deleting files created in test run
         full_path = os.path.join('gs://', self.main_prefix, '*')
         subprocess.run(['gsutil', 'rm', full_path], check=False)
-
-
-# Executed here so that the test file can be run with the analysis runner
-if __name__ == '__main__':
-    unittest.main()
