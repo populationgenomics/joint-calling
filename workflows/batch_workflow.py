@@ -30,19 +30,18 @@ gs://cpg-fewgenomes-temporary/joint_vcf/v0/work/combiner
 """
 
 import os
-import uuid
 from os.path import join
 from typing import List
 import logging
 import click
 import pandas as pd
-import subprocess
 import hailtop.batch as hb
 from hailtop.batch.job import Job
 from analysis_runner import dataproc
 
 from joint_calling import utils
 from joint_calling.vqsr import make_vqsr_jobs
+from joint_calling.rf import make_rf_jobs
 
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
@@ -66,7 +65,7 @@ logger.setLevel('INFO')
     default='temporary',
     help='The bucket type to write to (default: temporary)',
 )
-@click.option('--skip-qc', 'skip_qc', is_flag=True)
+@click.option('--skip-input-meta', 'skip_input_meta', is_flag=True)
 @click.option('--keep-scratch', 'keep_scratch', is_flag=True)
 @click.option(
     '--reuse-scratch-run-id',
@@ -80,98 +79,21 @@ logger.setLevel('INFO')
     type=str,
     default=os.getenv('HAIL_BILLING_PROJECT'),
 )
-@click.option(
-    '--snp_recalibration_tranche_values',
-    'snp_recalibration_tranche_values',
-    multiple=True,
-    type=float,
-    default=[
-        100.0,
-        99.95,
-        99.9,
-        99.8,
-        99.6,
-        99.5,
-        99.4,
-        99.3,
-        99.0,
-        98.0,
-        97.0,
-        90.0,
-    ],
-)
-@click.option(
-    '--snp_recalibration_annotation_values',
-    'snp_recalibration_annotation_values',
-    multiple=True,
-    type=str,
-    default=[
-        'AS_QD',
-        'AS_MQRankSum',
-        'AS_ReadPosRankSum',
-        'AS_FS',
-        'AS_SOR',
-        'AS_MQ',
-    ],
-)
-@click.option(
-    '--indel_recalibration_tranche_values',
-    'indel_recalibration_tranche_values',
-    multiple=True,
-    type=float,
-    default=[
-        100.0,
-        99.95,
-        99.9,
-        99.5,
-        99.0,
-        97.0,
-        96.0,
-        95.0,
-        94.0,
-        93.5,
-        93.0,
-        92.0,
-        91.0,
-        90.0,
-    ],
-)
-@click.option(
-    '--indel_recalibration_annotation_values',
-    'indel_recalibration_annotation_values',
-    multiple=True,
-    type=str,
-    default=['AS_FS', 'AS_SOR', 'AS_ReadPosRankSum', 'AS_MQRankSum', 'AS_QD'],
-)
-@click.option(
-    '--excess_het_threshold', 'excess_het_threshold', type=float, default=54.69
-)
-@click.option('--snp_filter_level', 'snp_filter_level', type=float, default=99.7)
-@click.option('--indel_filter_level', 'indel_filter_level', type=float, default=99.0)
-@click.option(
-    '--skip_allele_specific_annotations',
-    'skip_allele_specific_annotations',
-    is_flag=True,
-)
+@click.option('--run-vqsr/skip-vqsr', 'run_vqsr', is_flag=True, default=True)
+@click.option('--run-rf/skip-rf', 'run_rf', is_flag=True, default=True)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     callset_name: str,
     callset_version: str,
     callset_batches: List[str],
     input_bucket_suffix: str,
     output_bucket_suffix: str,
-    skip_qc: bool,
+    skip_input_meta: bool,
     keep_scratch: bool,
     reuse_scratch_run_id: str,
     dry_run: bool,
     billing_project: str,
-    snp_recalibration_tranche_values: List[float],
-    snp_recalibration_annotation_values: List[str],
-    indel_recalibration_tranche_values: List[float],
-    indel_recalibration_annotation_values: List[str],
-    excess_het_threshold: float,
-    snp_filter_level: float,
-    indel_filter_level: float,
-    skip_allele_specific_annotations: bool,
+    run_vqsr: bool,
+    run_rf: bool,
 ):
     """
     Drive a Hail Batch workflow that creates and submits jobs. A job usually runs
@@ -190,8 +112,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         input_buckets.append(f'gs://cpg-{callset_name}-{input_bucket_suffix}/gvcf/{cb}')
 
     base_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/joint_vcf'
-    output_bucket = join(base_bucket, f'{callset_version}/work')
+    output_bucket = join(base_bucket, callset_version)
+    work_bucket = join(output_bucket, 'work')
     hail_bucket = join(output_bucket, 'hail')
+    raw_combined_mt_path = join(output_bucket, 'raw', 'genomes.mt')
+    # pylint: disable=unused-variable
+    filtered_combined_mt_path = join(output_bucket, 'qc', 'genomes.mt')
 
     backend = hb.ServiceBackend(
         billing_project=billing_project,
@@ -201,9 +127,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     # TODO: merge with existing data
 
-    samples_path = join(output_bucket, 'samples.csv')
+    samples_path = join(work_bucket, 'samples.csv')
     if not utils.file_exists(samples_path):
-        samples_df = utils.find_inputs(input_buckets, skip_qc=skip_qc)
+        samples_df = utils.find_inputs(input_buckets, skip_qc=skip_input_meta)
     else:
         samples_df = pd.read_csv(samples_path, sep='\t').set_index('s', drop=False)
     samples_df = samples_df[pd.notnull(samples_df.s)]
@@ -213,194 +139,114 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         for gvcf in list(samples_df.gvcf)
     ]
 
-    is_small_callset = len(gvcfs) < 1000
-    # 1. For small callsets, we don't apply the ExcessHet filtering.
-    # 2. For small callsets, we gather the VCF shards and collect QC metrics directly.
-    # For anything larger, we need to keep the VCF sharded and gather metrics
-    # collected from them.
-    is_huge_callset = len(gvcfs) >= 100000
-    # For huge callsets, we allocate more memory for the SNPs Create Model step
-
     # pylint: disable=unused-variable
     noalt_regions = b.read_input('gs://cpg-reference/hg38/v0/noalt.bed')
 
-    # reblocked_gvcf_paths = [
-    #     join(
-    #         hail_bucket,
-    #         'batch',
-    #         reuse_scratch_run_id,
-    #         str(job_num),
-    #         'output_gvcf.g.vcf.gz',
-    #     )
-    #     if reuse_scratch_run_id
-    #     else None
-    #     for job_num in (1, 1 + len(gvcfs))
-    # ]
-    # reblocked_gvcfs = [
-    #     b.read_input_group(
-    #         **{
-    #             'vcf.gz': output_gvcf_path,
-    #             'vcf.gz.tbi': output_gvcf_path + '.tbi',
-    #         }
-    #     )
-    #     if output_gvcf_path and utils.file_exists(output_gvcf_path)
-    #     else add_reblock_gvcfs_step(b, input_gvcf).output_gvcf
-    #     for output_gvcf_path, input_gvcf in zip(reblocked_gvcf_paths, gvcfs)
-    # ]
+    reblocked_gvcf_paths = [
+        join(
+            hail_bucket,
+            'batch',
+            reuse_scratch_run_id,
+            str(job_num),
+            'output_gvcf.g.vcf.gz',
+        )
+        if reuse_scratch_run_id
+        else None
+        for job_num in (1, 1 + len(gvcfs))
+    ]
+    reblocked_gvcfs = [
+        b.read_input_group(
+            **{
+                'vcf.gz': output_gvcf_path,
+                'vcf.gz.tbi': output_gvcf_path + '.tbi',
+            }
+        )
+        if output_gvcf_path and utils.file_exists(output_gvcf_path)
+        else add_reblock_gvcfs_step(b, input_gvcf).output_gvcf
+        for output_gvcf_path, input_gvcf in zip(reblocked_gvcf_paths, gvcfs)
+    ]
 
-    combiner_bucket = os.path.join(output_bucket, 'combiner')
-    combiner_gvcf_bucket = os.path.join(output_bucket, 'combiner', 'gvcfs')
-    # subset_gvcf_jobs = [
-    #     add_subset_noalt_step(
-    #         b,
-    #         input_gvcf=gvcf,
-    #         output_gvcf_path=join(combiner_gvcf_bucket, f'{sample}.g.vcf.gz'),
-    #         noalt_regions=noalt_regions,
-    #     )
-    #     for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)
-    # ]
+    combiner_bucket = os.path.join(work_bucket, 'combiner')
+    combiner_gvcf_bucket = os.path.join(work_bucket, 'combiner', 'gvcfs')
+    subset_gvcf_jobs = [
+        add_subset_noalt_step(
+            b,
+            input_gvcf=gvcf,
+            output_gvcf_path=join(combiner_gvcf_bucket, f'{sample}.g.vcf.gz'),
+            noalt_regions=noalt_regions,
+        )
+        for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)
+    ]
     for sn in samples_df.s:
         samples_df.loc[sn, ['gvcf']] = join(combiner_gvcf_bucket, sn + '.g.vcf.gz')
     samples_df.to_csv(samples_path, index=False, sep='\t', na_rep='NA')
     logger.info(f'Saved metadata with updated GVCFs to {samples_path}')
-    combined_mt_path = join(combiner_bucket, 'genomes.mt')
 
-    # if not utils.file_exists(combined_mt_path):
-    #     combiner_job = dataproc.hail_dataproc_job(
-    #         b,
-    #         f'scripts/run_python_script.py '
-    #         f'combine_gvcfs.py '
-    #         f'--meta-csv {samples_path} '
-    #         f'--out-mt {combined_mt_path} '
-    #         f'--bucket {combiner_bucket}/work '
-    #         f'--hail-billing {billing_project} ',
-    #         max_age='8h',
-    #         packages=utils.DATAPROC_PACKAGES,
-    #         num_secondary_workers=10,
-    #         depends_on=subset_gvcf_jobs,
-    #         job_name='Combine GVCFs',
-    #     )
-    # else:
-    #     combiner_job = b.new_job('Combine GVCFs')
-
-    hard_filtered_samples_ht_path = join(combiner_bucket, 'hard_filters.ht')
-    meta_ht_path = join(combiner_bucket, 'meta.ht')
-    # if not any(
-    #     utils.file_exists(fp) for fp in [hard_filtered_samples_ht_path, meta_ht_path]
-    # ):
-    #     age_csv = join(base_bucket, 'age.csv')
-    #     if utils.file_exists(age_csv):
-    #         age_csv_param = f'--age-csv {age_csv} '
-    #     else:
-    #         age_csv_param = ''
-    #     sample_qc_job = dataproc.hail_dataproc_job(
-    #         b,
-    #         f'scripts/run_python_script.py '
-    #         f'sample_qc.py --overwrite '
-    #         f'--mt {combined_mt_path} '
-    #         f'{age_csv_param}'
-    #         f'--meta-csv {samples_path} '
-    #         f'--bucket {combiner_bucket} '
-    #         f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
-    #         f'--out-meta-ht {meta_ht_path} '
-    #         f'--hail-billing {billing_project} ',
-    #         max_age='8h',
-    #         packages=utils.DATAPROC_PACKAGES,
-    #         num_secondary_workers=10,
-    #         depends_on=[combiner_job],
-    #         job_name='Sample QC',
-    #     )
-    # else:
-    #     sample_qc_job = b.new_job('Sample QC')
-
-    variant_qc_bucket = join(output_bucket, 'variant_qc')
-    freq_ht_path = join(variant_qc_bucket, 'frequencies.ht')
-    info_ht_path = join(variant_qc_bucket, 'info.ht')
-    allele_data_ht_path = join(variant_qc_bucket, 'allele_data.ht')
-    qc_ac_ht_path = join(variant_qc_bucket, 'qc_ac.ht')
-    # vep_ht = join(variant_qc_bucket, 'vep.ht')
-    rf_result_ht_path = join(variant_qc_bucket, 'rf_result.ht')
-    # if not all(
-    #     utils.file_exists(fp)
-    #     for fp in [info_ht_path, allele_data_ht_path, qc_ac_ht_path]
-    # ):
-    #     rf_anno_job = dataproc.hail_dataproc_job(
-    #         b,
-    #         f'scripts/run_python_script.py '
-    #         f'generate_qc_annotations.py --reuse '
-    #         f'--split-multiallelic '
-    #         f'--mt {combined_mt_path} '
-    #         f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
-    #         f'--meta-ht {meta_ht_path} '
-    #         f'--out-info-ht {info_ht_path} '
-    #         f'--out-allele-data-ht {allele_data_ht_path} '
-    #         f'--out-qc-ac-ht {qc_ac_ht_path} '
-    #         f'--bucket {variant_qc_bucket} ',
-    #         max_age='8h',
-    #         packages=utils.DATAPROC_PACKAGES,
-    #         num_secondary_workers=10,
-    #         depends_on=[sample_qc_job],
-    #         job_name='RF: gen QC anno',
-    #         vep='GRCh38',
-    #     )
-    # else:
-    #     rf_anno_job = b.new_job('RF: gen QC anno')
-
-    # if not utils.file_exists(freq_ht_path):
-    #     rf_freq_data_job = dataproc.hail_dataproc_job(
-    #         b,
-    #         f'scripts/run_python_script.py '
-    #         f'generate_freq_data.py --reuse '
-    #         f'--mt {combined_mt_path} '
-    #         f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
-    #         f'--meta-ht {meta_ht_path} '
-    #         f'--out-ht {freq_ht_path} '
-    #         f'--bucket {variant_qc_bucket} ',
-    #         max_age='8h',
-    #         packages=utils.DATAPROC_PACKAGES,
-    #         num_secondary_workers=10,
-    #         depends_on=[sample_qc_job],
-    #         job_name='RF: gen freq data',
-    #     )
-    # else:
-    #     rf_freq_data_job = b.new_job('RF: gen freq data')
-    
-    if not utils.file_exists(rf_result_ht_path):
-        rf_job = dataproc.hail_dataproc_job(
+    if not utils.file_exists(raw_combined_mt_path):
+        combiner_job = dataproc.hail_dataproc_job(
             b,
             f'scripts/run_python_script.py '
-            f'random_forest.py --reuse '
-            f'--info-ht {info_ht_path} '
-            f'--freq-ht {freq_ht_path} '
-            f'--allele-data-ht {allele_data_ht_path} '
-            f'--qc-ac-ht {qc_ac_ht_path} '
-            f'--bucket {variant_qc_bucket} '
-            '--use-adj-genotypes '
-            f'--out-ht {rf_result_ht_path} ',
+            f'combine_gvcfs.py '
+            f'--meta-csv {samples_path} '
+            f'--out-mt {raw_combined_mt_path} '
+            f'--bucket {combiner_bucket}/work '
+            f'--hail-billing {billing_project} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=10,
-            # depends_on=[rf_freq_data_job, rf_anno_job],
-            job_name='RF: run',
+            depends_on=subset_gvcf_jobs,
+            job_name='Combine GVCFs',
         )
     else:
-        rf_job = b.new_job('RF: run')
+        combiner_job = b.new_job('Combine GVCFs')
 
-    rf_job.always_run()
+    hard_filtered_samples_ht_path = join(combiner_bucket, 'hard_filters.ht')
+    meta_ht_path = join(combiner_bucket, 'meta.ht')
+    if not any(
+        utils.file_exists(fp) for fp in [hard_filtered_samples_ht_path, meta_ht_path]
+    ):
+        age_csv = join(base_bucket, 'age.csv')
+        if utils.file_exists(age_csv):
+            age_csv_param = f'--age-csv {age_csv} '
+        else:
+            age_csv_param = ''
+        sample_qc_job = dataproc.hail_dataproc_job(
+            b,
+            f'scripts/run_python_script.py '
+            f'sample_qc.py --overwrite '
+            f'--mt {raw_combined_mt_path} '
+            f'{age_csv_param}'
+            f'--meta-csv {samples_path} '
+            f'--bucket {combiner_bucket} '
+            f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
+            f'--out-meta-ht {meta_ht_path} '
+            f'--hail-billing {billing_project} ',
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=10,
+            depends_on=[combiner_job],
+            job_name='Sample QC',
+        )
+    else:
+        sample_qc_job = b.new_job('Sample QC')
 
-    # make_vqsr_jobs(
-    #     b,
-    #     combined_mt_path=combined_mt_path,
-    #     gvcf_count=len(gvcfs),
-    #     work_bucket=join(output_bucket, 'vqsr'),
-    #     callset_name=callset_name,
-    #     is_small_callset=is_small_callset,
-    #     is_huge_callset=is_huge_callset,
-    #     depends_on=[combiner_job],
-    #     skip_allele_specific_annotations=skip_allele_specific_annotations,
-    #     snp_filter_level=snp_filter_level,
-    #     indel_filter_level=indel_filter_level,
-    # )
+    if run_rf:
+        make_rf_jobs(
+            b,
+            combined_mt_path=raw_combined_mt_path,
+            hard_filtered_samples_ht_path=hard_filtered_samples_ht_path,
+            meta_ht_path=meta_ht_path,
+            work_bucket=join(work_bucket, 'variant_qc'),
+            depends_on=[sample_qc_job],
+        )
+
+    if run_vqsr:
+        make_vqsr_jobs(
+            b,
+            combined_mt_path=raw_combined_mt_path,
+            work_bucket=join(work_bucket, 'vqsr'),
+            depends_on=[combiner_job],
+        )
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
 

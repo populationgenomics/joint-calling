@@ -41,3 +41,4 @@ ignore=setup.py
 max-locals=25
 # Maximum number of arguments for function / method
 max-args=15
+max-statements=100

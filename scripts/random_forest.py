@@ -5,7 +5,7 @@ Run sample QC on a MatrixTable, hard filter samples, add soft filter labels,
 and output a sample-level Hail Table
 """
 from os.path import join, splitext
-from typing import List, Optional, Union, Tuple
+from typing import List, Optional, Tuple
 import json
 import logging
 import uuid
@@ -201,7 +201,7 @@ TRUTH_DATA = ['hapmap', 'omni', 'mills', 'kgp_phase1_hc']
     'evaluation only. (default to "chr20")',
     multiple=True,
     type=click.STRING,
-    default='chr20',
+    default=['chr20'],
 )
 @click.option(
     '--num-trees',
@@ -315,9 +315,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
             checkpoint_path=splitext(annotations_ht_path)[0] + '-before-impute.ht',
         )
         annotations_ht.write(annotations_ht_path, overwrite=True)
-        logger.info(f'Completed annotation wrangling for random '
-                    f'forests model training, written to {annotations_ht_path}')
-    
+        logger.info(
+            f'Completed annotation wrangling for random '
+            f'forests model training, written to {annotations_ht_path}'
+        )
+
     if not overwrite and utils.file_exists(out_ht_path):
         # Results already exist
         logger.info(f'Reusing {out_ht_path}')
@@ -346,13 +348,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
                 test_intervals=test_intervals,
                 vqsr_filters_split_ht_path=vqsr_filters_split_ht_path,
             )
-    
+
         logger.info(f'Applying RF model...')
         ht = apply_rf_model(training_ht, model, label=LABEL_COL)
-    
+
         logger.info('Finished applying RF model')
         ht = ht.annotate_globals(rf_model_id=model_id)
-    
+
         ht.write(out_ht_path, overwrite=True)
 
         summary_ht = ht.group_by(
@@ -589,9 +591,9 @@ def train_rf(
 
     if test_intervals is None:
         test_intervals = ['chr20']
+    logger.info(f'Using test intervals: {test_intervals}')
     test_intervals = [
-        hl.parse_locus_interval(x, reference_genome='GRCh38')
-        for x in test_intervals
+        hl.parse_locus_interval(x, reference_genome='GRCh38') for x in test_intervals
     ]
 
     ht = ht.annotate(tp=tp_expr, fp=fp_expr)

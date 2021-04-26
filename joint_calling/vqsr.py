@@ -1,13 +1,15 @@
+"""
+Create jobs to create and apply a VQSR model
+"""
+
 import os
 from os.path import join
 from typing import List, Optional
 import logging
-import click
-import pandas as pd
-import subprocess
 import hailtop.batch as hb
 from hailtop.batch.job import Job
 from analysis_runner import dataproc
+import hail as hl
 
 from joint_calling import utils
 
@@ -21,21 +23,77 @@ BROAD_REF_BUCKET = 'gs://gcp-public-data--broad-references/hg38/v0'
 def make_vqsr_jobs(
     b: hb.Batch,
     combined_mt_path: str,
-    gvcf_count: int,
     work_bucket: str,
-    callset_name: str,
-    is_small_callset: bool,
-    is_huge_callset: bool,
-    excess_het_threshold: int,
-    indel_recalibration_tranche_values: List[float],
-    indel_recalibration_annotation_values: List[float],
-    snp_recalibration_tranche_values: List[float],
-    snp_recalibration_annotation_values: List[float],
-    skip_allele_specific_annotations: bool,
-    snp_filter_level: float,
-    indel_filter_level: float,
     depends_on: Optional[List[Job]],
+    excess_het_threshold: float = 54.69,
+    indel_recalibration_tranche_values: List[float] = None,
+    indel_recalibration_annotation_values: List[str] = None,
+    snp_recalibration_tranche_values: List[float] = None,
+    snp_recalibration_annotation_values: List[str] = None,
+    skip_allele_specific_annotations: bool = False,
+    snp_filter_level: float = 99.7,
+    indel_filter_level: float = 99.0,
 ) -> Job:
+    """
+    :param b: Batch object to add jobs to
+    :param combined_mt_path: path to a Matrix Table combined with the Hail VCF combiner
+    :param work_bucket: bucket for intermediate files
+    :param depends_on: job that the created jobs should only run after
+    :param excess_het_threshold:
+    :param indel_recalibration_tranche_values:
+    :param indel_recalibration_annotation_values:
+    :param snp_recalibration_tranche_values:
+    :param snp_recalibration_annotation_values:
+    :param skip_allele_specific_annotations:
+    :param snp_filter_level:
+    :param indel_filter_level:
+    :return:
+    """
+    snp_recalibration_tranche_values = snp_recalibration_tranche_values or [
+        100.0,
+        99.95,
+        99.9,
+        99.8,
+        99.6,
+        99.5,
+        99.4,
+        99.3,
+        99.0,
+        98.0,
+        97.0,
+        90.0,
+    ]
+    snp_recalibration_annotation_values = snp_recalibration_annotation_values or [
+        'AS_QD',
+        'AS_MQRankSum',
+        'AS_ReadPosRankSum',
+        'AS_FS',
+        'AS_SOR',
+        'AS_MQ',
+    ]
+    indel_recalibration_tranche_values = indel_recalibration_tranche_values or [
+        100.0,
+        99.95,
+        99.9,
+        99.5,
+        99.0,
+        97.0,
+        96.0,
+        95.0,
+        94.0,
+        93.5,
+        93.0,
+        92.0,
+        91.0,
+        90.0,
+    ]
+    indel_recalibration_annotation_values = indel_recalibration_annotation_values or [
+        'AS_FS',
+        'AS_SOR',
+        'AS_ReadPosRankSum',
+        'AS_MQRankSum',
+        'AS_QD',
+    ]
 
     # Reference files. All options have defaults.
     unpadded_intervals_path = os.path.join(
@@ -114,8 +172,17 @@ def make_vqsr_jobs(
     # to scatter over for testing / special requests.
 
     scatter_count_scale_factor = 0.15
+    gvcf_count = hl.read_matrix_table(combined_mt_path).count_cols()
     scatter_count = int(round(scatter_count_scale_factor * gvcf_count))
     scatter_count = max(scatter_count, 2)
+
+    is_small_callset = gvcf_count < 1000
+    # 1. For small callsets, we don't apply the ExcessHet filtering.
+    # 2. For small callsets, we gather the VCF shards and collect QC metrics directly.
+    # For anything larger, we need to keep the VCF sharded and gather metrics
+    # collected from them.
+    is_huge_callset = gvcf_count >= 100000
+    # For huge callsets, we allocate more memory for the SNPs Create Model step
 
     small_disk = 30 if is_small_callset else (50 if not is_huge_callset else 100)
     medium_disk = 50 if is_small_callset else (100 if not is_huge_callset else 200)
@@ -311,7 +378,7 @@ def make_vqsr_jobs(
             b,
             input_vcfs=recalibrated_vcfs,
             disk_size=huge_disk,
-            output_vcf_path=os.path.join(work_bucket, callset_name + '-recalibrated.vcf.gz'),
+            output_vcf_path=os.path.join(work_bucket, 'recalibrated.vcf.gz'),
         ).output_vcf
 
     else:
@@ -356,7 +423,7 @@ def make_vqsr_jobs(
         input_vcf=final_gathered_vcf,
         ref_fasta=ref_fasta,
         dbsnp_vcf=dbsnp_vcf,
-        output_path=os.path.join(work_bucket, callset_name + '-eval.txt'),
+        output_path=os.path.join(work_bucket, 'variant-eval.txt'),
         disk_size=huge_disk,
     )
 
@@ -681,12 +748,12 @@ def add_indels_variant_recalibrator_step(
 #     j.memory(f'{mem_gb}G')
 #     j.cpu(2)
 #     j.storage(f'{disk_size}G')
-# 
+#
 #     j.declare_resource_group(recalibration={'index': '{root}.idx', 'base': '{root}'})
-# 
+#
 #     tranche_cmdl = ' '.join([f'-tranche {v}' for v in recalibration_tranche_values])
 #     an_cmdl = ' '.join([f'-an {v}' for v in recalibration_annotation_values])
-#     
+#
 #     mode = mode.upper()
 #     resources = None
 #     if mode == 'SNP':
@@ -700,20 +767,20 @@ def add_indels_variant_recalibrator_step(
 #           -resource:mills,known=false,training=true,truth=true,prior=12 {mills_resource_vcf.base} \\
 #           -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {axiom_poly_resource_vcf.base} \\
 #           -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf.base}""")
-#     
+#
 #     if output_model_file:
 #         '--output-model {j.model_file} \\'
-#     
+#
 #     if downsample_factor:
 #         downsample_opt = f'--sample-every-Nth-variant {downsample_factor}'
 #     else:
 #         downsample_opt = ''
-#     
-#     if 
-#     
+#
+#     if
+#
 #     j.command(
 #         f"""set -euo pipefail
-# 
+#
 #     gatk --java-options -Xms{mem_gb - 1}g \\
 #       VariantRecalibrator \\
 #       -V {sites_only_variant_filtered_vcf['vcf.gz']} \\
@@ -736,10 +803,10 @@ def add_indels_variant_recalibrator_step(
 #             j.indel_rscript_file,
 #             os.path.join(output_bucket, 'plot-indels-recal.Rscript'),
 #         )
-# 
+#
 #     j.command(
 #         f"""set -euo pipefail
-# 
+#
 #     gatk --java-options -Xms{mem_gb - 2}g \\
 #       VariantRecalibrator \\
 #       -V {sites_only_variant_filtered_vcf['vcf.gz']} \\
@@ -758,7 +825,7 @@ def add_indels_variant_recalibrator_step(
 #       -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
 #       -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base} \\
 #       --rscript-file {j.snp_rscript}
-# 
+#
 #       ln {j.snp_rscript}.pdf {j.snp_rscript_pdf}"""
 #     )
 #     if output_bucket:
@@ -766,7 +833,7 @@ def add_indels_variant_recalibrator_step(
 #             j.snp_rscript_pdf,
 #             os.path.join(output_bucket, 'recalibration-indels-features.pdf'),
 #         )
-# 
+#
 #     return j
 
 
