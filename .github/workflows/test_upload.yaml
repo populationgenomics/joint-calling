@@ -31,4 +31,4 @@ jobs:
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type:application/json" \
             -d '{"output": "gs://cpg-fewgenomes-temporary/upload-main", "dataset": "fewgenomes", "accessLevel": "test", "repo": "fewgenomes", "commit": "${{ github.sha }}", "cwd": null, "script": ["test/test_upload_processor.py], "description": "test-file", "wait": true}' \
-            https://server-a2pko7ameq-ts.a.run.app
+            https://server-a2pko7ameq-ts.a.run.app/
