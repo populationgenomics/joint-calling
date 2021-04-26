@@ -66,10 +66,7 @@ class TestUploadProcessor(unittest.TestCase):
             self.key,
         )
 
-        try:
-            batch.run()
-        except subprocess.CalledProcessError:
-            self.fail('Batch failed to run')
+        batch.run()
 
         # Check that the files have been moved to main
         for sample in sample_list:
@@ -94,10 +91,7 @@ class TestUploadProcessor(unittest.TestCase):
             self.key,
         )
 
-        try:
-            recovery_batch.run()
-        except subprocess.CalledProcessError:
-            self.fail('Batch failed to run')
+        recovery_batch.run()
 
         # Check that the files have been moved to main
         for sample in sample_list:
@@ -108,15 +102,17 @@ class TestUploadProcessor(unittest.TestCase):
         in the upload bucket"""
         sample_list = ['Sample8.gVCF', 'Sample9.gVCF']
         invalid_batch = hb.Batch(name='Invalid Batch')
-        with self.assertRaises(FileNotFoundError):
-            batch_move_files(
-                invalid_batch,
-                sample_list,
-                self.upload_prefix,
-                self.main_prefix,
-                self.docker_image,
-                self.key,
-            )
+        batch_move_files(
+            invalid_batch,
+            sample_list,
+            self.upload_prefix,
+            self.main_prefix,
+            self.docker_image,
+            self.key,
+        )
+
+        with self.assertRaises(subprocess.CalledProcessError):
+            invalid_batch.run()
 
     def test_partial_recovery(self):
         """Another partial recovery test case. In this scenario,
@@ -144,10 +140,7 @@ class TestUploadProcessor(unittest.TestCase):
             self.key,
         )
 
-        try:
-            partial_batch.run()
-        except subprocess.CalledProcessError:
-            self.fail('Batch failed to run')
+        partial_batch.run()
 
         for sample in sample_list:
             self.assertTrue(validate_move(self.upload_prefix, self.main_prefix, sample))

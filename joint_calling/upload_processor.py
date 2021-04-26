@@ -12,9 +12,7 @@
     - Source and destination bucket must exist
     - User must be authenticated with appropriate permissions """
 
-import errno
 import os
-import subprocess
 from typing import List, Optional
 import hailtop.batch as hb
 
@@ -67,24 +65,6 @@ def batch_move_files(
         previous_location = os.path.join('gs://', source_prefix, sample)
         new_location = os.path.join('gs://', destination_prefix, sample)
 
-        # Checks if the files exist at the source and destination
-        get_file_source = subprocess.run(
-            ['gsutil', '-q', 'stat', previous_location], check=False
-        )
-        get_file_destination = subprocess.run(
-            ['gsutil', '-q', 'stat', new_location], check=False
-        )
-
-        # In the case that the file is not found at the source
-        if get_file_source.returncode != 0:
-            if get_file_destination.returncode == 0:
-                # Valid - File has already been moved in a previous run.
-                # i.e. it exists at the destination and not the source.
-                continue
-
-            # Invalid - the file does not exist at either location
-            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), sample)
-
         j = batch.new_job(name=f'move {sample}')
 
         if docker_image is not None:
@@ -102,7 +82,12 @@ def batch_move_files(
                 'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
             )
 
-        j.command(f"gsutil mv '{previous_location}' '{new_location}'")
+        # Checks file doesn't already exist at the destination, then performs move.
+        j.command(
+            f"gsutil -q stat {new_location};\
+            if [ $? = 1 ];\
+            then gsutil mv '{previous_location}' '{new_location}'; fi"
+        )
         jobs.append(j)
 
     return jobs
