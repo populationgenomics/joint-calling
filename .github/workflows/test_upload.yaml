@@ -29,7 +29,7 @@ jobs:
       - name: "test upload processor"
         run: |
           TOKEN=$(gcloud auth print-identity-token)
-          URL=$(gcloud run services describe server-test --region australia-southeast1 --platform managed --format "value(status.url)")
+          URL=$(gcloud run services describe server-test --region australia-southeast1 --project analysis-runner --platform managed --format "value(status.url)")
           curl --fail --silent --show-error -X POST \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type:application/json" \
