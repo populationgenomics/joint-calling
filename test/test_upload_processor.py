@@ -7,6 +7,7 @@ import string
 import unittest
 import subprocess
 import os
+from datetime import datetime
 from typing import List
 import hailtop.batch as hb
 from joint_calling.upload_processor import batch_move_files
@@ -47,7 +48,8 @@ class TestUploadProcessor(unittest.TestCase):
 
         # Create random string of digits to label current test folder
         random_digits = ''.join(random.choice(string.digits) for i in range(5))
-        test_folder = 'test' + random_digits
+        timestamp = datetime.now().strftime('%d%m%Y_%H%M%S')
+        test_folder = 'test' + random_digits + '_' + timestamp
 
         self.upload_prefix = os.path.join(
             'cpg-fewgenomes-temporary/test-upload', test_folder
