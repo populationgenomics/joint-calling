@@ -21,10 +21,9 @@ BROAD_REF_BUCKET = 'gs://gcp-public-data--broad-references/hg38/v0'
 def make_vqsr_jobs(
     b: hb.Batch,
     combined_mt_path: str,
-    unpadded_intervals_path: str,
-    ref_fasta: str,
     gvcf_count: int,
     work_bucket: str,
+    callset_name: str,
     is_small_callset: bool,
     is_huge_callset: bool,
     excess_het_threshold: int,
@@ -33,6 +32,8 @@ def make_vqsr_jobs(
     snp_recalibration_tranche_values: List[float],
     snp_recalibration_annotation_values: List[float],
     skip_allele_specific_annotations: bool,
+    snp_filter_level: float,
+    indel_filter_level: float,
     depends_on: Optional[List[Job]],
 ) -> Job:
 
@@ -310,9 +311,7 @@ def make_vqsr_jobs(
             b,
             input_vcfs=recalibrated_vcfs,
             disk_size=huge_disk,
-            output_vcf_path=os.path.join(
-                output_bucket, callset_name + '-recalibrated.vcf.gz'
-            ),
+            output_vcf_path=os.path.join(work_bucket, callset_name + '-recalibrated.vcf.gz'),
         ).output_vcf
 
     else:
@@ -328,7 +327,7 @@ def make_vqsr_jobs(
             disk_size=small_disk,
             max_gaussians=snp_max_gaussians,
             use_allele_specific_annotations=not skip_allele_specific_annotations,
-            output_bucket=output_bucket,
+            output_bucket=work_bucket,
         )
         snps_recalibration = snps_recalibrator_job.recalibration
         snps_tranches = snps_recalibrator_job.tranches
@@ -357,7 +356,7 @@ def make_vqsr_jobs(
         input_vcf=final_gathered_vcf,
         ref_fasta=ref_fasta,
         dbsnp_vcf=dbsnp_vcf,
-        output_path=os.path.join(output_bucket, callset_name + '-eval.txt'),
+        output_path=os.path.join(work_bucket, callset_name + '-eval.txt'),
         disk_size=huge_disk,
     )
 
@@ -651,6 +650,124 @@ def add_indels_variant_recalibrator_step(
             os.path.join(output_bucket, 'plot-indels-recal.Rscript'),
         )
     return j
+
+
+# def add_recalibrator_step(
+#     b: hb.Batch,
+#     sites_only_variant_filtered_vcf: hb.ResourceGroup,
+#     recalibration_tranche_values: List[float],
+#     recalibration_annotation_values: List[str],
+#     mills_resource_vcf: hb.ResourceGroup,
+#     axiom_poly_resource_vcf: hb.ResourceGroup,
+#     dbsnp_resource_vcf: hb.ResourceGroup,
+#     hapmap_resource_vcf: hb.ResourceGroup,
+#     omni_resource_vcf: hb.ResourceGroup,
+#     one_thousand_genomes_resource_vcf: hb.ResourceGroup,
+#     use_allele_specific_annotations: bool,
+#     disk_size: int,
+#     output_bucket: str = None,
+#     max_gaussians: int = 4,
+#     job_name: str = '',
+#     mem_gb: int = None,
+#     mode: str = None,
+#     model_file: str = None,
+#     make_model: bool = None,
+#     downsample_factor: int = None,
+# ) -> Job:
+#     """
+#     """
+#     j = b.new_job(f'Recalibrator: {job_name}' if job_name else 'Recalibrator')
+#     j.image(utils.GATK_DOCKER)
+#     j.memory(f'{mem_gb}G')
+#     j.cpu(2)
+#     j.storage(f'{disk_size}G')
+# 
+#     j.declare_resource_group(recalibration={'index': '{root}.idx', 'base': '{root}'})
+# 
+#     tranche_cmdl = ' '.join([f'-tranche {v}' for v in recalibration_tranche_values])
+#     an_cmdl = ' '.join([f'-an {v}' for v in recalibration_annotation_values])
+#     
+#     mode = mode.upper()
+#     resources = None
+#     if mode == 'SNP':
+#         resources = (f"""\\
+#           -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
+#           -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
+#           -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
+#           -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base}""")
+#     elif mode == 'INDEL':
+#         resources = (f"""\\
+#           -resource:mills,known=false,training=true,truth=true,prior=12 {mills_resource_vcf.base} \\
+#           -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {axiom_poly_resource_vcf.base} \\
+#           -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf.base}""")
+#     
+#     if output_model_file:
+#         '--output-model {j.model_file} \\'
+#     
+#     if downsample_factor:
+#         downsample_opt = f'--sample-every-Nth-variant {downsample_factor}'
+#     else:
+#         downsample_opt = ''
+#     
+#     if 
+#     
+#     j.command(
+#         f"""set -euo pipefail
+# 
+#     gatk --java-options -Xms{mem_gb - 1}g \\
+#       VariantRecalibrator \\
+#       -V {sites_only_variant_filtered_vcf['vcf.gz']} \\
+#       -O {j.recalibration} \\
+#       --tranches-file {j.tranches} \\
+#       --trust-all-polymorphic \\
+#       {tranche_cmdl} \\
+#       {an_cmdl} \\
+#       -mode {mode} \\
+#       {'--use-allele-specific-annotations' if use_allele_specific_annotations else ''} \\
+#       f'{f'--input-model {model_file} --output-tranches-for-scatter' if model_file else ''} \\
+#       f'{f'--output-model {j.model_file}' if make_model else ''} \\
+#       f'{downsample_factor}' \\
+#       --max-gaussians {max_gaussians} \\
+#       f'{resources}' \\
+#       --rscript-file {j.rscript_file}"""
+#     )
+#     if output_bucket:
+#         b.write_output(
+#             j.indel_rscript_file,
+#             os.path.join(output_bucket, 'plot-indels-recal.Rscript'),
+#         )
+# 
+#     j.command(
+#         f"""set -euo pipefail
+# 
+#     gatk --java-options -Xms{mem_gb - 2}g \\
+#       VariantRecalibrator \\
+#       -V {sites_only_variant_filtered_vcf['vcf.gz']} \\
+#       -O {j.recalibration} \\
+#       --tranches-file {j.tranches} \\
+#       --trust-all-polymorphic \\
+#       {tranche_cmdl} \\
+#       {an_cmdl} \\
+#       -mode SNP \\
+#       {'--use-allele-specific-annotations' if use_allele_specific_annotations else ''} \\
+#       --sample-every-Nth-variant {downsample_factor} \\
+#       --output-model {j.model_file} \\
+#       --max-gaussians {max_gaussians} \\
+#       -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
+#       -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
+#       -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
+#       -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base} \\
+#       --rscript-file {j.snp_rscript}
+# 
+#       ln {j.snp_rscript}.pdf {j.snp_rscript_pdf}"""
+#     )
+#     if output_bucket:
+#         b.write_output(
+#             j.snp_rscript_pdf,
+#             os.path.join(output_bucket, 'recalibration-indels-features.pdf'),
+#         )
+# 
+#     return j
 
 
 def add_snps_variant_recalibrator_create_model_step(

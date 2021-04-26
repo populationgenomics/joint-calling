@@ -393,11 +393,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     #     b,
     #     combined_mt_path=combined_mt_path,
     #     gvcf_count=len(gvcfs),
-    #     work_bucket=output_bucket,
+    #     work_bucket=join(output_bucket, 'vqsr'),
+    #     callset_name=callset_name,
     #     is_small_callset=is_small_callset,
     #     is_huge_callset=is_huge_callset,
     #     depends_on=[combiner_job],
     #     skip_allele_specific_annotations=skip_allele_specific_annotations,
+    #     snp_filter_level=snp_filter_level,
+    #     indel_filter_level=indel_filter_level,
     # )
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
@@ -412,7 +415,7 @@ def add_reblock_gvcfs_step(
     required for recalibration
     """
     j = b.new_job('ReblocGVCFs')
-    j.image(GATK_DOCKER)
+    j.image(utils.GATK_DOCKER)
     mem_gb = 8
     j.memory(f'{mem_gb}G')
     j.storage(f'30G')
