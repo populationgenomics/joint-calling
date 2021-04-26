@@ -285,10 +285,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     """
     local_tmp_dir = utils.init_hail('variant_qc_random_forest', local_tmp_dir)
 
-    rf_json_path = join(work_bucket, 'rf/rf_runs.json')
-    logger.info(f'RF runs:')
+    rf_json_path = join(work_bucket, 'rf_runs.json')
     rf_runs = get_rf_runs(rf_json_path)
-    pretty_print_runs(rf_runs)
+    if rf_runs:
+        logger.info(f'RF runs:')
+        pretty_print_runs(rf_runs)
 
     # Annotate for random forest
     annotations_ht_path = join(
@@ -373,7 +374,7 @@ def train_model(
     fp_to_tp: Optional[float],
     max_depth: Optional[int],
     num_trees: Optional[int],
-    test_intervals: Union[str, List[str], None],
+    test_intervals: Optional[List[str]],
     vqsr_filters_split_ht_path: Optional[str],
 ) -> Tuple[hl.Table, str, pyspark.ml.PipelineModel]:
     """
@@ -548,7 +549,7 @@ def train_rf(
     no_transmitted_singletons: Optional[bool] = False,
     no_inbreeding_coeff: Optional[bool] = False,
     filter_centromere_telomere: Optional[bool] = False,
-    test_intervals: Union[str, List[str], None] = 'chr20',
+    test_intervals: Optional[List[str]] = None,
 ) -> Tuple[hl.Table, pyspark.ml.PipelineModel]:
     """
     Train random forest model using `train_rf_model`
@@ -586,13 +587,12 @@ def train_rf(
         if not no_transmitted_singletons:
             tp_expr = tp_expr | ht.transmitted_singleton
 
-    if test_intervals:
-        if isinstance(test_intervals, str):
-            test_intervals = [test_intervals]
-        test_intervals = [
-            hl.parse_locus_interval(x, reference_genome='GRCh38')
-            for x in test_intervals
-        ]
+    if test_intervals is None:
+        test_intervals = ['chr20']
+    test_intervals = [
+        hl.parse_locus_interval(x, reference_genome='GRCh38')
+        for x in test_intervals
+    ]
 
     ht = ht.annotate(tp=tp_expr, fp=fp_expr)
 
@@ -602,7 +602,7 @@ def train_rf(
     else:
         rf_ht = ht
 
-    rf_ht, rf_model = train_rf_model(
+    trained_rf_ht, rf_model = train_rf_model(
         rf_ht,
         rf_features=features,
         tp_expr=rf_ht.tp,
@@ -614,9 +614,8 @@ def train_rf(
             lambda interval: interval.contains(rf_ht.locus)
         ),
     )
-
     logger.info('Joining original RF Table with training information')
-    ht = ht.join(rf_ht, how='left')
+    ht = ht.join(trained_rf_ht, how='left')
 
     return ht, rf_model
 
