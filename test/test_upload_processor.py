@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """ This file tests the functions defined in upload_processor """
 
 import random
