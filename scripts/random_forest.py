@@ -431,7 +431,7 @@ def train_model(
             'filter_centromere_telomere': filter_centromere_telomere,
         },
         test_intervals=test_intervals if test_intervals else None,
-        features_importance=hl.eval(training_ht.features_importance),
+        features_importance=dict(hl.eval(training_ht.features_importance)),
         test_results=hl.eval(training_ht.test_results),
     )
     with hl.hadoop_open(rf_json_path, 'w') as f:

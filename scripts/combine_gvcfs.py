@@ -30,18 +30,6 @@ TARGET_RECORDS = 25_000
 
 @click.command()
 @click.version_option(_version.__version__)
-# @click.option(
-#     '--dataset', 'dataset', required=True,
-#     help='Dataset name'
-# )
-# @click.option(
-#     '--test', 'test', required=True, is_flag=True,
-#     help='Whether to use test or main bucket',
-# )
-# @click.option(
-#     '--dataset-version', 'dataset_version', required=True,
-#     help='Name or subfolder to find VCFs'
-# )
 @click.option('--bucket-with-vcfs', 'vcf_buckets', multiple=True)
 @click.option(
     '--skip-qc',
@@ -53,16 +41,6 @@ TARGET_RECORDS = 25_000
     'meta_csv_path',
     help='Previously prepared meta CSV path. Don\'t attempt to find GVCFs or QC CSV files.',
 )
-# @click.option(
-#     '--sample-map',
-#     'sample_map_csv_path',
-#     required=True,
-#     callback=get_validation_callback(ext='csv', must_exist=True),
-#     help='path to a CSV file with per-sample data, where the '
-#     'first line is a header. The only 2 required columns are `sample` '
-#     '(the sample name) and `gvcf` (path to sample GVCF file) '
-#     'in any order, possibly mixed with other columns.',
-# )
 @click.option(
     '--out-mt',
     'out_mt_path',
