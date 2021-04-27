@@ -165,7 +165,7 @@ def make_vqsr_jobs(
     axiom_poly_resource_vcf = b.read_input_group(
         base=axiom_poly_resource_vcf, index=axiom_poly_resource_vcf_index
     )
-    dbsnp_resource_vcf = b.read_input_group(base=dbsnp_vcf, index=dbsnp_vcf_index)
+    dbsnp_resource_vcf = dbsnp_vcf
 
     # Make a 2.5:1 interval number to samples in callset ratio interval list.
     # We allow overriding the behavior by specifying the desired number of vcfs
