@@ -135,7 +135,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     # TODO: merge with existing data
 
     input_samples_path = join(work_bucket, 'samples.csv')
-    combiner_ready_samples_path = join(work_bucket, 'samples.csv')
+    combiner_ready_samples_path = join(combiner_bucket, 'samples.csv')
     subset_gvcf_jobs = []
     if not overwrite and utils.file_exists(combiner_ready_samples_path):
         pass
