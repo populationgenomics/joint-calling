@@ -623,7 +623,6 @@ def train_rf(
     )
     logger.info('Joining original RF Table with training information')
     ht = ht.join(trained_rf_ht, how='left')
-    ht = ht.annotate(features=features)
     return ht, rf_model
 
 
