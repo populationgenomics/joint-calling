@@ -64,6 +64,13 @@ def run_cmd(cmd):
     help='Do not attempt to find QC CSV files. '
     'Get sample IDs from the GVCF file names.',
 )
+@click.option(
+    '--overwrite/--reuse',
+    'overwrite',
+    is_flag=True,
+    help='if an intermediate or a final file exists, skip running the code '
+    'that generates it.',
+)
 @click.option('--keep-scratch', 'keep_scratch', is_flag=True)
 def main(
     is_test,
@@ -74,6 +81,7 @@ def main(
     output_bucket_suffix,
     skip_qc,
     keep_scratch,
+    overwrite,
 ):
     """
     Runs the the joint-calling batch workflow script
@@ -91,6 +99,7 @@ def main(
         + ('--skip-qc ' if skip_qc else '')
         + ('--keep-scratch ' if keep_scratch else '')
         + f'--billing-project {callset_name} '
+        + f'{"--overwrite " if overwrite else ""}'
     )
 
 

@@ -54,7 +54,16 @@ $ analysis-runner \
 ```
 
 
-## Description
+## Overview
+
+1. Find inputs.
+
+Based on the specified `--dataset` and `--batch` arguments, Looks at `gs://cpg-<dataset>-main/gvcf/<batch-id>/` (or`gs://cpg-<dataset>-temporary/gvcf/<batch-id>/` if `--is-test`) to find GVCFs and a CSV file with QC metadata.
+
+1. Prepare a set of GVCFs.
+
+Runs 
+
 
 The pipeline consists of 3 scripts:
 
