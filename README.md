@@ -56,21 +56,21 @@ $ analysis-runner \
 
 ## Overview
 
-1. Find inputs.
-
-Based on the specified `--dataset` and `--batch` arguments, Looks at `gs://cpg-<dataset>-main/gvcf/<batch-id>/` (or`gs://cpg-<dataset>-temporary/gvcf/<batch-id>/` if `--is-test`) to find GVCFs and a CSV file with QC metadata.
+1. Find inputs. According to the specified `--dataset` and `--batch` arguments, look at `gs://cpg-<dataset>-main/gvcf/<batch-id>/` (or`gs://cpg-<dataset>-temporary/gvcf/<batch-id>/` if `--is-test`) to find GVCFs and a CSV file with QC metadata.
 
 1. Prepare a set of GVCFs.
-  - Runs GATK ReblockGVCFs to annotate with allele-specific VCF INFO fields required for recalibration (QUALapprox, VarDP, RAW_MQandDP)
-  - Subsets GVCF to non-alt chromosomes
+  - Run GATK ReblockGVCFs to annotate with allele-specific VCF INFO fields required for recalibration (QUALapprox, VarDP, RAW_MQandDP),
+  - Subset GVCF to non-alt chromosomes.
 
-1. Runs the GVCF combiner using `scripts/combine_gvcfs.py`. The script interatively merges GVCFs into a sparse Matrix Table using [Hail's vcf_combiner](https://hail.is/docs/0.2/experimental/vcf_combiner.html)
+1. Run the GVCF combiner using `scripts/combine_gvcfs.py`. The script interatively merges GVCFs into a sparse Matrix Table using [Hail's vcf_combiner](https://hail.is/docs/0.2/experimental/vcf_combiner.html).
 
-3. Runs `scripts/sample_qc` that performs sample-level QC using such information as sex, coverage and intra-sample variant numbers/distributions, and flags samples that do not pass the filters.
+3. Run `scripts/sample_qc` that performs sample-level QC, and generates a Table with filtered sample IDs, as well as a metadata Table with metrics that were used for filtering (coverage, sex, contamination, variant numbers/distributions, etc).
 
-4. `variant_qc` that exports variants into a VCF for an allele-specific VQSR, and imports back into a Matrix Table to apply variant-level filters.
+4. If `--run-rf` provided, use the random forest approach to perform variant QC: gather information for the random forest model, impute missing entries; select variants for training examples, train random forests model, test resulting model on pre-selected region, save training data with metadata describing random forest parameters used, and apply random forest model to the full variant set.
 
-The pipeline's structure, and the thresholds used are largely based on [gnomAD QC tools](https://github.com/broadinstitute/gnomad_qc), which is a collection of methods used to validate and prepare gnomAD releases. We explore gnomAD QC functions [in this document](docs/gnomad_qc.md). Good summaries of gnomAD QC pipeline can be found in gnomAD update blog posts:
+5. If `--run-vqsr` is specified, use the VQSR approach to perform variant QC: export the matrix table into a sites-only VCF for an allele-specific VQSR, split the VCF region-wise for parallel execution, run Gnarly Genotyper to perform "quick and dirty" joint genotyping, filter by ExcessHet, create and recalibration models for indels and SNPs separately, and evaluate the final VCF.
+
+The sample QC and random forest variant QC pipelines are largely based on [gnomAD QC tools](https://github.com/broadinstitute/gnomad_qc), which is a collection of methods used to validate and prepare gnomAD releases. We explore gnomAD QC functions [in this document](docs/gnomad_qc.md). Good summaries of gnomAD QC pipeline can be found in gnomAD update blog posts:
 
 * [https://macarthurlab.org/2017/02/27/the-genome-aggregation-database-gnomad](https://macarthurlab.org/2017/02/27/the-genome-aggregation-database-gnomad)
 * [https://macarthurlab.org/2018/10/17/gnomad-v2-1](https://macarthurlab.org/2018/10/17/gnomad-v2-1)
@@ -78,7 +78,8 @@ The pipeline's structure, and the thresholds used are largely based on [gnomAD Q
 * [https://gnomad.broadinstitute.org/blog/2020-10-gnomad-v3-1-new-content-methods-annotations-and-data-availability/#sample-and-variant-quality-control](https://gnomad.broadinstitute.org/blog/2020-10-gnomad-v3-1-new-content-methods-annotations-and-data-availability/#sample-and-variant-quality-control)
 * [https://blog.hail.is/whole-exome-and-whole-genome-sequencing-recommendations/](https://blog.hail.is/whole-exome-and-whole-genome-sequencing-recommendations/)
 
-QC pipeline outline:
+
+## Sample QC
 
 1. GVCFs are loaded into Hail with [experimental.run_combiner](https://hail.is/docs/0.2/experimental/vcf_combiner.html)
 
@@ -182,16 +183,6 @@ hailctl dataproc submit joint-calling-cluster \
   --out-ht        gs://cpg-fewgenomes-main/${STAMP2}/qc/sample-qc.ht \
   --local-tmp-dir ~/tmp/joint-calling/sample-qc/${STAMP2}/ \
   --hail-billing  fewgenomes
-
-# Variant QC
-hailctl dataproc submit cpg-qc-cluster \
-  --region australia-southeast1 \
-  --pyfiles libs/libs.zip \
-  scripts/variant_qc.py \
-  --mt      gs://cpg-fewgenomes-main/2021-03-09_05-07-11/50genomes.mt/ \
-  --bucket  gs://cpg-fewgenomes-test/vqsr-testing/ \
-  --local-tmp-dir ~/tmp/joint-calling/sample-qc/2021-03-09_05-07-11/ \
-  --hail-billing fewgenomes
 
 hailctl dataproc stop joint-calling-cluster --region australia-southeast1
 ```

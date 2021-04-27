@@ -312,10 +312,10 @@ def add_reblock_gvcfs_step(
     input_gvcf: hb.ResourceGroup,
 ) -> Job:
     """
-    Runs ReblockGVCFs to annotate with allele-specific VCF INFO fields
+    Runs ReblockGVCF to annotate with allele-specific VCF INFO fields
     required for recalibration
     """
-    j = b.new_job('ReblocGVCFs')
+    j = b.new_job('ReblockGVCF')
     j.image(utils.GATK_DOCKER)
     mem_gb = 8
     j.memory(f'{mem_gb}G')
