@@ -88,7 +88,7 @@ def main(
     """
     batches_cmdl = ' '.join([f'--batch {b}' for b in callset_batches])
     run_cmd(
-        'PYTHONPATH=$PWD/../joint-calling python ../joint-calling/workflows/batch_workflow.py '
+        'PYTHONPATH=$PWD/joint-calling python joint-calling/workflows/batch_workflow.py '
         + f'--callset {callset_name} '
         + f'--version {callset_version} '
         + ('--batch 0 ' if is_test else f'{batches_cmdl} ')
