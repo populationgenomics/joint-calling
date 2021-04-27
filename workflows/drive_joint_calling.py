@@ -42,7 +42,7 @@ def run_cmd(cmd):
 @click.option('--is-test', 'is_test', is_flag=True)
 @click.option('--callset', 'callset_name', type=str, required=True)
 @click.option('--version', 'callset_version', type=str, required=True)
-@click.option('--batch', 'callset_batches', type=str, multiple=True, required=True)
+@click.option('--batch', 'callset_batches', type=str, multiple=True)
 @click.option(
     '--from',
     'input_bucket_suffix',
