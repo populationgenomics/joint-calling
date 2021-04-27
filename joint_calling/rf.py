@@ -44,7 +44,7 @@ def make_rf_jobs(
         rf_anno_job = dataproc.hail_dataproc_job(
             b,
             f'scripts/run_python_script.py '
-            f'generate_qc_annotations.py --reuse '
+            f'generate_qc_annotations.py --overwrite '
             f'--split-multiallelic '
             f'--mt {combined_mt_path} '
             f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
@@ -67,7 +67,7 @@ def make_rf_jobs(
         rf_freq_data_job = dataproc.hail_dataproc_job(
             b,
             f'scripts/run_python_script.py '
-            f'generate_freq_data.py --reuse '
+            f'generate_freq_data.py --overwrite '
             f'--mt {combined_mt_path} '
             f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
             f'--meta-ht {meta_ht_path} '
@@ -86,7 +86,7 @@ def make_rf_jobs(
         rf_job = dataproc.hail_dataproc_job(
             b,
             f'scripts/run_python_script.py '
-            f'random_forest.py --reuse '
+            f'random_forest.py --overwrite '
             f'--info-ht {info_ht_path} '
             f'--freq-ht {freq_ht_path} '
             f'--allele-data-ht {allele_data_ht_path} '
@@ -102,7 +102,5 @@ def make_rf_jobs(
         )
     else:
         rf_job = b.new_job('RF: run')
-
-    # rf_result_ht_path
 
     return rf_job

@@ -71,11 +71,11 @@ TARGET_RECORDS = 25_000
     help='local directory for temporary files and Hail logs (must be local).',
 )
 @click.option(
-    '--reuse',
-    'reuse',
+    '--overwrite/--reuse',
+    'overwrite',
     is_flag=True,
-    help='if an intermediate or a final file exists, reuse it instead of '
-    'rerunning the code that generates it.',
+    help='if an intermediate or a final file exists, skip running the code '
+    'that generates it.',
 )
 @click.option(
     '--hail-billing',
@@ -90,7 +90,7 @@ def main(
     existing_mt_path: str,
     work_bucket: str,
     local_tmp_dir: str,
-    reuse: bool,  # pylint: disable=unused-argument
+    overwrite: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
 ):
     """
