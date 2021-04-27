@@ -24,14 +24,6 @@ git submodule init
 git submodule update
 ```
 
-1. Add a script that drives the workflow, as well as a helper script:
-
-```sh
-mkdir -p scripts
-cp workflows/drive_joint_calling.py scripts/
-cp workflows/run_python_script.py scripts/
-```
-
 1. Run the analysis runner:
 
 ```sh
@@ -41,7 +33,7 @@ $ analysis-runner \
     --output-dir "gs://cpg-tob-wgs-temporary/joint-calling-test" \
     --description "joint calling test" \
     --access-level test \
-    scripts/drive_joint_calling.py --is-test --callset tob-wgs
+    joint-calling/workflows/drive_joint_calling.py --is-test --callset tob-wgs
 
 # Standard access level:
 $ analysis-runner \
@@ -49,7 +41,7 @@ $ analysis-runner \
     --output-dir "gs://cpg-tob-wgs-temporary/joint-calling" \
     --description "joint calling prod" \
     --access-level standard \
-    scripts/drive_joint_calling.py --callset tob-wgs \
+    joint-calling/workflows/drive_joint_calling.py --callset tob-wgs \
         --version v0 --batch 0 --batch 1 --to temporary
 ```
 
