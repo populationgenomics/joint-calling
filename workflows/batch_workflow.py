@@ -138,7 +138,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     combiner_ready_samples_path = join(combiner_bucket, 'samples.csv')
     subset_gvcf_jobs = []
     if not overwrite and utils.file_exists(combiner_ready_samples_path):
-        pass
+        samples_df = pd.read_csv(combiner_ready_samples_path, sep='\t').set_index(
+            's', drop=False
+        )
+        samples_df = samples_df[pd.notnull(samples_df.s)]
     else:
         if not overwrite and utils.file_exists(input_samples_path):
             samples_df = pd.read_csv(input_samples_path, sep='\t').set_index(
@@ -230,6 +233,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             b,
             combined_mt_path=raw_combined_mt_path,
             work_bucket=join(work_bucket, 'vqsr'),
+            gvcf_count=len(samples_df),
             depends_on=[combiner_job],
         )
 

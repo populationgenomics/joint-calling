@@ -9,7 +9,6 @@ import logging
 import hailtop.batch as hb
 from hailtop.batch.job import Job
 from analysis_runner import dataproc
-import hail as hl
 
 from joint_calling import utils
 
@@ -23,6 +22,7 @@ BROAD_REF_BUCKET = 'gs://gcp-public-data--broad-references/hg38/v0'
 def make_vqsr_jobs(
     b: hb.Batch,
     combined_mt_path: str,
+    gvcf_count: int,
     work_bucket: str,
     depends_on: Optional[List[Job]],
     excess_het_threshold: float = 54.69,
@@ -37,6 +37,8 @@ def make_vqsr_jobs(
     """
     :param b: Batch object to add jobs to
     :param combined_mt_path: path to a Matrix Table combined with the Hail VCF combiner
+    :param gvcf_count: number of input samples. Can't read from combined_mt_path as it 
+        might not be yet genereated the point of Batch job submission
     :param work_bucket: bucket for intermediate files
     :param depends_on: job that the created jobs should only run after
     :param excess_het_threshold:
@@ -172,7 +174,6 @@ def make_vqsr_jobs(
     # to scatter over for testing / special requests.
 
     scatter_count_scale_factor = 0.15
-    gvcf_count = hl.read_matrix_table(combined_mt_path).count_cols()
     scatter_count = int(round(scatter_count_scale_factor * gvcf_count))
     scatter_count = max(scatter_count, 2)
 
