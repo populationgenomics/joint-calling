@@ -1,4 +1,5 @@
-# This workflow automatically tests the upload processor
+# This workflow is triggered when new changes are pushed.
+# It runs a series of automated tests for the upload processor.
 
 name: Test Upload Processor
 on: [push]
