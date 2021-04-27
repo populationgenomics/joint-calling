@@ -102,7 +102,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     """
     print('run_rf', run_rf)
     print('run_vqsr', run_vqsr)
-    
+
     if not dry_run:
         if not billing_project:
             raise click.BadParameter(
@@ -145,41 +145,41 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     # pylint: disable=unused-variable
     noalt_regions = b.read_input('gs://cpg-reference/hg38/v0/noalt.bed')
 
-    # reblocked_gvcf_paths = [
-    #     join(
-    #         hail_bucket,
-    #         'batch',
-    #         reuse_scratch_run_id,
-    #         str(job_num),
-    #         'output_gvcf.g.vcf.gz',
-    #     )
-    #     if reuse_scratch_run_id
-    #     else None
-    #     for job_num in (1, 1 + len(gvcfs))
-    # ]
-    # reblocked_gvcfs = [
-    #     b.read_input_group(
-    #         **{
-    #             'vcf.gz': output_gvcf_path,
-    #             'vcf.gz.tbi': output_gvcf_path + '.tbi',
-    #         }
-    #     )
-    #     if output_gvcf_path and utils.file_exists(output_gvcf_path)
-    #     else add_reblock_gvcfs_step(b, input_gvcf).output_gvcf
-    #     for output_gvcf_path, input_gvcf in zip(reblocked_gvcf_paths, gvcfs)
-    # ]
+    reblocked_gvcf_paths = [
+        join(
+            hail_bucket,
+            'batch',
+            reuse_scratch_run_id,
+            str(job_num),
+            'output_gvcf.g.vcf.gz',
+        )
+        if reuse_scratch_run_id
+        else None
+        for job_num in (1, 1 + len(gvcfs))
+    ]
+    reblocked_gvcfs = [
+        b.read_input_group(
+            **{
+                'vcf.gz': output_gvcf_path,
+                'vcf.gz.tbi': output_gvcf_path + '.tbi',
+            }
+        )
+        if output_gvcf_path and utils.file_exists(output_gvcf_path)
+        else add_reblock_gvcfs_step(b, input_gvcf).output_gvcf
+        for output_gvcf_path, input_gvcf in zip(reblocked_gvcf_paths, gvcfs)
+    ]
 
     combiner_bucket = os.path.join(work_bucket, 'combiner')
     combiner_gvcf_bucket = os.path.join(work_bucket, 'combiner', 'gvcfs')
-    # subset_gvcf_jobs = [
-    #     add_subset_noalt_step(
-    #         b,
-    #         input_gvcf=gvcf,
-    #         output_gvcf_path=join(combiner_gvcf_bucket, f'{sample}.g.vcf.gz'),
-    #         noalt_regions=noalt_regions,
-    #     )
-    #     for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)
-    # ]
+    subset_gvcf_jobs = [
+        add_subset_noalt_step(
+            b,
+            input_gvcf=gvcf,
+            output_gvcf_path=join(combiner_gvcf_bucket, f'{sample}.g.vcf.gz'),
+            noalt_regions=noalt_regions,
+        )
+        for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)
+    ]
     for sn in samples_df.s:
         samples_df.loc[sn, ['gvcf']] = join(combiner_gvcf_bucket, sn + '.g.vcf.gz')
     samples_df.to_csv(samples_path, index=False, sep='\t', na_rep='NA')
@@ -197,7 +197,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=10,
-            # depends_on=subset_gvcf_jobs,
+            depends_on=subset_gvcf_jobs,
             job_name='Combine GVCFs',
         )
     else:
