@@ -59,9 +59,7 @@ def batch_move_files(
         " """
 
     jobs = []
-
     for sample in files:
-
         previous_location = os.path.join('gs://', source_prefix, sample)
         new_location = os.path.join('gs://', destination_prefix, sample)
 
@@ -84,8 +82,8 @@ def batch_move_files(
 
         # Checks file doesn't already exist at the destination, then performs move.
         j.command(
-            f'gsutil -q stat "{new_location}"\
-            || gsutil mv "{previous_location}" "{new_location}"'
+            f'gsutil -q stat "{new_location}" || '
+            f'gsutil mv "{previous_location}" "{new_location}"'
         )
         jobs.append(j)
 
