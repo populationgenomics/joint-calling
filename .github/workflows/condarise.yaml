@@ -45,7 +45,7 @@ jobs:
         run: |
           KEEP=8  # Keep 8 latest versions
           anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
-          show cpg/${{ package }} 2>&1 \
+          show cpg/${{ env.package }} 2>&1 \
           | grep "^   +" | head -n-${KEEP} | sed 's#   \+ ##' \
           | xargs -I '{}' -L1 echo anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
           remove -f cpg/${{ package }}/{}

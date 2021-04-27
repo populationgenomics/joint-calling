@@ -7,10 +7,8 @@ This script takes a path to a matrix table, and then:
  - Collect the results
 """
 
-import os
 import logging
 import click
-
 import hail as hl
 
 from joint_calling import _version
@@ -31,20 +29,21 @@ logger.setLevel(logging.INFO)
     '--mt',
     'mt_path',
     required=True,
-    callback=get_validation_callback(
-        ext='mt', must_exist=True, accompanying_metadata_suffix='.metadata.ht'
-    ),
-    help='path to the input MatrixTable. Must have an `.mt` extension',
+    callback=get_validation_callback(ext='mt', must_exist=True),
+    help='path to the input MatrixTable',
 )
-@click.option('--bucket', 'bucket', required=True, help='path to write output.')
+@click.option(
+    '-o',
+    'output_path',
+    required=True,
+)
 @click.option(
     '--local-tmp-dir',
     'local_tmp_dir',
-    required=True,
     help='local directory for temporary files and Hail logs (must be local).',
 )
 @click.option(
-    '--overwrite',
+    '--overwrite/--reuse',
     'overwrite',
     is_flag=True,
     help='if an intermediate or a final file exists, skip running the code '
@@ -53,7 +52,6 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--hail-billing',
     'hail_billing',
-    required=True,
     help='Hail billing account ID.',
 )
 @click.option(
@@ -64,7 +62,7 @@ logger.setLevel(logging.INFO)
 )
 def main(
     mt_path: str,
-    bucket: str,
+    output_path: str,
     local_tmp_dir: str,
     overwrite: bool,
     hail_billing: str,  # pylint: disable=unused-argument
@@ -73,13 +71,11 @@ def main(
     """
     Expects hail service to already be initialised
     """
-
     init_hail('variant_qc', local_tmp_dir)
 
     logger.info(f'Loading matrix table from "{mt_path}"')
     mt = hl.read_matrix_table(mt_path).key_rows_by('locus', 'alleles')
 
-    output_path = os.path.join(bucket, 'sites.vcf.bgz')
     if file_exists(output_path):
         if overwrite:
             logger.info(f'Output file {output_path} exists and will be overwritten')
@@ -88,9 +84,7 @@ def main(
                 f'Output file {output_path} exists, use --overwrite to overwrite'
             )
             return
-    output_path = export_sites_only_vcf(
-        mt=mt, output_path=output_path, partitions=partitions
-    )
+    export_sites_only_vcf(mt=mt, output_path=output_path, partitions=partitions)
 
 
 def export_sites_only_vcf(mt: hl.MatrixTable, output_path: str, partitions: int = 5000):
@@ -105,7 +99,7 @@ def export_sites_only_vcf(mt: hl.MatrixTable, output_path: str, partitions: int 
     logger.info(
         f"Exporting sites-only VCF to '{output_path}' to run in the VQSR pipeline"
     )
-    hl.export_vcf(final_mt, output_path, tabix=True)
+    hl.export_vcf(final_mt, output_path)
     logger.info('Successfully exported sites-only VCF')
 
     return output_path

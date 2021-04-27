@@ -1,32 +1,175 @@
 """Utility functions for the cpg-qc module"""
 
 import os
+import subprocess
+import tempfile
+import logging
 import sys
 import time
 import hashlib
-from os.path import isdir, isfile, exists
-from typing import Any, Callable
+from os.path import isdir, isfile, exists, join, basename
+from typing import Any, Callable, List
+import shutil
 
+import pandas as pd
 import hail as hl
 import click
 from google.cloud import storage
+from joint_calling import _version
+
+
+logger = logging.getLogger('joint-calling')
+logger.setLevel('INFO')
 
 
 DEFAULT_REF = 'GRCh38'
 
 
-def init_hail(name: str, local_tmp_dir: str):
+DATAPROC_PACKAGES = [
+    'joint-calling',
+    'click',
+    'cpg-gnomad',
+    'google',
+    'slackclient',
+    'fsspec',
+    'sklearn',
+    'gcloud',
+]
+
+
+GATK_VERSION = '4.2.0.0'
+GATK_DOCKER = f'us.gcr.io/broad-gatk/gatk:{GATK_VERSION}'
+# GnarlyGenotyper is in Beta and crashes with NullPointerException when using the
+# official GATK docker, that's why using a separate image for it:
+GNARLY_DOCKER = 'gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K'
+DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
+
+
+def init_hail(name: str, local_tmp_dir: str = None):
     """
     Initialize Hail and set up the directory for logs
     :param name: name to prefix the log file
     :param local_tmp_dir: local directory to write Hail logs
     :return:
     """
+    if not local_tmp_dir:
+        local_tmp_dir = tempfile.mkdtemp()
+
     timestamp = time.strftime('%Y%m%d-%H%M')
     hl_log = os.path.join(
         safe_mkdir(os.path.join(local_tmp_dir, 'log')), f'{name}-{timestamp}.log'
     )
     hl.init(default_reference=DEFAULT_REF, log=hl_log)
+    logger.info(f'Running joint-calling version {_version.__version__}')
+    return local_tmp_dir
+
+
+def find_inputs(
+    input_buckets: List[str],
+    skip_qc: bool = False,
+) -> pd.DataFrame:  # pylint disable=too-many-branches
+    """
+    Read the inputs assuming a standard CPG storage structure.
+    :param input_buckets: buckets to find GVCFs and CSV metadata files.
+    :param skip_qc: don't attempt to find QC CSV files
+    :return: a dataframe with the following structure:
+        s (key)
+        population
+        gvcf
+        freemix
+        pct_chimeras
+        duplication
+        median_insert_size
+        mean_coverage
+    """
+    gvcf_paths: List[str] = []
+    for ib in input_buckets:
+        cmd = f'gsutil ls \'{ib}/*.g.vcf.gz\''
+        gvcf_paths.extend(
+            line.strip()
+            for line in subprocess.check_output(cmd, shell=True).decode().split()
+        )
+
+    local_tmp_dir = tempfile.mkdtemp()
+    if not skip_qc:
+        qc_csvs: List[str] = []
+        for ib in input_buckets:
+            cmd = f'gsutil ls \'{ib}/*.csv\''
+            qc_csvs.extend(
+                line.strip()
+                for line in subprocess.check_output(cmd, shell=True).decode().split()
+            )
+
+        df: pd.DataFrame = None
+        # sample.id,sample.sample_name,sample.flowcell_lane,sample.library_id,sample.platform,sample.centre,sample.reference_genome,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
+        # 613,TOB1529,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_H04,KCCG,hg38,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
+        # 609,TOB1653,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_F03,KCCG,hg38,0.0060100100,F(-1),0.024802,0.165634,452.0,33.0
+        # 604,TOB1764,ILLUMINA,HVTV7DSXY.1-2-3-4,LP9000037-NTP_B02,KCCG,hg38,0.0078874400,F(-1),0.01684,0.116911,413.0,43.0
+        # 633,TOB1532,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_C05,KCCG,hg38,0.0121946000,F(-1),0.024425,0.151094,453.0,37.0
+        columns = {
+            'sample.sample_name': 's',
+            'raw_data.FREEMIX': 'freemix',
+            'raw_data.PCT_CHIMERAS': 'pct_chimeras',
+            'raw_data.PERCENT_DUPLICATION': 'duplication',
+            'raw_data.MEDIAN_INSERT_SIZE': 'median_insert_size',
+            'raw_data.MEDIAN_COVERAGE': 'mean_coverage',
+        }
+        for qc_csv in qc_csvs:
+            local_qc_csv_path = join(local_tmp_dir, basename(qc_csv))
+            subprocess.run(
+                f'gsutil cp {qc_csv} {local_qc_csv_path}', check=False, shell=True
+            )
+            single_df = pd.read_csv(local_qc_csv_path)
+            single_df = single_df.rename(columns=columns)[columns.values()]
+            single_df['population'] = 'EUR'
+            single_df['gvcf'] = ''
+            single_df = single_df.set_index('s', drop=False)
+            df = (
+                single_df
+                if df is None
+                else (pd.concat([df, single_df], ignore_index=False).drop_duplicates())
+            )
+        sample_names = list(df['s'])
+    else:
+        sample_names = [basename(gp).replace('.g.vcf.gz', '') for gp in gvcf_paths]
+        df = pd.DataFrame(
+            data=dict(
+                s=sample_names,
+                population='EUR',
+                gvcf=gvcf_paths,
+                freemix=pd.NA,
+                pct_chimeras=pd.NA,
+                duplication=pd.NA,
+                median_insert_size=pd.NA,
+                mean_coverage=pd.NA,
+            )
+        ).set_index('s', drop=False)
+
+    shutil.rmtree(local_tmp_dir)
+
+    # Checking 1-to-1 match of sample names to GVCFs
+    for sn in sample_names:
+        matching_gvcfs = [gp for gp in gvcf_paths if sn in gp]
+        if len(matching_gvcfs) > 1:
+            logging.warning(
+                f'Multiple GVCFs found for the sample {sn}:' f'{matching_gvcfs}'
+            )
+        elif len(matching_gvcfs) == 0:
+            logging.warning(f'No GVCFs found for the sample {sn}')
+
+    # Checking 1-to-1 match of GVCFs to sample names, and fillign up a dict
+    for gp in gvcf_paths:
+        matching_sn = [sn for sn in sample_names if sn in gp]
+        if len(matching_sn) > 1:
+            logging.warning(
+                f'Multiple samples found for the GVCF {gp}:' f'{matching_sn}'
+            )
+        elif len(matching_sn) == 0:
+            logging.warning(f'No samples found for the GVCF {gp}')
+        else:
+            df.loc[matching_sn[0], ['gvcf']] = gp
+    df = df[df.gvcf.notnull()]
+    return df
 
 
 def get_validation_callback(
@@ -149,3 +292,87 @@ def safe_mkdir(dirpath: str, descriptive_name: str = '') -> str:
             num_tries += 1
             time.sleep(2)
     return dirpath
+
+
+def get_mt(
+    mt_path: str,
+    split: bool = False,
+    hard_filtered_samples_to_remove_ht: hl.Table = None,
+    meta_ht: hl.Table = None,
+    add_meta: bool = False,
+    release_only: bool = False,
+) -> hl.MatrixTable:
+    """
+    Wrapper function to get data with desired filtering and metadata annotations
+    :param mt_path: path to the MatrixTable ("sparse_unsplit.repartitioned.mt")
+    :param split: split multiallelics - Note: this will perform a split on the MT
+        rather than grab an already split MT
+    :param hard_filtered_samples_to_remove_ht: a Table with samples to remove
+        (only relevant after sample QC that produces a table with samples failed
+        filtering)
+    :param meta_ht: a Table with meta-information generated by sample QC
+    :param add_meta: whether to add metadata to MT in 'meta' column
+    :param release_only: whether to filter the MT to only samples available for
+        release (can only be used if metadata is present)
+    :return: MatrixTable with chosen annotations and filters
+    """
+    mt = hl.read_matrix_table(mt_path)
+
+    # keying by locus and allele
+    mt = hl.MatrixTable(
+        hl.ir.MatrixKeyRowsBy(
+            mt._mir,  # pylint: disable=protected-access
+            ['locus', 'alleles'],
+            is_sorted=True,
+        )  # Prevents hail from running sort on genotype MT which is already sorted by a unique locus
+    )
+
+    if hard_filtered_samples_to_remove_ht is not None:
+        mt = mt.filter_cols(
+            hl.is_missing(hard_filtered_samples_to_remove_ht[mt.col_key])
+        )
+
+    if add_meta:
+        assert meta_ht is not None
+        mt = mt.annotate_cols(meta=meta_ht[mt.col_key])
+
+        if release_only:
+            mt = mt.filter_cols(mt.meta.release)
+
+    elif release_only:
+        assert meta_ht is not None
+        mt = mt.filter_cols(meta_ht[mt.col_key].release)
+
+    if split:
+        mt = mt.annotate_rows(
+            n_unsplit_alleles=hl.len(mt.alleles),
+            mixed_site=(hl.len(mt.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(mt.alleles[0], a), mt.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:]),
+        )
+        mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+
+    return mt
+
+
+def get_vqsr_filters_path(
+    work_bucket: str,
+    model_id: str,
+    split: bool = True,
+    finalized: bool = False,
+) -> str:
+    """
+    Gets the specified VQSR filtering annotation resource.
+    :param work_bucket: bucket
+    :param model_id: VQSR filtering model id
+    :param split: Split or multi-allelic version of the filtering file
+    :param finalized: Whether to return the raw VQSR table or the finalized VQSR table representing determined cutoffs
+    :return: VQSR filtering annotation file path
+    """
+    return join(
+        work_bucket,
+        f'filtering/{model_id}'
+        f'{".finalized" if finalized else ""}'
+        f'{".split" if split else ""}'
+        f'.ht',
+    )

@@ -14,3 +14,4 @@ dependencies:
   - google-cloud-sdk
   - google-cloud-storage
   - gnomad
+  - analysis-runner
