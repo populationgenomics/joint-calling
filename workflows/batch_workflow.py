@@ -120,7 +120,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     base_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/joint_vcf'
     output_bucket = join(base_bucket, callset_version)
     work_bucket = join(output_bucket, 'work')
-    hail_bucket = join(output_bucket, 'hail')
+    hail_bucket = os.environ.get('HAIL_BUCKET') or join(output_bucket, 'hail')
     combiner_bucket = join(work_bucket, 'combiner')
     raw_combined_mt_path = join(output_bucket, 'raw', 'genomes.mt')
     # pylint: disable=unused-variable
@@ -260,7 +260,7 @@ def add_prep_gvcfs_for_combiner_steps(
     :param combiner_bucket:
     :return:
     """
-    reblocked_gvcf_paths = [
+    found_reblocked_gvcf_paths = [
         join(
             hail_bucket,
             'batch',
@@ -270,18 +270,18 @@ def add_prep_gvcfs_for_combiner_steps(
         )
         if reuse_scratch_run_id
         else None
-        for job_num in (1, 1 + len(gvcfs))
+        for job_num in range(1, 1 + len(gvcfs))
     ]
     reblocked_gvcfs = [
         b.read_input_group(
             **{
-                'vcf.gz': output_gvcf_path,
-                'vcf.gz.tbi': output_gvcf_path + '.tbi',
+                'vcf.gz': found_gvcf_path,
+                'vcf.gz.tbi': found_gvcf_path + '.tbi',
             }
         )
-        if output_gvcf_path and utils.file_exists(output_gvcf_path)
+        if (found_gvcf_path and utils.file_exists(found_gvcf_path))
         else add_reblock_gvcfs_step(b, input_gvcf).output_gvcf
-        for output_gvcf_path, input_gvcf in zip(reblocked_gvcf_paths, gvcfs)
+        for found_gvcf_path, input_gvcf in zip(found_reblocked_gvcf_paths, gvcfs)
     ]
 
     noalt_regions = b.read_input('gs://cpg-reference/hg38/v0/noalt.bed')
