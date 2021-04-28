@@ -1,31 +1,49 @@
 #!/usr/bin/env python
 
 """
-Drive the joint calling workflow.
+To run the batch_workflow.py with the analysis runner. Assuming 
+the joint-calling repositroy is a submodule of the dataset repository.
 
-Use with analysis runner. Copy the script into the scripts folder of the analysis
-repository (e.g. tob-wgs), and run:
-
-(test)
+# Test access level - reads from `test`, writes to `temporary`:
 $ analysis-runner \
     --dataset tob-wgs \
     --output-dir "gs://cpg-tob-wgs-temporary/joint-calling-test" \
     --description "joint calling test" \
     --access-level test \
-    scripts/drive_joint_calling.py --is-test --callset tob-wgs
+    joint-calling/workflows/drive_joint_calling.py \
+    --access-level test \
+    --callset tob-wgs
 
-(prod)
+# Standard access level - reads from `main`, writes to `temporary`:
 $ analysis-runner \
     --dataset tob-wgs \
     --output-dir "gs://cpg-tob-wgs-temporary/joint-calling" \
-    --description "joint calling prod" \
+    --description "joint calling standard" \
     --access-level standard \
-    scripts/drive_joint_calling.py --callset tob-wgs \
-        --version v0 --batch 0 --batch 1 --to temporary
+    joint-calling/workflows/drive_joint_calling.py \
+    --access-level standard \
+    --callset tob-wgs \
+    --version v0 --batch 0 --batch 1
+
+# Full access level - reads from `main`, writes matrix tables to `main`, 
+# the rest to `temporary`:
+$ analysis-runner \
+    --dataset tob-wgs \
+    --output-dir "gs://cpg-tob-wgs-main/joint-calling" \
+    --description "joint calling full" \
+    --access-level full \
+    joint-calling/workflows/drive_joint_calling.py \
+    --access-level full \
+    --callset tob-wgs \
+    --version v0 --batch 0 --batch 1
 """
 
 import subprocess
 import click
+import logging
+
+logger = logging.getLogger('combine_gvcfs')
+logger.setLevel('INFO')
 
 
 def run_cmd(cmd):
@@ -39,7 +57,7 @@ def run_cmd(cmd):
 
 
 @click.command()
-@click.option('--is-test', 'is_test', is_flag=True)
+@click.option('--access-level', 'access_level', type=click.Choice(['test', 'standard', 'full']))
 @click.option('--callset', 'callset_name', type=str, required=True)
 @click.option('--version', 'callset_version', type=str, required=True)
 @click.option('--batch', 'callset_batches', type=str, multiple=True)
@@ -53,9 +71,9 @@ def run_cmd(cmd):
 @click.option(
     '--to',
     'output_bucket_suffix',
-    type=click.Choice(['analysis', 'temporary']),
+    type=click.Choice(['main', 'temporary']),
     default='temporary',
-    help='The bucket type to write to (default: temporary)',
+    help='The bucket type to write matrix tables to (default: temporary)',
 )
 @click.option(
     '--skip-qc',
@@ -73,7 +91,7 @@ def run_cmd(cmd):
 )
 @click.option('--keep-scratch', 'keep_scratch', is_flag=True)
 def main(
-    is_test,
+    access_level,
     callset_name,
     callset_version,
     callset_batches,
@@ -86,12 +104,19 @@ def main(
     """
     Runs the the joint-calling batch workflow script
     """
-    batches_cmdl = ' '.join([f'--batch {b}' for b in callset_batches])
+    if not callset_batches:
+        if access_level == 'test':
+            callset_batches = ['0']
+        else:
+            raise click.BadParameter(
+                'Please specify batch numbers to process with --batch'
+            )
+    
     run_cmd(
         'PYTHONPATH=$PWD/joint-calling python joint-calling/workflows/batch_workflow.py '
         + f'--callset {callset_name} '
         + f'--version {callset_version} '
-        + ('--batch 0 ' if is_test else f'{batches_cmdl} ')
+        + ' '.join([f'--batch {b}' for b in callset_batches])
         + '--from '
         + ('test ' if is_test else f'{input_bucket_suffix} ')
         + '--to '
