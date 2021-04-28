@@ -50,6 +50,6 @@
 SCRIPTPATH="$(cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P)"
 REPOPATH="$(dirname "$SCRIPTPATH")"
 
-PYTHONPATH=$REPOPATH/joint_calling \
+PYTHONPATH=$REPOPATH \
 PATH=${REPOPATH}/scripts:$PATH \
 python ${REPOPATH}/workflows/batch_workflow.py $@
