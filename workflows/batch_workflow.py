@@ -49,7 +49,7 @@ logger.setLevel('INFO')
 @click.command()
 @click.option('--callset', 'callset_name', type=str, required=True)
 @click.option('--version', 'callset_version', type=str, required=True)
-@click.option('--batch', 'callset_batches', type=str, multiple=True, required=True)
+@click.option('--batch', 'callset_batches', type=str, multiple=True)
 @click.option(
     '--access-level', 'access_level', type=click.Choice(['test', 'standard', 'full'])
 )
@@ -115,8 +115,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     logger.info(f'Enable random forest: {run_rf}')
     logger.info(f'Enable VQSR: {run_vqsr}')
 
-    if not dry_run:
-        billing_project = os.getenv('HAIL_BILLING_PROJECT') or callset_name
+    billing_project = os.getenv('HAIL_BILLING_PROJECT') or callset_name
 
     if not mt_output_bucket_suffix:
         if access_level == 'full':
@@ -135,6 +134,15 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             input_bucket_suffix = 'main'
         else:
             input_bucket_suffix = 'test'
+
+    if not callset_batches:
+        if access_level == 'test':
+            callset_batches = ['0']
+        else:
+            raise click.BadParameter(
+                'Please, specify batch numbers with --batch '
+                '(can put multiple times, e.g. --batch 0 --batch 1)'
+            )
 
     mt_output_bucket = f'gs://cpg-{callset_name}-{mt_output_bucket_suffix}/joint_vcf'
     raw_combined_mt_path = join(mt_output_bucket, 'raw', 'genomes.mt')
