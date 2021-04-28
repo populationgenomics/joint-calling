@@ -25,6 +25,7 @@ def make_vqsr_jobs(
     gvcf_count: int,
     work_bucket: str,
     depends_on: Optional[List[Job]],
+    scripts_dir: str,
     excess_het_threshold: float = 54.69,
     indel_recalibration_tranche_values: List[float] = None,
     indel_recalibration_annotation_values: List[str] = None,
@@ -37,7 +38,7 @@ def make_vqsr_jobs(
     """
     :param b: Batch object to add jobs to
     :param combined_mt_path: path to a Matrix Table combined with the Hail VCF combiner
-    :param gvcf_count: number of input samples. Can't read from combined_mt_path as it 
+    :param gvcf_count: number of input samples. Can't read from combined_mt_path as it
         might not be yet genereated the point of Batch job submission
     :param work_bucket: bucket for intermediate files
     :param depends_on: job that the created jobs should only run after
@@ -193,8 +194,7 @@ def make_vqsr_jobs(
     if not utils.file_exists(combined_vcf_path):
         mt_to_vcf_job = dataproc.hail_dataproc_job(
             b,
-            f'scripts/run_python_script.py '
-            f'mt_to_vcf.py --overwrite '
+            f'{scripts_dir}/mt_to_vcf.py --overwrite '
             f'--mt {combined_mt_path} '
             f'-o {combined_vcf_path} ',
             max_age='8h',
