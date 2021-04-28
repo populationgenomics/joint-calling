@@ -26,7 +26,6 @@ DEFAULT_REF = 'GRCh38'
 
 
 DATAPROC_PACKAGES = [
-    'joint-calling',
     'click',
     'cpg-gnomad',
     'google',

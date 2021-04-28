@@ -27,22 +27,38 @@ git submodule update
 1. Run the analysis runner:
 
 ```sh
-# Test access level:
+# Test access level - reads from `test`, writes to `temporary`:
 $ analysis-runner \
     --dataset tob-wgs \
     --output-dir "gs://cpg-tob-wgs-temporary/joint-calling-test" \
     --description "joint calling test" \
     --access-level test \
-    joint-calling/workflows/drive_joint_calling.py --is-test --callset tob-wgs
+    joint-calling/workflows/joint_calling.sh \
+    --access-level test \
+    --callset tob-wgs
 
-# Standard access level:
+# Standard access level - reads from `main`, writes to `temporary`:
 $ analysis-runner \
     --dataset tob-wgs \
     --output-dir "gs://cpg-tob-wgs-temporary/joint-calling" \
-    --description "joint calling prod" \
+    --description "joint calling standard" \
     --access-level standard \
-    joint-calling/workflows/drive_joint_calling.py --callset tob-wgs \
-        --version v0 --batch 0 --batch 1 --to temporary
+    joint-calling/workflows/joint_calling.sh \
+    --access-level standard \
+    --callset tob-wgs \
+    --version v0 --batch 0 --batch 1
+
+# Full access level - reads from `main`, writes matrix tables to `main`,
+# the rest to `temporary`:
+$ analysis-runner \
+    --dataset tob-wgs \
+    --output-dir "gs://cpg-tob-wgs-main/joint-calling" \
+    --description "joint calling full" \
+    --access-level full \
+    joint-calling/workflows/joint_calling.sh \
+    --access-level full \
+    --callset tob-wgs \
+    --version v0 --batch 0 --batch 1
 ```
 
 

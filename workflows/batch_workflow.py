@@ -1,32 +1,31 @@
 """
 Hail Batch workflow to perform joint calling, sample QC, and variant QC with VQSR and 
 random forest methods on a WGS germline callset.
+
 1. For the sample QC and the random forest variant QC, mostly re-implementation of 
 https://github.com/broadinstitute/gnomad_qc
 2. For VQSR, compilation from the following 2 WDL workflows:
-a. hail-ukbb-200k-callset/GenotypeAndFilter.AS.wdl
-b. The Broad VQSR workflow:
-   https://github.com/broadinstitute/warp/blob/develop/pipelines/broad/dna_seq/germline/joint_genotyping/JointGenotyping.wdl
-   documented here:
-   https://gatk.broadinstitute.org/hc/en-us/articles/360035531112--How-to-Filter-variants-either-with-VQSR-or-by-hard-filtering
+ a. hail-ukbb-200k-callset/GenotypeAndFilter.AS.wdl
+ b. The Broad VQSR workflow:
+    https://github.com/broadinstitute/warp/blob/develop/pipelines/broad/dna_seq/germline/joint_genotyping/JointGenotyping.wdl
+    documented here:
+    https://gatk.broadinstitute.org/hc/en-us/articles/360035531112--How-to-Filter-variants-either-with-VQSR-or-by-hard-filtering
 Translated from WDL with a help of Janis:
 https://github.com/PMCC-BioinformaticsCore/janis
 
 Output
-* The output of sample QC is a CSV file:
-`<output_bucket>/meta.tsv`
-* The output of VQSR is a VCF file <output_bucket>/<callset>-recalibrated.vcf.gz,
-as well as a QC file <output_bucket>/<callset>-eval.txt
-and R scripts to plot VQSR models: <output_bucket>/plot-snps-recal.Rscript
-and <output_bucket>/plot-indels-recal.Rscript
+ * The output of sample QC is a CSV file:
+ `<output_bucket>/meta.tsv`
+ * The output of VQSR is a VCF file <output_bucket>/<callset>-recalibrated.vcf.gz,
+   as well as a QC file <output_bucket>/<callset>-eval.txt
+   and R scripts to plot VQSR models: <output_bucket>/plot-snps-recal.Rscript
+   and <output_bucket>/plot-indels-recal.Rscript
 
-The workflow is parametrised by the dataset name, batch names and the output version.
-$ python scripts/batch_workflow.py --callset fewgenomes \
-     --version v0 --batch 0 --batch 1 --billing-project test --skip-qc
-Will read the inputs from:
-gs://cpg-fewgenomes-test/gvcf/batch0/*.g.vcf.gz
-And write into the following output bucket:
-gs://cpg-fewgenomes-temporary/joint_vcf/v0/work/combiner
+The workflow is parametrised by the access level, the dataset name, 
+batch names and the output version.
+
+It must be only run with the CPG analysis-runner:
+https://github.com/populationgenomics/analysis-runner (see helper script `joint_calling.sh` for analysis-runner submissions)
 """
 
 import os
@@ -52,18 +51,28 @@ logger.setLevel('INFO')
 @click.option('--version', 'callset_version', type=str, required=True)
 @click.option('--batch', 'callset_batches', type=str, multiple=True, required=True)
 @click.option(
+    '--access-level', 'access_level', type=click.Choice(['test', 'standard', 'full'])
+)
+@click.option(
     '--from',
     'input_bucket_suffix',
     type=click.Choice(['main', 'test']),
-    default='test',
-    help='The bucket type to read from (default: test)',
+    help='The bucket type to read from (default: "test" for "test" access level, '
+    '"main" for "standard" and "full")',
 )
 @click.option(
-    '--to',
-    'output_bucket_suffix',
+    '--mt-to',
+    'mt_output_bucket_suffix',
+    type=click.Choice(['main', 'temporary']),
+    help='The bucket type to write matrix tables to (default: "temporary" for "test" '
+    'and "standard" access levels, "main" for "full")',
+)
+@click.option(
+    '--analysis-to',
+    'analysis_output_bucket_suffix',
     type=click.Choice(['analysis', 'temporary']),
-    default='temporary',
-    help='The bucket type to write to (default: temporary)',
+    help='The bucket type to write analysis files to (default: "temporary" for "test" '
+    'and "standard" access levels, "analysis" for "full")',
 )
 @click.option('--skip-input-meta', 'skip_input_meta', is_flag=True)
 @click.option('--keep-scratch', 'keep_scratch', is_flag=True)
@@ -80,26 +89,21 @@ logger.setLevel('INFO')
     'that generates it.',
 )
 @click.option('--dry-run', 'dry_run', is_flag=True)
-@click.option(
-    '--billing-project',
-    'billing_project',
-    type=str,
-    default=os.getenv('HAIL_BILLING_PROJECT'),
-)
 @click.option('--run-vqsr/--skip-vqsr', 'run_vqsr', is_flag=True, default=True)
 @click.option('--run-rf/--skip-rf', 'run_rf', is_flag=True, default=True)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     callset_name: str,
     callset_version: str,
     callset_batches: List[str],
+    access_level: str,
     input_bucket_suffix: str,
-    output_bucket_suffix: str,
+    mt_output_bucket_suffix: str,
+    analysis_output_bucket_suffix: str,
     skip_input_meta: bool,
     keep_scratch: bool,
     reuse_scratch_run_id: str,
     dry_run: bool,
     overwrite: bool,
-    billing_project: str,
     run_vqsr: bool,
     run_rf: bool,
 ):
@@ -112,19 +116,35 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     logger.info(f'Enable VQSR: {run_vqsr}')
 
     if not dry_run:
-        if not billing_project:
-            raise click.BadParameter(
-                '--billing-project has to be specified (unless --dry-run is set)'
-            )
+        billing_project = os.getenv('HAIL_BILLING_PROJECT') or callset_name
 
-    base_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/joint_vcf'
-    output_bucket = join(base_bucket, callset_version)
-    work_bucket = join(output_bucket, 'work')
-    hail_bucket = os.environ.get('HAIL_BUCKET') or join(output_bucket, 'hail')
-    combiner_bucket = join(work_bucket, 'combiner')
-    raw_combined_mt_path = join(output_bucket, 'raw', 'genomes.mt')
+    if not mt_output_bucket_suffix:
+        if access_level == 'full':
+            mt_output_bucket_suffix = 'main'
+        else:
+            mt_output_bucket_suffix = 'temporary'
+
+    if not analysis_output_bucket_suffix:
+        if access_level == 'full':
+            analysis_output_bucket_suffix = 'analysis'
+        else:
+            analysis_output_bucket_suffix = 'temporary'
+
+    if not input_bucket_suffix:
+        if access_level in ['standard', 'full']:
+            input_bucket_suffix = 'main'
+        else:
+            input_bucket_suffix = 'test'
+
+    mt_output_bucket = f'gs://cpg-{callset_name}-{mt_output_bucket_suffix}/joint_vcf'
+    raw_combined_mt_path = join(mt_output_bucket, 'raw', 'genomes.mt')
     # pylint: disable=unused-variable
-    filtered_combined_mt_path = join(output_bucket, 'qc', 'genomes.mt')
+    filtered_combined_mt_path = join(mt_output_bucket, 'genomes.mt')
+
+    base_bucket = f'gs://cpg-{callset_name}-{analysis_output_bucket_suffix}/joint_vcf'
+    analysis_bucket = join(base_bucket, callset_version)
+    hail_bucket = os.environ.get('HAIL_BUCKET') or join(analysis_bucket, 'hail')
+    combiner_bucket = join(analysis_bucket, 'combiner')
 
     backend = hb.ServiceBackend(
         billing_project=billing_project,
@@ -134,7 +154,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     # TODO: merge with existing data
 
-    input_samples_path = join(work_bucket, 'samples.csv')
+    input_samples_path = join(analysis_bucket, 'samples.csv')
     combiner_ready_samples_path = join(combiner_bucket, 'samples.csv')
     subset_gvcf_jobs = []
     if not overwrite and utils.file_exists(combiner_ready_samples_path):
@@ -224,7 +244,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             combined_mt_path=raw_combined_mt_path,
             hard_filtered_samples_ht_path=hard_filtered_samples_ht_path,
             meta_ht_path=meta_ht_path,
-            work_bucket=join(work_bucket, 'variant_qc'),
+            work_bucket=join(analysis_bucket, 'random_forest'),
             depends_on=[sample_qc_job],
         )
 
@@ -232,7 +252,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         make_vqsr_jobs(
             b,
             combined_mt_path=raw_combined_mt_path,
-            work_bucket=join(work_bucket, 'vqsr'),
+            work_bucket=join(analysis_bucket, 'vqsr'),
             gvcf_count=len(samples_df),
             depends_on=[combiner_job],
         )
