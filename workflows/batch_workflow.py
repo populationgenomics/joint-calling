@@ -29,7 +29,7 @@ https://github.com/populationgenomics/analysis-runner (see helper script `joint_
 """
 
 import os
-from os.path import join
+from os.path import join, dirname, abspath
 from typing import List, Optional
 import logging
 import click
@@ -159,6 +159,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         bucket=hail_bucket.replace('gs://', ''),
     )
     b = hb.Batch('Joint Calling', backend=backend)
+    scripts_dir = abspath(join(dirname(__file__), '..', 'scripts'))
 
     # TODO: merge with existing data
 
@@ -196,13 +197,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             samples_df=samples_df,
             output_sample_csv_path=combiner_ready_samples_path,
             combiner_bucket=combiner_bucket,
+            overwrite=overwrite,
         )
 
     if not utils.file_exists(raw_combined_mt_path):
         combiner_job = dataproc.hail_dataproc_job(
             b,
-            f'scripts/run_python_script.py '
-            f'combine_gvcfs.py '
+            f'{scripts_dir}/combine_gvcfs.py '
             f'--meta-csv {combiner_ready_samples_path} '
             f'--out-mt {raw_combined_mt_path} '
             f'--bucket {combiner_bucket}/work '
@@ -228,8 +229,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             age_csv_param = ''
         sample_qc_job = dataproc.hail_dataproc_job(
             b,
-            f'scripts/run_python_script.py '
-            f'sample_qc.py --overwrite '
+            f'{scripts_dir}/sample_qc.py --overwrite '
             f'--mt {raw_combined_mt_path} '
             f'{age_csv_param}'
             f'--meta-csv {combiner_ready_samples_path} '
@@ -254,6 +254,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             meta_ht_path=meta_ht_path,
             work_bucket=join(analysis_bucket, 'random_forest'),
             depends_on=[sample_qc_job],
+            scripts_dir=scripts_dir,
         )
 
     if run_vqsr:
@@ -263,6 +264,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             work_bucket=join(analysis_bucket, 'vqsr'),
             gvcf_count=len(samples_df),
             depends_on=[combiner_job],
+            scripts_dir=scripts_dir,
         )
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
@@ -276,6 +278,7 @@ def add_prep_gvcfs_for_combiner_steps(
     samples_df: pd.DataFrame,
     output_sample_csv_path: str,
     combiner_bucket: str,
+    overwrite: bool,
 ) -> List[Job]:
     """
     Add steps required to prepare GVCFs from combining
@@ -307,7 +310,7 @@ def add_prep_gvcfs_for_combiner_steps(
                 'vcf.gz.tbi': found_gvcf_path + '.tbi',
             }
         )
-        if (found_gvcf_path and utils.file_exists(found_gvcf_path))
+        if (not overwrite and found_gvcf_path and utils.file_exists(found_gvcf_path))
         else add_reblock_gvcfs_step(b, input_gvcf).output_gvcf
         for found_gvcf_path, input_gvcf in zip(found_reblocked_gvcf_paths, gvcfs)
     ]
