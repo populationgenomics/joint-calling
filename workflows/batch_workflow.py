@@ -74,6 +74,9 @@ logger.setLevel('INFO')
     help='The bucket type to write analysis files to (default: "temporary" for "test" '
     'and "standard" access levels, "analysis" for "full")',
 )
+@click.option(
+    '--ped-file', 'ped_file', help='PED file with family information', type=str
+)
 @click.option('--skip-input-meta', 'skip_input_meta', is_flag=True)
 @click.option('--keep-scratch', 'keep_scratch', is_flag=True)
 @click.option(
@@ -99,6 +102,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     input_bucket_suffix: str,
     mt_output_bucket_suffix: str,
     analysis_output_bucket_suffix: str,
+    ped_file: str,
     skip_input_meta: bool,
     keep_scratch: bool,
     reuse_scratch_run_id: str,
@@ -217,7 +221,32 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     else:
         combiner_job = b.new_job('Combine GVCFs')
 
-    hard_filtered_samples_ht_path = join(combiner_bucket, 'hard_filters.ht')
+    sample_qc_bucket = join(analysis_bucket, 'sample_qc')
+
+    info_ht_path = join(sample_qc_bucket, 'info.ht')
+    info_split_ht_path = join(sample_qc_bucket, 'info-split.ht')
+    info_vcf_path = join(sample_qc_bucket, 'info.vcf')
+    if not any(
+        utils.file_exists(fp)
+        for fp in [info_ht_path, info_split_ht_path, info_vcf_path]
+    ):
+        generate_info_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/generate_info_ht.py --overwrite '
+            f'--mt {raw_combined_mt_path} '
+            f'--out-info-ht {info_ht_path} '
+            f'--out-split-info-ht {info_split_ht_path} '
+            f'--out-info-vcf {info_vcf_path}',
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=10,
+            depends_on=[combiner_job],
+            job_name='Sample QC',
+        )
+    else:
+        generate_info_job = b.new_job('Generate info')
+
+    hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filters.ht')
     meta_ht_path = join(combiner_bucket, 'meta.ht')
     if not any(
         utils.file_exists(fp) for fp in [hard_filtered_samples_ht_path, meta_ht_path]
@@ -231,6 +260,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             b,
             f'{scripts_dir}/sample_qc.py --overwrite '
             f'--mt {raw_combined_mt_path} '
+            f'--info-ht {info_ht_path} '
             f'{age_csv_param}'
             f'--meta-csv {combiner_ready_samples_path} '
             f'--bucket {combiner_bucket} '
@@ -240,7 +270,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=10,
-            depends_on=[combiner_job],
+            depends_on=[combiner_job, generate_info_job],
             job_name='Sample QC',
         )
     else:
@@ -250,11 +280,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         make_rf_jobs(
             b,
             combined_mt_path=raw_combined_mt_path,
+            info_split_ht_path=info_split_ht_path,
             hard_filtered_samples_ht_path=hard_filtered_samples_ht_path,
             meta_ht_path=meta_ht_path,
-            work_bucket=join(analysis_bucket, 'random_forest'),
+            work_bucket=join(analysis_bucket, 'variant_qc'),
             depends_on=[sample_qc_job],
             scripts_dir=scripts_dir,
+            ped_file=ped_file,
+            overwrite=overwrite,
         )
 
     if run_vqsr:
@@ -289,6 +322,7 @@ def add_prep_gvcfs_for_combiner_steps(
     :param samples_df:
     :param output_sample_csv_path:
     :param combiner_bucket:
+    :param overwrite:
     :return:
     """
     found_reblocked_gvcf_paths = [

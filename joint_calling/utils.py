@@ -44,6 +44,17 @@ GATK_DOCKER = f'us.gcr.io/broad-gatk/gatk:{GATK_VERSION}'
 GNARLY_DOCKER = 'gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K'
 DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
 
+TRUTH_GVCFS = dict(
+    syndip=dict(
+        s='syndip',
+        gvcf='gs://gnomad-public/resources/grch38/syndip/full.38.20180222.vcf.gz',
+    ),
+    na12878=dict(
+        s='na12878',
+        gvcf='gs://gnomad-public/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',
+    ),
+)
+
 
 def init_hail(name: str, local_tmp_dir: str = None):
     """
@@ -169,6 +180,16 @@ def find_inputs(
         else:
             df.loc[matching_sn[0], ['gvcf']] = gp
     df = df[df.gvcf.notnull()]
+
+    # Adding truth samples
+    # df['truth'] = False
+    # for truth_sample in TRUTH_GVCFS.values():
+    #     df.loc[truth_sample['s'], ['s', 'gvcf', 'truth']] = [
+    #         truth_sample['s'],
+    #         truth_sample['gvcf'],
+    #         True,
+    #     ]
+
     return df
 
 

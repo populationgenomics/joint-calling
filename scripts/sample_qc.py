@@ -51,6 +51,15 @@ logger.setLevel('INFO')
     'used to apply QC hard filters to samples.',
 )
 @click.option(
+    '--age-csv', 'age_csv', help='CSV file with 2 columns: `sample` and `age`'
+)
+@click.option(
+    '--info-ht',
+    'info_ht_path',
+    required=True,
+    help='Info Table, genereated by scripts/generate_info_ht.py --out-info-ht',
+)
+@click.option(
     '--out-hardfiltered-samples-ht',
     'out_hardfiltered_samples_ht_path',
     required=True,
@@ -59,10 +68,6 @@ logger.setLevel('INFO')
     '--out-meta-ht',
     'out_meta_ht_path',
     required=True,
-)
-@click.option(
-    '--age-csv',
-    'age_csv',
 )
 @click.option(
     '--bucket',
@@ -118,9 +123,10 @@ logger.setLevel('INFO')
 def main(
     mt_path: str,
     meta_csv_path: str,
+    age_csv: str,
+    info_ht_path: str,
     out_hardfiltered_samples_ht_path: str,
     out_meta_ht_path: str,
-    age_csv: str,
     work_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,
@@ -172,7 +178,9 @@ def main(
 
     # Subset the matrix table to the variants suitable for PCA
     # (for both relateness and population analysis)
-    for_pca_mt = pop_strat_qc.make_mt_for_pca(mt, work_bucket, overwrite)
+    for_pca_mt = pop_strat_qc.make_mt_for_pca(
+        mt, hl.read_table(info_ht_path), work_bucket, overwrite
+    )
 
     relatedness_ht = pop_strat_qc.compute_relatedness(
         for_pca_mt, work_bucket, overwrite
