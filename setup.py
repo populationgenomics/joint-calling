@@ -18,7 +18,7 @@ def find_package_files(dirpath, package, skip_exts=None):
 
 setuptools.setup(
     name='joint-calling',
-    version='0.1.71',
+    version='0.1.81',
     description='Pipeline for joint calling, sample and variant QC for WGS germline '
     'variant calling data',
     long_description=open('README.md').read(),
@@ -29,15 +29,7 @@ setuptools.setup(
     package_data={'joint_calling': find_package_files('', 'joint_calling')},
     include_package_data=True,
     zip_safe=False,
-    scripts=[
-        join('scripts', 'combine_gvcfs.py'),
-        join('scripts', 'sample_qc.py'),
-        join('scripts', 'mt_to_vcf.py'),
-        join('scripts', 'load_vqsr.py'),
-        join('scripts', 'random_forest.py'),
-        join('scripts', 'generate_freq_data.py'),
-        join('scripts', 'generate_qc_annotations.py'),
-    ],
+    scripts=[join('scripts', fp) for fp in os.listdir('scripts') if fp.endswith('.py')],
     keywords='bioinformatics',
     classifiers=[
         'Environment :: Console',

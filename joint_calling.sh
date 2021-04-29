@@ -47,9 +47,13 @@
 #     --callset tob-wgs \
 #     --version v0 --batch 0 --batch 1
 
+bash -x
+
 SCRIPTPATH="$(cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P)"
 REPOPATH="$(dirname "$SCRIPTPATH")"
 
 PYTHONPATH=$REPOPATH \
 PATH=${REPOPATH}/scripts:$PATH \
 python ${REPOPATH}/$@
+
+bash +x
