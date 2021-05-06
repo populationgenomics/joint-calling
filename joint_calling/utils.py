@@ -344,8 +344,9 @@ def get_mt(
         hl.ir.MatrixKeyRowsBy(
             mt._mir,  # pylint: disable=protected-access
             ['locus', 'alleles'],
+            # Prevent hail from running sort on genotype MT which is already sorted by a unique locus
             is_sorted=True,
-        )  # Prevents hail from running sort on genotype MT which is already sorted by a unique locus
+        ) 
     )
 
     if hard_filtered_samples_to_remove_ht is not None:
