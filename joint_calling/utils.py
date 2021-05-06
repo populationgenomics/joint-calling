@@ -40,7 +40,7 @@ DATAPROC_PACKAGES = [
 GATK_VERSION = '4.2.0.0'
 GATK_DOCKER = f'us.gcr.io/broad-gatk/gatk:{GATK_VERSION}'
 # GnarlyGenotyper is in Beta and crashes with NullPointerException when using the
-# official GATK docker, that's why using a separate image for it:
+# official GATK docker, that's why we're using a separate image for it:
 GNARLY_DOCKER = 'gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K'
 DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
 
