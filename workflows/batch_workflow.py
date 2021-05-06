@@ -276,7 +276,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     )
 
     vqsr_bucket = join(analysis_bucket, 'variant_qc/vqsr')
-    final_gathered_vcf_job, final_gathered_vcf = make_vqsr_jobs(
+    final_gathered_vcf_job, final_gathered_vcf_path = make_vqsr_jobs(
         b,
         # TODO: filter to unrelated
         combined_mt_path=raw_combined_mt_path,
@@ -290,14 +290,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         b=b,
         combined_mt_path=raw_combined_mt_path,
         info_split_ht_path=info_split_ht_path,
-        final_gathered_vcf_path=final_gathered_vcf['vcf.gz'],
+        final_gathered_vcf_path=final_gathered_vcf_path,
         rf_annotations_ht_path=rf_annotations_ht_path,
         fam_stats_ht_path=fam_stats_ht_path,
         freq_ht_path=freq_ht_path,
         work_bucket=vqsr_bucket,
         overwrite=overwrite,
         scripts_dir=scripts_dir,
-        depends_on=final_gathered_vcf_job,
+        depends_on=[final_gathered_vcf_job],
     )
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)

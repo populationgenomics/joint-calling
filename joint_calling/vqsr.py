@@ -4,7 +4,7 @@ Create jobs to create and apply a VQSR model
 
 import os
 from os.path import join
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import logging
 import hailtop.batch as hb
 from hailtop.batch.job import Job
@@ -37,7 +37,7 @@ def make_vqsr_jobs(
     skip_allele_specific_annotations: bool = False,
     snp_filter_level: float = 99.7,
     indel_filter_level: float = 99.0,
-) -> Job:
+) -> Tuple[Job, str]:
     """
     Add jobs that perform the allele-specific VQSR variant QC
 
@@ -60,8 +60,7 @@ def make_vqsr_jobs(
     :param skip_allele_specific_annotations:
     :param snp_filter_level:
     :param indel_filter_level:
-    :param overwrite: overwrite intermediate and out files if exist
-    :return:
+    :return: a final Job, and a path to the VCF with VQSR annotations
     """
     snp_recalibration_tranche_values = snp_recalibration_tranche_values or [
         100.0,
@@ -409,7 +408,7 @@ def make_vqsr_jobs(
         disk_size=huge_disk,
     )
 
-    return final_gathered_vcf_job, final_gathered_vcf
+    return final_gathered_vcf_job, final_gathered_vcf['vcf.gz']
 
 
 def make_vqsr_eval_jobs(
