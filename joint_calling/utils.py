@@ -37,13 +37,16 @@ DATAPROC_PACKAGES = [
 ]
 
 
+DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
 GATK_VERSION = '4.2.0.0'
-GATK_DOCKER = f'us.gcr.io/broad-gatk/gatk:{GATK_VERSION}'
+GATK_DOCKER = (
+    f'australia-southeast1-docker.pkg.dev/cpg-common/joint-calling/gatk:{GATK_VERSION}'
+)
 # GnarlyGenotyper is in Beta and crashes with NullPointerException when using the
 # official GATK docker, that's why we're using a separate image for it:
-GNARLY_DOCKER = 'gcr.io/broad-dsde-methods/gnarly_genotyper:hail_ukbb_300K'
-DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
-BCFTOOLS_DOCKER = 'quay.io/biocontainers/bcftools:1.10.2--h4f4756c_2'
+GNARLY_DOCKER = 'australia-southeast1-docker.pkg.dev/cpg-common/joint-calling/gnarly_genotyper:hail_ukbb_300K'
+BCFTOOLS_DOCKER = 'australia-southeast1-docker.pkg.dev/cpg-common/joint-calling/bcftools:1.10.2--h4f4756c_2'
+
 
 TRUTH_GVCFS = dict(
     syndip=dict(
