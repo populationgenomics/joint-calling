@@ -505,7 +505,7 @@ def add_tabix_step(
     is not block-gzipped)
     """
     j = b.new_job('Tabix')
-    j.image('quay.io/biocontainers/bcftools:1.10.2--h4f4756c_2')
+    j.image(utils.BCFTOOLS_DOCKER)
     j.memory(f'8G')
     j.storage(f'{disk_size}G')
     j.declare_resource_group(
