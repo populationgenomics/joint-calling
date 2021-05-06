@@ -325,8 +325,8 @@ def get_mt(
 ) -> hl.MatrixTable:
     """
     Wrapper function to get data with desired filtering and metadata annotations
-    :param mt_path: path to the MatrixTable ("sparse_unsplit.repartitioned.mt")
-    :param split: split multiallelics - Note: this will perform a split on the MT
+    :param mt_path: path to the MatrixTable ("v0.mt")
+    :param split: split multiallelics - note: this will perform a split on the MT
         rather than grab an already split MT
     :param hard_filtered_samples_to_remove_ht: a Table with samples to remove
         (only relevant after sample QC that produces a table with samples failed
@@ -346,7 +346,7 @@ def get_mt(
             ['locus', 'alleles'],
             # Prevent hail from running sort on genotype MT which is already sorted by a unique locus
             is_sorted=True,
-        ) 
+        )
     )
 
     if hard_filtered_samples_to_remove_ht is not None:
