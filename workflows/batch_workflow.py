@@ -278,6 +278,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     vqsr_bucket = join(analysis_bucket, 'variant_qc/vqsr')
     final_gathered_vcf_job, final_gathered_vcf = make_vqsr_jobs(
         b,
+        # TODO: filter to unrelated
         combined_mt_path=raw_combined_mt_path,
         gvcf_count=len(samples_df),
         work_bucket=vqsr_bucket,

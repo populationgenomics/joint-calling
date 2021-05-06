@@ -19,6 +19,9 @@ logger.setLevel('INFO')
 BROAD_REF_BUCKET = 'gs://gcp-public-data--broad-references/hg38/v0'
 
 
+MIN_EXCESS_HET = 54.69
+
+
 def make_vqsr_jobs(
     b: hb.Batch,
     combined_mt_path: str,
@@ -26,7 +29,7 @@ def make_vqsr_jobs(
     work_bucket: str,
     depends_on: Optional[List[Job]],
     scripts_dir: str,
-    excess_het_threshold: float = 54.69,
+    excess_het_threshold: float = MIN_EXCESS_HET,
     indel_recalibration_tranche_values: List[float] = None,
     indel_recalibration_annotation_values: List[str] = None,
     snp_recalibration_tranche_values: List[float] = None,
@@ -49,7 +52,7 @@ def make_vqsr_jobs(
     :param work_bucket: bucket for intermediate files
     :param depends_on: job that the created jobs should only run after
     :param scripts_dir: repository directory with scripts
-    :param excess_het_threshold:
+    :param excess_het_threshold: minimal excess het value
     :param indel_recalibration_tranche_values:
     :param indel_recalibration_annotation_values:
     :param snp_recalibration_tranche_values:

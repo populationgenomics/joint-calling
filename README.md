@@ -149,11 +149,11 @@ Here we give a brief overview of the sample QC steps:
 
 ## Allele-specific VQSR
 
-   1. Export variants of passing samples into a sites-only VCF and split it into SNPs and indels, as well as region-wise for parallel processing.
+   1. Export variants into a sites-only VCF and split it into SNPs and indels, as well as region-wise for parallel processing.
    
    1. Run Gnarly Genotyper to perform "quick and dirty" joint genotyping.
    
-   1. Filter samples by the ExcessHet.
+   1. Filter variants in a large callset (>1000) with the ExcessHet > 54.69.
 
    1. Create SNP and indel recalibration models using the allele-specific version of GATK Variant Quality Score Recalibration [VQSR](https://gatkforums.broadinstitute.org/gatk/discussion/9622/allele-specific-annotation-and-filtering), using the standard GATK training resources (HapMap, Omni, 1000 Genomes, Mills indels), with the following features:
    
