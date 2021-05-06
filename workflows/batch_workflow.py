@@ -28,8 +28,8 @@ from hailtop.batch.job import Job
 from analysis_runner import dataproc
 
 from joint_calling import utils
-from joint_calling.vqsr import make_vqsr_jobs
-from joint_calling.rf import make_rf_jobs
+from joint_calling.vqsr import make_vqsr_jobs, make_vqsr_eval_jobs
+from joint_calling.rf import make_rf_jobs, make_rf_eval_jobs
 
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
@@ -238,29 +238,66 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     else:
         sample_qc_job = b.new_job('Sample QC')
 
-    if run_rf:
-        make_rf_jobs(
-            b,
-            combined_mt_path=raw_combined_mt_path,
-            info_split_ht_path=info_split_ht_path,
-            hard_filtered_samples_ht_path=hard_filtered_samples_ht_path,
-            meta_ht_path=meta_ht_path,
-            work_bucket=join(analysis_bucket, 'variant_qc'),
-            depends_on=[sample_qc_job],
-            scripts_dir=scripts_dir,
-            ped_file=ped_file,
-            overwrite=overwrite,
-        )
+    rf_bucket = join(analysis_bucket, 'variant_qc/rf')
+    (
+        rf_job,
+        info_split_ht_path,
+        rf_model_id,
+        rf_annotations_ht_path,
+        rf_result_ht_path,
+        fam_stats_ht_path,
+        freq_ht_path,
+    ) = make_rf_jobs(
+        b,
+        combined_mt_path=raw_combined_mt_path,
+        info_split_ht_path=info_split_ht_path,
+        hard_filtered_samples_ht_path=hard_filtered_samples_ht_path,
+        meta_ht_path=meta_ht_path,
+        work_bucket=rf_bucket,
+        depends_on=[sample_qc_job],
+        scripts_dir=scripts_dir,
+        ped_file=ped_file,
+        overwrite=overwrite,
+    )
 
-    if run_vqsr:
-        make_vqsr_jobs(
-            b,
-            combined_mt_path=raw_combined_mt_path,
-            work_bucket=join(analysis_bucket, 'vqsr'),
-            gvcf_count=len(samples_df),
-            depends_on=[combiner_job],
-            scripts_dir=scripts_dir,
-        )
+    make_rf_eval_jobs(
+        b=b,
+        combined_mt_path=raw_combined_mt_path,
+        info_split_ht_path=info_split_ht_path,
+        rf_result_ht_path=rf_result_ht_path,
+        rf_annotations_ht_path=rf_annotations_ht_path,
+        fam_stats_ht_path=fam_stats_ht_path,
+        freq_ht_path=freq_ht_path,
+        rf_model_id=rf_model_id,
+        work_bucket=rf_bucket,
+        overwrite=overwrite,
+        scripts_dir=scripts_dir,
+        depends_on=[rf_job],
+    )
+
+    vqsr_bucket = join(analysis_bucket, 'variant_qc/vqsr')
+    final_gathered_vcf_job, final_gathered_vcf = make_vqsr_jobs(
+        b,
+        combined_mt_path=raw_combined_mt_path,
+        gvcf_count=len(samples_df),
+        work_bucket=vqsr_bucket,
+        depends_on=[combiner_job],
+        scripts_dir=scripts_dir,
+    )
+
+    make_vqsr_eval_jobs(
+        b=b,
+        combined_mt_path=raw_combined_mt_path,
+        info_split_ht_path=info_split_ht_path,
+        final_gathered_vcf_path=final_gathered_vcf['vcf.gz'],
+        rf_annotations_ht_path=rf_annotations_ht_path,
+        fam_stats_ht_path=fam_stats_ht_path,
+        freq_ht_path=freq_ht_path,
+        work_bucket=vqsr_bucket,
+        overwrite=overwrite,
+        scripts_dir=scripts_dir,
+        depends_on=final_gathered_vcf_job,
+    )
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
 

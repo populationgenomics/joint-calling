@@ -385,8 +385,8 @@ def create_bin_ht(
             AS_culprit=ht.info.AS_culprit,
         )
 
-        # Remove all samples with an undefined ac_raw Because ac_raw was calculated on the high quality samples only
-        # and VQSR was run before sample filtering
+        # Remove all samples with an undefined ac_raw Because ac_raw was calculated
+        # on the high quality samples only and VQSR was run before sample filtering
         ht = ht.filter(hl.is_defined(ht.ac_raw))
 
     else:
@@ -421,8 +421,9 @@ def create_aggregated_bin_ht(
     work_bucket: str,
 ) -> hl.Table:
     """
-    Aggregates variants into bins, grouped by `bin_id` (rank, bi-allelic, etc.), contig, and `snv`, `bi_allelic`,
-    and `singleton` status, using previously annotated bin information.
+    Aggregates variants into bins, grouped by `bin_id` (rank, bi-allelic, etc.),
+    contig, and `snv`, `bi_allelic`, and `singleton` status, using previously
+    annotated bin information.
 
     For each bin, aggregates statistics needed for evaluation plots.
     :param ht: table with score bins
@@ -492,7 +493,8 @@ def generate_fam_stats(
 
     mt = mt.filter_cols(hl.is_defined(fam_ht[mt.col_key]))
     logger.info(
-        f'Generating family stats using {mt.count_cols()} samples from {len(ped.trios)} trios.'
+        f'Generating family stats using {mt.count_cols()} samples from {len(ped.trios)} '
+        f'trios.'
     )
 
     mt = filter_to_autosomes(mt)

@@ -9,6 +9,16 @@ from joint_calling.utils import file_exists
 logger = logging.getLogger('sample_qc_hard_filtering')
 
 
+MAX_N_SNPS = 8.0e6
+MIN_N_SNPS = 2.4e6
+MAX_N_SINGLETONS = 4e5
+MAX_N_HET_HOM = 3.3
+MAX_CONTAMINATION = 5.00
+MAX_PCT_CHIMERAS = 5.00
+MIN_MEAN_COVERAGE = 15.0
+MIN_MEDIAN_IS = 250.9
+
+
 def compute_hard_filters(
     mt: hl.MatrixTable,
     qc_ht: hl.MatrixTable,
@@ -73,10 +83,16 @@ def compute_hard_filters(
     ht = add_filter(
         ht,
         (
-            (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp > 8.0e6)
-            | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp < 2.4e6)
-            | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_singleton > 4e5)
-            | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.r_het_hom_var > 3.3)
+            (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp > MAX_N_SNPS)
+            | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp < MIN_N_SNPS)
+            | (
+                hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_singleton
+                > MAX_N_SINGLETONS
+            )
+            | (
+                hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.r_het_hom_var
+                > MAX_N_HET_HOM
+            )
         ),
         'bad_biallelic_metrics',
     )
@@ -85,24 +101,26 @@ def compute_hard_filters(
     # by 100, e.g. 5% == 5.00, 5% != 0.05
     ht = add_filter(
         ht,
-        hl.is_missing(qc_ht[ht.key].freemix) | (qc_ht[ht.key].freemix > 5.00),
+        hl.is_missing(qc_ht[ht.key].freemix)
+        | (qc_ht[ht.key].freemix > MAX_CONTAMINATION),
         'contamination',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(qc_ht[ht.key].pct_chimeras) | (qc_ht[ht.key].pct_chimeras > 5.00),
+        hl.is_missing(qc_ht[ht.key].pct_chimeras)
+        | (qc_ht[ht.key].pct_chimeras > MAX_PCT_CHIMERAS),
         'chimera',
     )
     ht = add_filter(
         ht,
         hl.is_missing(qc_ht[ht.key].mean_coverage)
-        | (qc_ht[ht.key].mean_coverage < 15.0),
+        | (qc_ht[ht.key].mean_coverage < MIN_MEAN_COVERAGE),
         'coverage',
     )
     ht = add_filter(
         ht,
         hl.is_missing(qc_ht[ht.key].median_insert_size)
-        | (qc_ht[ht.key].median_insert_size < 250.9),
+        | (qc_ht[ht.key].median_insert_size < MIN_MEDIAN_IS),
         'insert_size',
     )
     ht = ht.filter(hl.len(ht.hard_filters) > 0)

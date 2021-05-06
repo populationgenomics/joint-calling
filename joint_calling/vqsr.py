@@ -40,6 +40,10 @@ def make_vqsr_jobs(
 
     :param b: Batch object to add jobs to
     :param combined_mt_path: path to a Matrix Table combined with the Hail VCF combiner
+    :param: info_split_ht_path: path to RF annotation data (for evaluation)
+    :param: rf_annotations_ht_path: path to RF annotation data (for evaluation)
+    :param: fam_stats_ht_path: path to RF annotation data (for evaluation)
+    :param: freq_ht_path: path to RF annotation data (for evaluation)
     :param gvcf_count: number of input samples. Can't read from combined_mt_path as it
         might not be yet genereated the point of Batch job submission
     :param work_bucket: bucket for intermediate files
@@ -53,6 +57,7 @@ def make_vqsr_jobs(
     :param skip_allele_specific_annotations:
     :param snp_filter_level:
     :param indel_filter_level:
+    :param overwrite: overwrite intermediate and out files if exist
     :return:
     """
     snp_recalibration_tranche_values = snp_recalibration_tranche_values or [
@@ -346,12 +351,13 @@ def make_vqsr_jobs(
             ).recalibrated_vcf
             for idx in range(len(hard_filtered_vcfs))
         ]
-        final_gathered_vcf = add_final_gather_vcf_step(
+        final_gathered_vcf_job = add_final_gather_vcf_step(
             b,
             input_vcfs=recalibrated_vcfs,
             disk_size=huge_disk,
             output_vcf_path=os.path.join(work_bucket, 'recalibrated.vcf.gz'),
-        ).output_vcf
+        )
+        final_gathered_vcf = final_gathered_vcf_job.output_vcf
 
     else:
         snps_recalibrator_job = add_snps_variant_recalibrator_step(
@@ -377,7 +383,7 @@ def make_vqsr_jobs(
             disk_size=huge_disk,
         ).output_vcf
 
-        final_gathered_vcf = add_apply_recalibration_step(
+        final_gathered_vcf_job = add_apply_recalibration_step(
             b,
             input_vcf=gathered_vcf,
             indels_recalibration=indels_recalibration,
@@ -388,7 +394,8 @@ def make_vqsr_jobs(
             use_allele_specific_annotations=not skip_allele_specific_annotations,
             indel_filter_level=indel_filter_level,
             snp_filter_level=snp_filter_level,
-        ).recalibrated_vcf
+        )
+        final_gathered_vcf = final_gathered_vcf_job.recalibrated_vcf
 
     add_variant_eval_step(
         b,
@@ -398,6 +405,92 @@ def make_vqsr_jobs(
         output_path=os.path.join(work_bucket, 'variant-eval.txt'),
         disk_size=huge_disk,
     )
+
+    return final_gathered_vcf_job, final_gathered_vcf
+
+
+def make_vqsr_eval_jobs(
+    b: hb.Batch,
+    combined_mt_path: str,
+    info_split_ht_path: str,
+    final_gathered_vcf_path: str,
+    rf_annotations_ht_path: str,
+    fam_stats_ht_path: str,
+    freq_ht_path: str,
+    work_bucket: str,
+    overwrite: bool,
+    scripts_dir: str,
+    depends_on: Optional[List[Job]],
+) -> Job:
+    """
+    Make jobs that do evaluation VQSR model and applies the final filters
+    """
+    vqsr_filters_split_ht_path = join(work_bucket, 'vqsr-filters-split.ht')
+    if overwrite or not utils.file_exists(vqsr_filters_split_ht_path):
+        load_vqsr_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/load_vqsr.py --overwrite '
+            f'--split-multiallelic '
+            f'--out-path {vqsr_filters_split_ht_path} '
+            f'--vqsr-vcf-path {final_gathered_vcf_path} '
+            f'--bucket {work_bucket} ',
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=10,
+            depends_on=depends_on,
+            job_name='VQSR: load_vqsr',
+        )
+    else:
+        load_vqsr_job = b.new_job('VQSR: load_vqsr')
+
+    score_bin_ht_path = join(work_bucket, 'vqsr-score-bin.ht')
+    score_bin_agg_ht_path = join(work_bucket, 'vqsr-score-agg-bin.ht')
+    if overwrite or not utils.file_exists(score_bin_ht_path):
+        eval_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/evaluation.py --overwrite '
+            f'--info-split-ht {info_split_ht_path} '
+            f'--rf-annotations-ht {rf_annotations_ht_path} '
+            f'--fam-stats-ht {fam_stats_ht_path} '
+            f'--vqsr-filters-split-ht {vqsr_filters_split_ht_path} '
+            f'--mt {combined_mt_path} '
+            f'--bucket {work_bucket} '
+            f'--out-bin-ht {score_bin_ht_path} '
+            f'--out-aggregated-bin-ht {score_bin_agg_ht_path} '
+            f'--run-sanity-checks ',
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=10,
+            depends_on=[load_vqsr_job],
+            job_name='VQSR: evaluation',
+        )
+    else:
+        eval_job = b.new_job('VQSR: evaluation')
+
+    final_filter_ht_path = join(work_bucket, 'final-filter.ht')
+    vqsr_model_id = 'vqsr_model'
+    if not utils.file_exists(final_filter_ht_path):
+        final_filter_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/final_filter.py --overwrite '
+            f'--out-final-filter-ht {final_filter_ht_path} '
+            f'--vqsr-filters-split-ht {vqsr_filters_split_ht_path} '
+            f'--model-id {vqsr_model_id} '
+            f'--model-name VQSR '
+            f'--score-name AS_VQSLOD '
+            f'--info-split-ht {info_split_ht_path} '
+            f'--freq-ht {freq_ht_path} '
+            f'--score-bin-ht {score_bin_ht_path} '
+            f'--score-bin-agg-ht {score_bin_agg_ht_path} ' + f'--bucket {work_bucket} ',
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=10,
+            depends_on=[eval_job],
+            job_name='VQSR: final filter',
+        )
+    else:
+        final_filter_job = b.new_job('VQSR: final filter')
+    return final_filter_job
 
 
 def add_tabix_step(

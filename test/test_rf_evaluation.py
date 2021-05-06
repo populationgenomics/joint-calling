@@ -76,7 +76,6 @@ def main():
         eval_job = b.new_job('RF: evaluation')
 
     final_filter_ht_path = join(eval_bucket, 'final-filter.ht')
-
     if not utils.file_exists(final_filter_ht_path):
         dataproc.hail_dataproc_job(
             b,

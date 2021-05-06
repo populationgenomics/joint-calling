@@ -52,7 +52,6 @@ Thsi command will use the `test` access level, which means finding the input GVC
 
 * `gs://cpg-fewgenomes-temporary/joint-vcf/v0/sample_qc`
 * `gs://cpg-fewgenomes-temporary/joint-vcf/v0/variant_qc`
-* `gs://cpg-fewgenomes-temporary/joint-vcf/v0/vqsr`
 
 To use the main bucket as an input, but write the results to the temporary bucket, run the workflow with the `standard` access level:
 
@@ -107,9 +106,9 @@ It will find input GVCFs in the `main` bucket, assuming the batch IDs are `batch
 
 1. Run the `scripts/sample_qc.py` script, that performs the [sample-level QC](#sample-qc), and generates a Table with the filtered sample IDs, as well as a metadata Table with metrics that were used for filtering (coverage, sex, ancestry, contamination, variant numbers/distributions, etc).
 
-1. If `--run-rf` provided, use the [random forest](#random-forest-variant-qc) approach to perform the variant QC.
+1. Run the [random forest](#random-forest-variant-qc) approach to perform the variant QC.
 
-1. If `--run-vqsr` is specified, use the [VQSR approach](#allele-specific-vqsr) to perform the variant QC.
+1. Run the [allele-specific VQSR approach](#allele-specific-vqsr) to perform the variant QC.
 
 ## Sample QC
 

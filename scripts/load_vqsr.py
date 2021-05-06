@@ -34,12 +34,6 @@ logger.setLevel(logging.INFO)
     'vqsr_vcf_path',
     help='Path to VQSR site-only VCF. Can be specified as Hadoop glob patterns',
 )
-# @click.option(
-#     '--vqsr-type', 'vqsr_type',
-#     help='Type of VQSR corresponding to the VQSR VCF being loaded',
-#     default='alleleSpecificTrans',
-#     type=click.Choice(['classic', 'alleleSpecific', 'alleleSpecificTrans']),
-# )
 @click.option(
     '--n-partitions',
     'n_partitions',
@@ -75,7 +69,6 @@ def main(  # pylint: disable=missing-function-docstring
     output_ht_path: str,
     split_multiallelic: bool,
     vqsr_vcf_path: str,
-    # vqsr_type: str,
     n_partitions: str,
     header_path: str,
     local_tmp_dir: str,
