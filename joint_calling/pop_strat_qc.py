@@ -367,6 +367,8 @@ def flag_related_samples(
             )
         )
     except hl.ExpressionException:
+        # Hail doesn't handle it with `aggregate` when none of
+        # the samples is 'filtered'
         filtered_samples = hl.empty_array('tstr')
     samples_to_drop_ht = compute_related_samples_to_drop(
         relatedness_ht,

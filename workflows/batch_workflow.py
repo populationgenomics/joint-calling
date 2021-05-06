@@ -311,7 +311,7 @@ def _add_pre_combiner_jobs(
     callset_batches: List[str],
     skip_input_meta: bool,
     overwrite: bool,
-) -> Tuple[pd.Dataframe, str, List[Job]]:
+) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
     :param input_gvcfs_bucket: bucket with GVCFs batches as subfolders
