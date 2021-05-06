@@ -1,17 +1,6 @@
 """
-Hail Batch workflow to perform joint calling, sample QC, and variant QC with VQSR and 
-random forest methods on a WGS germline callset.
+Hail Batch workflow to perform joint calling, sample QC, and variant QC with VQSR and random forest methods on a WGS germline callset.
 
-1. For the sample QC and the random forest variant QC, mostly re-implementation of 
-https://github.com/broadinstitute/gnomad_qc
-2. For VQSR, compilation from the following 2 WDL workflows:
- a. hail-ukbb-200k-callset/GenotypeAndFilter.AS.wdl
- b. The Broad VQSR workflow:
-    https://github.com/broadinstitute/warp/blob/develop/pipelines/broad/dna_seq/germline/joint_genotyping/JointGenotyping.wdl
-    documented here:
-    https://gatk.broadinstitute.org/hc/en-us/articles/360035531112--How-to-Filter-variants-either-with-VQSR-or-by-hard-filtering
-Translated from WDL with a help of Janis:
-https://github.com/PMCC-BioinformaticsCore/janis
 
 Output
  * The output of sample QC is a CSV file:
@@ -30,7 +19,7 @@ https://github.com/populationgenomics/analysis-runner (see helper script `joint_
 
 import os
 from os.path import join, dirname, abspath
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import logging
 import click
 import pandas as pd
@@ -47,7 +36,7 @@ logger.setLevel('INFO')
 
 
 @click.command()
-@click.option('--callset', 'callset_name', type=str, required=True)
+@click.option('--callset', '--dataset', 'callset_name', type=str, required=True)
 @click.option('--version', 'callset_version', type=str, required=True)
 @click.option('--batch', 'callset_batches', type=str, multiple=True)
 @click.option(
@@ -105,7 +94,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     ped_file: str,
     skip_input_meta: bool,
     keep_scratch: bool,
-    reuse_scratch_run_id: str,
+    reuse_scratch_run_id: str,  # pylint: disable=unused-argument
     dry_run: bool,
     overwrite: bool,
     run_vqsr: bool,
@@ -148,74 +137,47 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
                 '(can put multiple times, e.g. --batch 0 --batch 1)'
             )
 
-    mt_output_bucket = f'gs://cpg-{callset_name}-{mt_output_bucket_suffix}/joint_vcf'
-    raw_combined_mt_path = join(mt_output_bucket, 'raw', 'genomes.mt')
+    mt_output_bucket = f'gs://cpg-{callset_name}-{mt_output_bucket_suffix}/mt'
+    raw_combined_mt_path = f'{mt_output_bucket}/raw/{callset_version}.mt'
     # pylint: disable=unused-variable
-    filtered_combined_mt_path = join(mt_output_bucket, 'genomes.mt')
+    filtered_combined_mt_path = f'{mt_output_bucket}/{callset_version}.mt'
 
-    base_bucket = f'gs://cpg-{callset_name}-{analysis_output_bucket_suffix}/joint_vcf'
-    analysis_bucket = join(base_bucket, callset_version)
-    hail_bucket = os.environ.get('HAIL_BUCKET') or join(analysis_bucket, 'hail')
-    combiner_bucket = join(analysis_bucket, 'combiner')
+    analysis_base_bucket = (
+        f'gs://cpg-{callset_name}-{analysis_output_bucket_suffix}/joint-calling'
+    )
+    analysis_bucket = f'{analysis_base_bucket}/{callset_version}'
+    hail_bucket = os.environ.get('HAIL_BUCKET') or f'{analysis_bucket}/hail'
+    combiner_bucket = f'{analysis_bucket}/combiner'
 
     backend = hb.ServiceBackend(
         billing_project=billing_project,
         bucket=hail_bucket.replace('gs://', ''),
     )
-    b = hb.Batch('Joint Calling', backend=backend)
+    b = hb.Batch('Joint calling', backend=backend)
     scripts_dir = abspath(join(dirname(__file__), '..', 'scripts'))
 
-    # TODO: merge with existing data
-
-    input_samples_path = join(analysis_bucket, 'samples.csv')
-    combiner_ready_samples_path = join(combiner_bucket, 'samples.csv')
-    subset_gvcf_jobs = []
-    if not overwrite and utils.file_exists(combiner_ready_samples_path):
-        samples_df = pd.read_csv(combiner_ready_samples_path, sep='\t').set_index(
-            's', drop=False
-        )
-        samples_df = samples_df[pd.notnull(samples_df.s)]
-    else:
-        if not overwrite and utils.file_exists(input_samples_path):
-            samples_df = pd.read_csv(input_samples_path, sep='\t').set_index(
-                's', drop=False
-            )
-        else:
-            input_buckets = []
-            for cb in callset_batches:
-                cb = f'batch{cb}' if not cb.startswith('batch') else cb
-                input_buckets.append(
-                    f'gs://cpg-{callset_name}-{input_bucket_suffix}/gvcf/{cb}'
-                )
-            samples_df = utils.find_inputs(input_buckets, skip_qc=skip_input_meta)
-        samples_df = samples_df[pd.notnull(samples_df.s)]
-        gvcfs = [
-            b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
-            for gvcf in list(samples_df.gvcf)
-        ]
-        subset_gvcf_jobs = add_prep_gvcfs_for_combiner_steps(
-            b=b,
-            gvcfs=gvcfs,
-            hail_bucket=hail_bucket,
-            reuse_scratch_run_id=reuse_scratch_run_id,
-            samples_df=samples_df,
-            output_sample_csv_path=combiner_ready_samples_path,
-            combiner_bucket=combiner_bucket,
-            overwrite=overwrite,
-        )
+    samples_df, samples_csv_path, pre_combiner_jobs = _add_pre_combiner_jobs(
+        b=b,
+        input_gvcfs_bucket=f'gs://cpg-{callset_name}-{input_bucket_suffix}/gvcf',
+        work_bucket=join(analysis_bucket, 'work'),
+        output_bucket=combiner_bucket,
+        callset_batches=callset_batches,
+        skip_input_meta=skip_input_meta,
+        overwrite=overwrite,
+    )
 
     if not utils.file_exists(raw_combined_mt_path):
         combiner_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/combine_gvcfs.py '
-            f'--meta-csv {combiner_ready_samples_path} '
+            f'--meta-csv {samples_csv_path} '
             f'--out-mt {raw_combined_mt_path} '
             f'--bucket {combiner_bucket}/work '
             f'--hail-billing {billing_project} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=10,
-            depends_on=subset_gvcf_jobs,
+            depends_on=pre_combiner_jobs,
             job_name='Combine GVCFs',
         )
     else:
@@ -251,7 +213,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     if not any(
         utils.file_exists(fp) for fp in [hard_filtered_samples_ht_path, meta_ht_path]
     ):
-        age_csv = join(base_bucket, 'age.csv')
+        age_csv = join(analysis_base_bucket, 'age.csv')
         if utils.file_exists(age_csv):
             age_csv_param = f'--age-csv {age_csv} '
         else:
@@ -262,7 +224,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--mt {raw_combined_mt_path} '
             f'--info-ht {info_ht_path} '
             f'{age_csv_param}'
-            f'--meta-csv {combiner_ready_samples_path} '
+            f'--meta-csv {samples_csv_path} '
             f'--bucket {combiner_bucket} '
             f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
             f'--out-meta-ht {meta_ht_path} '
@@ -303,31 +265,103 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
 
 
-def add_prep_gvcfs_for_combiner_steps(
+def _add_pre_combiner_jobs(
+    b: hb.Batch,
+    input_gvcfs_bucket: str,
+    work_bucket: str,
+    output_bucket: str,
+    callset_batches: List[str],
+    skip_input_meta: bool,
+    overwrite: bool,
+) -> Tuple[pd.Dataframe, str, List[Job]]:
+    """
+    Add jobs that prepare GVCFs for the combiner, if needed.
+    :param input_gvcfs_bucket: bucket with GVCFs batches as subfolders
+    :param work_bucket: bucket to write intermediate files to
+    :param output_bucket: bucket to write the GVCF combiner inputs to
+    :param callset_batches: list of the dataset batches identifiers
+    (where "batch" refers to just a set of sampels, and not to be confused with
+    Hail Batch service)
+    :param overwrite: ignore existing intermediate files
+    :return: a Tuple of: a pandas dataframe with the sample metadata, a CSV file
+    corresponding to that dataframe, and a list of jobs to wait for before
+    submitting the combiner job
+    """
+
+    # File with the pointers to GVCFs to process along with metdata.
+    # If it doesn't exist, we trigger a utuils.find_inputs(combiner_bucket) function
+    # to find the GVCFs and the metadata given the requested batch ids.
+    input_samples_csv_path = join(work_bucket, 'samples.csv')
+    # Raw GVCFs need pre-processing before passing to the combiner. If the following
+    # file exists, we assume the samples are pre-processed; otherwise, we add Batch
+    # jobs to do the pre-processing.
+    combiner_ready_samples_csv_path = join(output_bucket, 'samples.csv')
+    subset_gvcf_jobs = []
+    if not overwrite and utils.file_exists(combiner_ready_samples_csv_path):
+        samples_df = pd.read_csv(combiner_ready_samples_csv_path, sep='\t').set_index(
+            's', drop=False
+        )
+        samples_df = samples_df[pd.notnull(samples_df.s)]
+    else:
+        if not overwrite and utils.file_exists(input_samples_csv_path):
+            samples_df = pd.read_csv(input_samples_csv_path, sep='\t').set_index(
+                's', drop=False
+            )
+        else:
+            input_buckets = []
+            for cb in callset_batches:
+                cb = f'batch{cb}' if not cb.startswith('batch') else cb
+                input_buckets.append(join(input_gvcfs_bucket, cb))
+            samples_df = utils.find_inputs(input_buckets, skip_qc=skip_input_meta)
+        samples_df = samples_df[pd.notnull(samples_df.s)]
+        gvcfs = [
+            b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
+            for gvcf in list(samples_df.gvcf)
+        ]
+        subset_gvcf_jobs = _add_prep_gvcfs_for_combiner_steps(
+            b=b,
+            gvcfs=gvcfs,
+            samples_df=samples_df,
+            output_gvcf_bucket=join(output_bucket, 'gvcf'),
+            overwrite=overwrite,
+        )
+        samples_df.to_csv(
+            combiner_ready_samples_csv_path, index=False, sep='\t', na_rep='NA'
+        )
+        logger.info(
+            f'Saved metadata with updated GVCFs to '
+            f'{combiner_ready_samples_csv_path}'
+        )
+
+    return samples_df, combiner_ready_samples_csv_path, subset_gvcf_jobs
+
+
+def _add_prep_gvcfs_for_combiner_steps(
     b,
     gvcfs,
-    hail_bucket: str,
-    reuse_scratch_run_id: Optional[str],
     samples_df: pd.DataFrame,
-    output_sample_csv_path: str,
-    combiner_bucket: str,
+    output_gvcf_bucket: str,
     overwrite: bool,
+    reuse_scratch_run_id: Optional[str] = None,
+    hail_bucket: Optional[str] = None,
 ) -> List[Job]:
     """
     Add steps required to prepare GVCFs from combining
     :param b:
     :param gvcfs:
-    :param hail_bucket:
-    :param reuse_scratch_run_id:
-    :param samples_df:
-    :param output_sample_csv_path:
-    :param combiner_bucket:
-    :param overwrite:
-    :return:
+    :param samples_df: pandas dataframe with metadata and raw GVCF paths
+    :param output_gvcf_bucket: bucket to write the combiner-ready GVCFs to
+    :param overwrite: overwrite existing intemridate files
+    :param reuse_scratch_run_id: ID of a Batch run to reuse the intermediate files
+    :param hail_bucket: bucket to find the previous Batch run intermediate files
+    :return: list of Batch jobs
     """
+
+    # If we want to re-use the intermediate files from a previous run,
+    # find them using the Batch run ID of a previous run with --keep-scratch enabled.
     found_reblocked_gvcf_paths = [
         join(
-            hail_bucket,
+            str(hail_bucket),
             'batch',
             reuse_scratch_run_id,
             str(job_num),
@@ -345,14 +379,13 @@ def add_prep_gvcfs_for_combiner_steps(
             }
         )
         if (not overwrite and found_gvcf_path and utils.file_exists(found_gvcf_path))
-        else add_reblock_gvcfs_step(b, input_gvcf).output_gvcf
+        else _add_reblock_gvcfs_step(b, input_gvcf).output_gvcf
         for found_gvcf_path, input_gvcf in zip(found_reblocked_gvcf_paths, gvcfs)
     ]
 
     noalt_regions = b.read_input('gs://cpg-reference/hg38/v0/noalt.bed')
-    combiner_gvcf_bucket = os.path.join(combiner_bucket, 'gvcfs')
     subset_gvcf_jobs = [
-        add_subset_noalt_step(
+        _add_subset_noalt_step(
             b,
             input_gvcf=input_gvcf,
             output_gvcf_path=output_gvcf_path,
@@ -361,18 +394,16 @@ def add_prep_gvcfs_for_combiner_steps(
         if not utils.file_exists(output_gvcf_path)
         else b.new_job('SubsetToNoalt')
         for input_gvcf, output_gvcf_path in [
-            (gvcf, join(combiner_gvcf_bucket, f'{sample}.g.vcf.gz'))
+            (gvcf, join(output_gvcf_bucket, f'{sample}.g.vcf.gz'))
             for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)
         ]
     ]
     for sn in samples_df.s:
-        samples_df.loc[sn, ['gvcf']] = join(combiner_gvcf_bucket, sn + '.g.vcf.gz')
-    samples_df.to_csv(output_sample_csv_path, index=False, sep='\t', na_rep='NA')
-    logger.info(f'Saved metadata with updated GVCFs to {output_sample_csv_path}')
+        samples_df.loc[sn, ['gvcf']] = join(output_gvcf_bucket, sn + '.g.vcf.gz')
     return subset_gvcf_jobs
 
 
-def add_reblock_gvcfs_step(
+def _add_reblock_gvcfs_step(
     b: hb.Batch,
     input_gvcf: hb.ResourceGroup,
 ) -> Job:
@@ -405,7 +436,7 @@ def add_reblock_gvcfs_step(
     return j
 
 
-def add_subset_noalt_step(
+def _add_subset_noalt_step(
     b: hb.Batch,
     input_gvcf: hb.ResourceGroup,
     output_gvcf_path: str,
