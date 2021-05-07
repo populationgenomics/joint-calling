@@ -14,7 +14,7 @@ The workflow is parametrised by the access level, the dataset name,
 batch names and the output version.
 
 It must be only run with the CPG analysis-runner:
-https://github.com/populationgenomics/analysis-runner (see helper script `joint_calling.sh` for analysis-runner submissions)
+https://github.com/populationgenomics/analysis-runner (see helper script `driver_for_analysis_runner.sh` for analysis-runner submissions)
 """
 
 import os

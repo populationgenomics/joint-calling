@@ -48,10 +48,10 @@ analysis-runner \
     --access-level test \
 ```
 
-Thsi command will use the `test` access level, which means finding the input GVCFs in the `test` bucket `gs://cpg-$DATASET-test/gvcf/batch0/*.g.vcf.gz`, writing the resulting matrix tables to the `temporary` bucket, `gs://cpg-fewgenomes-temporary/mt/v0.mt`, and writing all other analysis files to `gs://cpg-fewgenomes-temporary/joint-vcf/v0`, e.g.:
+Thsi command will use the `test` access level, which means finding the input GVCFs in the `test` bucket `gs://cpg-$DATASET-test/gvcf/batch0/*.g.vcf.gz`, writing the resulting matrix tables to the `temporary` bucket, `gs://cpg-fewgenomes-temporary/mt/v0.mt`, and writing all other analysis files to `gs://cpg-fewgenomes-temporary/joint-calling/v0`, e.g.:
 
-* `gs://cpg-fewgenomes-temporary/joint-vcf/v0/sample_qc`
-* `gs://cpg-fewgenomes-temporary/joint-vcf/v0/variant_qc`
+* `gs://cpg-fewgenomes-temporary/joint-calling/v0/sample_qc`
+* `gs://cpg-fewgenomes-temporary/joint-calling/v0/variant_qc`
 
 To use the main bucket as an input, but write the results to the temporary bucket, run the workflow with the `standard` access level:
 
@@ -71,7 +71,7 @@ analysis-runner \
     --batch 1
 ```
 
-It will find input GVCFs in the `main` bucket, assuming the batch IDs are `batch1` and `batch2`: `gs://cpg-$DATASET-main/gvcf/batch{0,1}/*.g.vcf.gz`; write the resulting matrix tables to the `temporary` bucket: `gs://cpg-fewgenomes-temporary/mt/v0.mt`, and other analysis files to `gs://cpg-fewgenomes-temporary/joint-vcf/v0`.
+It will find input GVCFs in the `main` bucket, assuming the batch IDs are `batch1` and `batch2`: `gs://cpg-$DATASET-main/gvcf/batch{0,1}/*.g.vcf.gz`; write the resulting matrix tables to the `temporary` bucket: `gs://cpg-fewgenomes-temporary/mt/v0.mt`, and other analysis files to `gs://cpg-fewgenomes-temporary/joint-calling/v0`.
 
 To make a "production" run that uses the inputs from `main` and writes to `main` and `analysis`, run with a full access level:,
 
@@ -90,7 +90,7 @@ analysis-runner \
     --batch 1
 ```
 
-It will find input GVCFs in the `main` bucket, assuming the batch IDs are `batch1` and `batch2`: `gs://cpg-$DATASET-main/gvcf/batch{0,1}/*.g.vcf.gz`; write the resulting matrix tables to the `main` bucket: `gs://cpg-fewgenomes-main/mt/v0.mt`, and other analysis files to `analysis`: `gs://cpg-fewgenomes-analysis/joint-vcf/v0`.
+It will find input GVCFs in the `main` bucket, assuming the batch IDs are `batch1` and `batch2`: `gs://cpg-$DATASET-main/gvcf/batch{0,1}/*.g.vcf.gz`; write the resulting matrix tables to the `main` bucket: `gs://cpg-fewgenomes-main/mt/v0.mt`, and other analysis files to `analysis`: `gs://cpg-fewgenomes-analysis/joint-calling/v0`.
 
 
 ## Overview of the pipeline steps
@@ -187,82 +187,3 @@ Here we give a brief overview of the sample QC steps:
 1. Save training data with metadata describing random forest parameters used
    
 1. Apply random forest model to the full variant set.
-
-
-## Development testing
-
-Installation:
-
-```sh
-git clone git@github.com:populationgenomics/joint-calling.git
-cd joint-calling
-conda env create -f environment-dev.yml
-pip install -e .
-```
-
-For a faster iteration during development, you can also create a dataproc cluster
-manually and run separate scripts on it.
-
-```sh
-gcloud config set project fewgenomes
-
-# Start cluster
-hailctl dataproc start joint-calling-cluster \
-  --max-age=8h \
-  --region australia-southeast1 \
-  --zone australia-southeast1-a \
-  --num-preemptible-workers 10 \
-  --packages joint-calling,click,cpg-gnomad,google,slackclient,fsspec,sklearn,gcsfs
-
-# Compress dependencies to upload them into the dataproc instance
-# We also add gcsfs==0.3.0 to override the existing gcsfs==0.2.2
-# as it required by pandas to read from the GCS. We can't specify
-# gcsfs in the --packages list above as dataproc would complain
-# about duplicated depenedencies. gcsfs==0.2.2 comes from
-# hail/python/hailtop/hailctl/deploy.yaml
-mkdir libs
-cp -r joint_calling ../gnomad_methods/gnomad $CONDA_PREFIX/lib/python3.7/site-packages/gcsfs libs
-cd libs
-zip -r libs *
-cd ..
-
-STAMP1=$(date +"%Y-%m-%d_%H-%M-%S")
-
-# Submit combiner job for a first set of samples
-hailctl dataproc submit joint-calling-cluster \
-  --region australia-southeast1 \
-  --pyfiles libs/libs.zip \
-  scripts/combine_gvcfs.py \
-  --sample-map    gs://cpg-fewgenomes-temporary/joint-calling/50genomes-gcs-au-round1.csv \
-  --out-mt        gs://cpg-fewgenomes-main/${STAMP1}/50genomes.mt \
-  --bucket        gs://cpg-fewgenomes-temporary/work/vcf-combiner/${STAMP1}/ \
-  --local-tmp-dir ~/tmp/joint-calling/vcf-combiner/${STAMP1}/ \
-  --hail-billing  fewgenomes
-
-STAMP2=$(date +"%Y-%m-%d_%H-%M-%S")
-
-# Submit combiner job for a first set of samples
-hailctl dataproc submit joint-calling-cluster \
-  --region australia-southeast1 \
-  --pyfiles libs/libs.zip \
-  scripts/combine_gvcfs.py \
-  --sample-map    gs://cpg-fewgenomes-temporary/joint-calling/50genomes-gcs-au-round2.csv \
-  --existing-mt   gs://cpg-fewgenomes-main/${STAMP1}/50genomes.mt \
-  --out-mt        gs://cpg-fewgenomes-main/${STAMP2}/50genomes.mt \
-  --bucket        gs://cpg-fewgenomes-temporary/work/vcf-combiner/${STAMP2}/ \
-  --local-tmp-dir ~/tmp/joint-calling/vcf-combiner/${STAMP2}/ \
-  --hail-billing  fewgenomes
-
-# Submit sample QC on the final combined matrix table
-hailctl dataproc submit joint-calling-cluster \
-  --region australia-southeast1 \
-  --pyfiles libs/libs.zip \
-  scripts/sample_qc.py \
-  --mt            gs://cpg-fewgenomes-main/${STAMP2}/50genomes.mt \
-  --bucket        gs://cpg-fewgenomes-main/${STAMP2}/qc/sample-qc \
-  --out-ht        gs://cpg-fewgenomes-main/${STAMP2}/qc/sample-qc.ht \
-  --local-tmp-dir ~/tmp/joint-calling/sample-qc/${STAMP2}/ \
-  --hail-billing  fewgenomes
-
-hailctl dataproc stop joint-calling-cluster --region australia-southeast1
-```
