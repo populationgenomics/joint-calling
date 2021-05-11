@@ -38,9 +38,9 @@ if __name__ == '__main__':
     key = os.environ.get('GSA_KEY')
 
     # Moving the files to the main bucket
-    main_batch = hb.Batch(name='Move Files to Main')
+    batch = hb.Batch(name='Process files')
     batch_move_files(
-        main_batch,
+        batch,
         main_files,
         upload_prefix,
         main_prefix,
@@ -48,17 +48,16 @@ if __name__ == '__main__':
         key,
     )
 
-    main_batch.run()
     archive_prefix = os.path.join('cpg-tob-archive', 'cram', 'batch2')
 
     # Moving the files to the archive bucket
-    archive_batch = hb.Batch(name='Move Files to Archive')
     batch_move_files(
-        archive_batch,
+        batch,
         archive_files,
         upload_prefix,
         archive_prefix,
         docker_image,
         key,
     )
-    archive_batch.run()
+
+    batch.run()
