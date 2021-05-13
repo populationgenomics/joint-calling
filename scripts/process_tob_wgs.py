@@ -13,7 +13,7 @@ def filter_files():
     files_for_main = []
     files_for_archive = []
     prefix = 'gs://cpg-tob-wgs-upload/'
-    with open('../test/data/tob_wgs_batch2.txt') as f:
+    with open('test/data/tob_wgs_batch2.txt') as f:
         for file_path in f:
             file_path = file_path.strip()
             if file_path.endswith(
