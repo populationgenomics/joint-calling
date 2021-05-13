@@ -4,6 +4,7 @@ Process TOB-WGS files within upload bucket
 """
 
 import os
+import hail as hl
 import hailtop.batch as hb
 from joint_calling.upload_processor import batch_move_files
 
@@ -28,6 +29,7 @@ def filter_files():
 
 if __name__ == '__main__':
 
+    hl.init()
     # Process input file of sample names
     main_files, archive_files = filter_files()
 
