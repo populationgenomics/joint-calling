@@ -28,8 +28,8 @@ def filter_files():
 
 
 if __name__ == '__main__':
+    hl.init()  # Initialize the service backend.
 
-    hl.init()
     # Process input file of sample names
     main_files, archive_files = filter_files()
 
