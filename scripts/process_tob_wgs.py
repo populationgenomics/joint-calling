@@ -35,7 +35,7 @@ if __name__ == '__main__':
     # Setting up inputs for batch_move_files
     upload_prefix = os.path.join('cpg-tob-wgs-upload')
     main_prefix = os.path.join('cpg-tob-wgs-main', 'gvcf', 'batch2')
-    docker_image = os.environ.get('DOCKER_IMAGE')
+    docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
 
     # Initialize the service backend.
