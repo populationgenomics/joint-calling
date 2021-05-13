@@ -1,6 +1,5 @@
 """
 Process TOB-WGS files within upload bucket
-
 """
 
 import os
