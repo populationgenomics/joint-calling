@@ -28,7 +28,6 @@ def filter_files():
 
 
 if __name__ == '__main__':
-    hl.init()  # Initialize the service backend.
 
     # Process input file of sample names
     main_files, archive_files = filter_files()
@@ -39,8 +38,17 @@ if __name__ == '__main__':
     docker_image = os.environ.get('DOCKER_IMAGE')
     key = os.environ.get('GSA_KEY')
 
+    # Initialize the service backend.
+    hl.init()
+
+    service_backend = hb.ServiceBackend(
+        billing_project=os.getenv('HAIL_BILLING_PROJECT'),
+        bucket=os.getenv('HAIL_BUCKET'),
+    )
+
+    batch = hb.Batch(name='Process files', backend=service_backend)
+
     # Moving the files to the main bucket
-    batch = hb.Batch(name='Process files')
     batch_move_files(
         batch,
         main_files,
