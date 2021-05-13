@@ -40,6 +40,7 @@ if __name__ == '__main__':
 
     # Initialize the service backend.
     hl.init()
+
     service_backend = hb.ServiceBackend(
         billing_project=os.getenv('HAIL_BILLING_PROJECT'),
         bucket=os.getenv('HAIL_BUCKET'),
