@@ -1,4 +1,4 @@
-"""Utility functions for the cpg-qc module"""
+"""Utility functions for the joint_calling module"""
 
 import os
 import subprocess
@@ -24,7 +24,6 @@ logger.setLevel('INFO')
 
 DEFAULT_REF = 'GRCh38'
 
-
 DATAPROC_PACKAGES = [
     'joint-calling',
     'click',
@@ -36,17 +35,17 @@ DATAPROC_PACKAGES = [
     'gcloud',
 ]
 
-
 DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
 GATK_VERSION = '4.2.0.0'
 GATK_DOCKER = (
-    f'australia-southeast1-docker.pkg.dev/cpg-common/joint-calling/gatk:{GATK_VERSION}'
+    f'australia-southeast1-docker.pkg.dev/cpg-common/images/gatk:{GATK_VERSION}'
 )
 # GnarlyGenotyper is in Beta and crashes with NullPointerException when using the
 # official GATK docker, that's why we're using a separate image for it:
-GNARLY_DOCKER = 'australia-southeast1-docker.pkg.dev/cpg-common/joint-calling/gnarly_genotyper:hail_ukbb_300K'
-BCFTOOLS_DOCKER = 'australia-southeast1-docker.pkg.dev/cpg-common/joint-calling/bcftools:1.10.2--h4f4756c_2'
-
+GNARLY_DOCKER = 'australia-southeast1-docker.pkg.dev/cpg-common/images/gnarly_genotyper:hail_ukbb_300K'
+BCFTOOLS_DOCKER = (
+    'australia-southeast1-docker.pkg.dev/cpg-common/images/bcftools:1.10.2--h4f4756c_2'
+)
 
 TRUTH_GVCFS = dict(
     syndip=dict(
@@ -172,7 +171,7 @@ def find_inputs(
         elif len(matching_gvcfs) == 0:
             logging.warning(f'No GVCFs found for the sample {sn}')
 
-    # Checking 1-to-1 match of GVCFs to sample names, and fillign up a dict
+    # Checking 1-to-1 match of GVCFs to sample names, and filling a dict
     for gp in gvcf_paths:
         matching_sn = [sn for sn in sample_names if sn in gp]
         if len(matching_sn) > 1:

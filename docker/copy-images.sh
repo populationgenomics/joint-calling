@@ -4,7 +4,7 @@ set -ex
 
 gcloud config set project cpg-common
 images=$(cat images.txt)
-dest_repo="australia-southeast1-docker.pkg.dev/cpg-common/joint-calling"
+dest_repo="australia-southeast1-docker.pkg.dev/cpg-common/images"
 
 for source in ${images}
 do
