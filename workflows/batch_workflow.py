@@ -19,16 +19,17 @@ https://github.com/populationgenomics/analysis-runner (see helper script `driver
 
 import os
 from os.path import join, dirname, abspath
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 import logging
 import click
 import pandas as pd
 import hailtop.batch as hb
+import yaml
 from hailtop.batch.job import Job
 from analysis_runner import dataproc
 
-from joint_calling import utils
-from joint_calling.vqsr import make_vqsr_jobs, make_vqsr_eval_jobs
+from joint_calling import utils, get_filter_cutoffs_path
+from joint_calling.vqsr import make_vqsr_jobs, _make_vqsr_eval_jobs
 from joint_calling.rf import make_rf_jobs, make_rf_eval_jobs
 
 logger = logging.getLogger('joint-calling')
@@ -67,6 +68,12 @@ logger.setLevel('INFO')
     '--ped-file', 'ped_file', help='PED file with family information', type=str
 )
 @click.option('--skip-input-meta', 'skip_input_meta', is_flag=True)
+@click.option(
+    '--filter-cutoffs-file',
+    'filter_cutoffs_path',
+    default=get_filter_cutoffs_path(),
+    help=f'YAML file with filtering cutoffs. Defaults to {get_filter_cutoffs_path()}',
+)
 @click.option('--keep-scratch', 'keep_scratch', is_flag=True)
 @click.option(
     '--reuse-scratch-run-id',
@@ -92,6 +99,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     mt_output_bucket_suffix: str,
     analysis_output_bucket_suffix: str,
     ped_file: str,
+    filter_cutoffs_path: str,
     skip_input_meta: bool,
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
@@ -110,17 +118,19 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     billing_project = os.getenv('HAIL_BILLING_PROJECT') or callset_name
 
+    temporary_bucket_suffix = 'temporary'
+
     if not mt_output_bucket_suffix:
         if access_level == 'full':
             mt_output_bucket_suffix = 'main'
         else:
-            mt_output_bucket_suffix = 'temporary'
+            mt_output_bucket_suffix = temporary_bucket_suffix
 
     if not analysis_output_bucket_suffix:
         if access_level == 'full':
             analysis_output_bucket_suffix = 'analysis'
         else:
-            analysis_output_bucket_suffix = 'temporary'
+            analysis_output_bucket_suffix = temporary_bucket_suffix
 
     if not input_bucket_suffix:
         if access_level in ['standard', 'full']:
@@ -137,17 +147,27 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
                 '(can put multiple times, e.g. --batch 0 --batch 1)'
             )
 
-    mt_output_bucket = f'gs://cpg-{callset_name}-{mt_output_bucket_suffix}/mt'
-    raw_combined_mt_path = f'{mt_output_bucket}/raw/{callset_version}.mt'
-    # pylint: disable=unused-variable
-    filtered_combined_mt_path = f'{mt_output_bucket}/{callset_version}.mt'
+    work_bucket = f'gs://cpg-{callset_name}-{temporary_bucket_suffix}/joint-calling/{callset_version}'
 
     analysis_base_bucket = (
         f'gs://cpg-{callset_name}-{analysis_output_bucket_suffix}/joint-calling'
     )
     analysis_bucket = f'{analysis_base_bucket}/{callset_version}'
-    hail_bucket = os.environ.get('HAIL_BUCKET') or f'{analysis_bucket}/hail'
-    combiner_bucket = f'{analysis_bucket}/combiner'
+
+    mt_output_bucket = f'gs://cpg-{callset_name}-{mt_output_bucket_suffix}/mt'
+    raw_combined_mt_path = f'{temporary_bucket_suffix}/{callset_version}-raw.mt'
+    # pylint: disable=unused-variable
+    filtered_combined_mt_path = f'{mt_output_bucket}/{callset_version}.mt'
+
+    hail_bucket = os.environ.get('HAIL_BUCKET')
+    if not hail_bucket or keep_scratch or reuse_scratch_run_id:
+        # Scratch files are large, so we want to use the temporary bucket for them
+        hail_bucket = f'{work_bucket}/hail'
+
+    combiner_bucket = f'{work_bucket}/combiner'
+
+    with open(filter_cutoffs_path) as f:
+        filter_cutoffs_d = yaml.load(f)
 
     logger.info(
         f'Starting hail Batch with the project {billing_project}, '
@@ -163,7 +183,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     samples_df, samples_csv_path, pre_combiner_jobs = _add_pre_combiner_jobs(
         b=b,
         input_gvcfs_bucket=f'gs://cpg-{callset_name}-{input_bucket_suffix}/gvcf',
-        work_bucket=join(analysis_bucket, 'work'),
+        work_bucket=join(work_bucket, 'pre-combine'),
         output_bucket=combiner_bucket,
         callset_batches=callset_batches,
         skip_input_meta=skip_input_meta,
@@ -187,7 +207,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     else:
         combiner_job = b.new_job('Combine GVCFs')
 
-    sample_qc_bucket = join(analysis_bucket, 'sample_qc')
+    sample_qc_bucket = join(work_bucket, 'sample_qc')
 
     info_ht_path = join(sample_qc_bucket, 'info.ht')
     info_split_ht_path = join(sample_qc_bucket, 'info-split.ht')
@@ -230,6 +250,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'{age_csv_param}'
             f'--meta-csv {samples_csv_path} '
             f'--bucket {combiner_bucket} '
+            f'--filter-cutoffs-file {filter_cutoffs_path} '
             f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
             f'--out-meta-ht {meta_ht_path} '
             f'--hail-billing {billing_project} ',
@@ -242,12 +263,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     else:
         sample_qc_job = b.new_job('Sample QC')
 
-    _add_variant_qc_jobs(
+    variant_qc_job = _add_variant_qc_jobs(
         b=b,
+        work_bucket=work_bucket,
         analysis_bucket=analysis_bucket,
         raw_combined_mt_path=raw_combined_mt_path,
         info_split_ht_path=info_split_ht_path,
-        hard_filtered_samples_ht_path=hard_filtered_samples_ht_path,
+        hard_filter_ht_path=hard_filtered_samples_ht_path,
         meta_ht_path=meta_ht_path,
         samples_df=samples_df,
         sample_qc_job=sample_qc_job,
@@ -257,17 +279,41 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         overwrite=overwrite,
         run_rf=run_rf,
         run_vqsr=run_vqsr,
+        vqsr_params_d=filter_cutoffs_d['vqsr'],
     )
+
+    if not any(
+        utils.file_exists(fp)
+        for fp in [info_ht_path, info_split_ht_path, info_vcf_path]
+    ):
+        finalised_mt_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/make_finalised_mt.py --overwrite '
+            f'--mt {raw_combined_mt_path} '
+            f'--out-mt {filtered_combined_mt_path} '
+            f'--meta-ht {meta_ht_path} '
+            f'--meta-ht {meta_ht_path} '
+            f'--meta-ht {meta_ht_path} '
+            f'--meta-ht {meta_ht_path} ',
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=10,
+            depends_on=[variant_qc_job],
+            job_name='Making finalised MT',
+        )
+    else:
+        finalised_mt_job = b.new_job('Making finalised MT')
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
 
 
 def _add_variant_qc_jobs(
     b: hb.Batch,
+    work_bucket: str,
     analysis_bucket: str,
     raw_combined_mt_path: str,
     info_split_ht_path: str,
-    hard_filtered_samples_ht_path: str,
+    hard_filter_ht_path: str,
     meta_ht_path: str,
     samples_df: pd.DataFrame,
     sample_qc_job: Job,
@@ -277,15 +323,17 @@ def _add_variant_qc_jobs(
     overwrite: bool,
     run_rf: bool,
     run_vqsr: bool,
-):
+    vqsr_params_d: Dict,
+) -> Job:
     final_gathered_vcf_path = None
     rf_annotations_ht_path = None
     fam_stats_ht_path = None
     freq_ht_path = None
     final_gathered_vcf_job = None
+    final_job = None
 
-    rf_bucket = join(analysis_bucket, 'variant_qc/rf')
-    vqsr_bucket = join(analysis_bucket, 'variant_qc/vqsr')
+    rf_bucket = join(work_bucket, 'variant_qc/rf')
+    vqsr_bucket = join(work_bucket, 'variant_qc/vqsr')
 
     if run_rf:
         (
@@ -300,7 +348,7 @@ def _add_variant_qc_jobs(
             b,
             combined_mt_path=raw_combined_mt_path,
             info_split_ht_path=info_split_ht_path,
-            hard_filtered_samples_ht_path=hard_filtered_samples_ht_path,
+            hard_filtered_samples_ht_path=hard_filter_ht_path,
             meta_ht_path=meta_ht_path,
             work_bucket=rf_bucket,
             depends_on=[sample_qc_job],
@@ -309,7 +357,7 @@ def _add_variant_qc_jobs(
             overwrite=overwrite,
         )
 
-        make_rf_eval_jobs(
+        final_job = make_rf_eval_jobs(
             b=b,
             combined_mt_path=raw_combined_mt_path,
             info_split_ht_path=info_split_ht_path,
@@ -327,20 +375,24 @@ def _add_variant_qc_jobs(
     if run_vqsr:
         final_gathered_vcf_job, final_gathered_vcf_path = make_vqsr_jobs(
             b,
-            # TODO: filter to unrelated
             combined_mt_path=raw_combined_mt_path,
+            hard_filter_ht_path=hard_filter_ht_path,
+            meta_ht_path=meta_ht_path,
             gvcf_count=len(samples_df),
-            work_bucket=vqsr_bucket,
+            vqsr_bucket=vqsr_bucket,
+            analysis_bucket=join(analysis_bucket, 'vqsr'),
             depends_on=[combiner_job],
             scripts_dir=scripts_dir,
+            vqsr_params_d=vqsr_params_d,
         )
+        final_job = final_gathered_vcf_job
 
     if run_vqsr and run_rf:
         assert final_gathered_vcf_path
         assert rf_annotations_ht_path
         assert fam_stats_ht_path
         assert freq_ht_path
-        make_vqsr_eval_jobs(
+        final_job = _make_vqsr_eval_jobs(
             b=b,
             combined_mt_path=raw_combined_mt_path,
             info_split_ht_path=info_split_ht_path,
@@ -349,10 +401,12 @@ def _add_variant_qc_jobs(
             fam_stats_ht_path=fam_stats_ht_path,
             freq_ht_path=freq_ht_path,
             work_bucket=vqsr_bucket,
+            analysis_bucket=join(analysis_bucket, 'vqsr'),
             overwrite=overwrite,
             scripts_dir=scripts_dir,
             depends_on=[final_gathered_vcf_job],
         )
+    return final_job
 
 
 def _add_pre_combiner_jobs(

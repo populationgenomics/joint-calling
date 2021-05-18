@@ -168,6 +168,7 @@ def assign_pops(
     work_bucket: str,
     min_prob: float,
     max_mislabeled_training_samples: int = 50,
+    n_pcs: int = 16,
     overwrite: bool = False,
 ) -> hl.Table:
     """
@@ -183,6 +184,7 @@ def assign_pops(
         for the population to be set (otherwise set to `None`)
     :param max_mislabeled_training_samples: keep rerunning until the number
         of mislabeled samples is below this number
+    :param n_pcs: Number of PCs to use in the RF
     :param overwrite: overwrite checkpoints if they exist
     :return: a table with the following row fields, including `prob_<POP>`
         probabily fields for each population label:
@@ -207,7 +209,7 @@ def assign_pops(
         logger.info(f'Running RF using {examples_num} training examples')
         pop_ht, pops_rf_model = assign_population_pcs(
             pop_pca_scores_ht,
-            pc_cols=pop_pca_scores_ht.scores,
+            pc_cols=pop_pca_scores_ht.scores[:n_pcs],
             known_col='training_pop',
             min_prob=min_prob,
         )

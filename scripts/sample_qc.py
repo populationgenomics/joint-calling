@@ -12,16 +12,26 @@ import logging
 import click
 import hail as hl
 import pandas as pd
+import yaml
 
 from gnomad.resources.grch38 import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.sample_qc.pipeline import annotate_sex
 from gnomad.utils.annotations import bi_allelic_expr
-from gnomad.utils.filtering import filter_to_autosomes
-from gnomad.utils.filtering import add_filters_expr
+from gnomad.utils.filtering import (
+    filter_to_autosomes,
+    filter_low_conf_regions,
+    add_filters_expr,
+)
 
 from joint_calling.utils import file_exists, get_validation_callback, get_mt
-from joint_calling import hard_filtering, pop_strat_qc, utils, _version
+from joint_calling import (
+    hard_filtering,
+    pop_strat_qc,
+    utils,
+    _version,
+    get_filter_cutoffs_path,
+)
 
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
@@ -52,6 +62,12 @@ logger.setLevel('INFO')
 )
 @click.option(
     '--age-csv', 'age_csv', help='CSV file with 2 columns: `sample` and `age`'
+)
+@click.option(
+    '--filter-cutoffs-file',
+    'filter_cutoffs_path',
+    default=get_filter_cutoffs_path(),
+    help=f'YAML file with filtering cutoffs. Defaults to {get_filter_cutoffs_path()}',
 )
 @click.option(
     '--info-ht',
@@ -89,25 +105,7 @@ logger.setLevel('INFO')
     'that generates it.',
 )
 @click.option(
-    '--min-cov',
-    'min_cov',
-    default=18,
-    help='minimum coverage for inclusion when computing hard filters.',
-)
-@click.option(
-    '--kin-threshold',
-    'kin_threshold',
-    default=0.1,
-    help='maximum kin threshold to be considered unrelated.',
-)
-@click.option(
     '--n-pcs', 'n_pcs', default=30, help='number of PCs to compute for ancestry PCA.'
-)
-@click.option(
-    '--min-pop-prob',
-    'min_pop_prob',
-    default=0.9,
-    help='minimum Random Forest probability for population assignment.',
 )
 @click.option(
     '--target-bed',
@@ -124,16 +122,14 @@ def main(
     mt_path: str,
     meta_csv_path: str,
     age_csv: str,
+    filter_cutoffs_path: str,
     info_ht_path: str,
     out_hardfiltered_samples_ht_path: str,
     out_meta_ht_path: str,
     work_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,
-    min_cov: int,
-    kin_threshold: float,
     n_pcs: int,
-    min_pop_prob: float,
     target_bed: str,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
@@ -153,6 +149,9 @@ def main(
     df = pd.read_table(local_meta_csv_path)
     input_meta_ht = hl.Table.from_pandas(df).key_by('s')
 
+    with open(filter_cutoffs_path) as f:
+        cutoffs_d = yaml.load(f)
+
     # `hail_sample_qc_ht` row fields: sample_qc, bi_allelic_sample_qc
     hail_sample_qc_ht = _compute_hail_sample_qc(mt_split, work_bucket, overwrite)
 
@@ -171,8 +170,8 @@ def main(
         input_meta_ht,
         sex_ht,
         hail_sample_qc_ht,
+        cutoffs_d=cutoffs_d['hardfiltering'],
         out_ht_path=out_hardfiltered_samples_ht_path,
-        cov_threshold=min_cov,
         overwrite=overwrite,
     )
 
@@ -188,19 +187,19 @@ def main(
 
     # We don't want to include related samples into the
     # ancestry PCA analysis
-    pca_related_samples_to_drop_ht = pop_strat_qc.flag_related_samples(
+    intermediate_related_samples_to_drop_ht = pop_strat_qc.flag_related_samples(
         hard_filtered_samples_ht=hard_filtered_samples_ht,
         sex_ht=sex_ht,
         relatedness_ht=relatedness_ht,
         regressed_metrics_ht=None,
         work_bucket=work_bucket,
-        kin_threshold=kin_threshold,
+        kin_threshold=cutoffs_d['pca']['max_kin'],
         overwrite=overwrite,
     )
 
     pop_pca_scores_ht = pop_strat_qc.run_pca_ancestry_analysis(
         for_pca_mt=for_pca_mt,
-        sample_to_drop_ht=pca_related_samples_to_drop_ht,
+        sample_to_drop_ht=intermediate_related_samples_to_drop_ht,
         work_bucket=work_bucket,
         n_pcs=n_pcs,
         overwrite=overwrite,
@@ -212,7 +211,8 @@ def main(
         pop_pca_scores_ht,
         input_meta_ht,
         work_bucket=work_bucket,
-        min_prob=min_pop_prob,
+        min_prob=cutoffs_d['pca']['min_pop_prob'],
+        n_pcs=n_pcs,
         overwrite=overwrite,
     )
 
@@ -233,7 +233,7 @@ def main(
         relatedness_ht,
         regressed_metrics_ht,
         work_bucket=work_bucket,
-        kin_threshold=kin_threshold,
+        kin_threshold=cutoffs_d['pca']['max_kin'],
         overwrite=overwrite,
     )
 
@@ -244,8 +244,8 @@ def main(
         hard_filtered_samples_ht=hard_filtered_samples_ht,
         regressed_metrics_ht=regressed_metrics_ht,
         pop_ht=pop_ht,
-        all_related_samples_to_drop_ht=pca_related_samples_to_drop_ht,
-        final_related_samples_to_drop_ht=final_related_samples_to_drop_ht,
+        related_samples_to_drop_before_qc_ht=intermediate_related_samples_to_drop_ht,
+        related_samples_to_drop_after_qc_ht=final_related_samples_to_drop_ht,
         out_ht_path=out_meta_ht_path,
         overwrite=overwrite,
         age_ht=hl.import_table(age_csv, delimiter=',', types={'age': 'float'})
@@ -285,9 +285,14 @@ def _compute_hail_sample_qc(
         return hl.read_table(out_ht_path)
 
     mt = filter_to_autosomes(mt)
-    mt = mt.filter_rows(
-        ~hl.is_defined(telomeres_and_centromeres.ht()[mt.locus])
-        & (hl.len(mt.alleles) > 1)
+
+    # Remove centromeres and telomeres incase they were included and any reference blocks
+    mt = filter_low_conf_regions(
+        mt,
+        filter_lcr=False,
+        filter_decoy=False,
+        filter_segdup=False,
+        filter_telomeres_and_centromeres=True,
     )
 
     sample_qc_ht = compute_stratified_sample_qc(
@@ -360,8 +365,8 @@ def _generate_metadata(
     hard_filtered_samples_ht: hl.Table,
     regressed_metrics_ht: hl.Table,
     pop_ht: hl.Table,
-    all_related_samples_to_drop_ht: hl.Table,
-    final_related_samples_to_drop_ht: hl.Table,
+    related_samples_to_drop_before_qc_ht: hl.Table,
+    related_samples_to_drop_after_qc_ht: hl.Table,
     out_ht_path: str,
     overwrite: bool = False,
     age_ht: Optional[hl.Table] = None,
@@ -380,19 +385,18 @@ def _generate_metadata(
         and a `qc_metrics_filters` row field.
     :param pop_ht: table with the following row fields:
         `pop`, `prob_CEU`, `pca_scores`, `training_pop`.
-    :param all_related_samples_to_drop_ht:
-        table with related samples
-    :param final_related_samples_to_drop_ht:
-        table with related samples after re-ranking them based
+    :param related_samples_to_drop_before_qc_ht:
+        table with related samples, calculated before stratified QC
+    :param related_samples_to_drop_after_qc_ht:
+        table with related samples, after re-ranking them based
         on population-stratified QC
-    :param work_bucket: bucket to write checkpoints
     :param overwrite: overwrite checkpoints if they exist
     :param age_ht: optional: Table with a field "age"
     :return: table with relevant fields from input tables,
         annotated with the following row fields:
-            'release_related': bool = in `final_related_samples_to_drop_ht`
-            'all_samples_related': bool =
-                in `intermediate_related_samples_to_drop_ht`
+            'related_after_qc': bool = in `related_samples_to_drop_after_qc_ht`
+            'related_before_qc': bool =
+                in `related_samples_to_drop_before_qc_ht`
             'high_quality': bool =
                 not `hard_filters_ht.hard_filters` &
                 not `regressed_metrics_ht.qc_metrics_filters`
@@ -419,12 +423,10 @@ def _generate_metadata(
             **hard_filtered_samples_ht[meta_ht.key],
             **regressed_metrics_ht[meta_ht.key],
             **pop_ht[meta_ht.key],
-            release_related=hl.is_defined(
-                final_related_samples_to_drop_ht[meta_ht.key]
+            related_before_qc=hl.is_defined(
+                related_samples_to_drop_before_qc_ht[meta_ht.key]
             ),
-            all_samples_related=hl.is_defined(
-                all_related_samples_to_drop_ht[meta_ht.key]
-            ),
+            related=hl.is_defined(related_samples_to_drop_after_qc_ht[meta_ht.key]),
         )
 
         if age_ht is not None:

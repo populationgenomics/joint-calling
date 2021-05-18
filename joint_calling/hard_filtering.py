@@ -1,6 +1,8 @@
 """Sample-level hard filtering based on Picard statistics"""
 
 import logging
+from typing import Dict
+
 import hail as hl
 
 from joint_calling.utils import file_exists
@@ -9,23 +11,13 @@ from joint_calling.utils import file_exists
 logger = logging.getLogger('sample_qc_hard_filtering')
 
 
-MAX_N_SNPS = 8.0e6
-MIN_N_SNPS = 2.4e6
-MAX_N_SINGLETONS = 4e5
-MAX_N_HET_HOM = 3.3
-MAX_CONTAMINATION = 5.00
-MAX_PCT_CHIMERAS = 5.00
-MIN_MEAN_COVERAGE = 15.0
-MIN_MEDIAN_IS = 250
-
-
 def compute_hard_filters(
     mt: hl.MatrixTable,
     qc_ht: hl.MatrixTable,
     sex_ht: hl.Table,
     hail_sample_qc_ht: hl.Table,
+    cutoffs_d: Dict,
     out_ht_path: str,
-    cov_threshold: int,
     overwrite: bool = False,
 ) -> hl.Table:
     """
@@ -44,7 +36,7 @@ def compute_hard_filters(
     :param hail_sample_qc_ht: required fields:
         "bi_allelic_sample_qc { n_snp, n_singleton, r_het_hom_var }"
     :param out_ht_path: location to write the hard filtered samples Table
-    :param cov_threshold: minimal chr20 coverage
+    :param cutoffs_d: a dictionary with hard-filtering thresholds
     :param overwrite: overwrite checkpoints if they exist
     :return: table with samples failed the filters, and the following structure:
         's': str
@@ -77,21 +69,29 @@ def compute_hard_filters(
 
     # Remove low-coverage samples
     # chrom 20 coverage is computed to infer sex and used here
-    ht = add_filter(ht, sex_ht[ht.key].chr20_mean_dp < cov_threshold, 'low_coverage')
+    ht = add_filter(
+        ht, sex_ht[ht.key].chr20_mean_dp < cutoffs_d['min_coverage'], 'low_coverage'
+    )
 
     # Remove extreme raw bi-allelic sample QC outliers
     ht = add_filter(
         ht,
         (
-            (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp > MAX_N_SNPS)
-            | (hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp < MIN_N_SNPS)
+            (
+                hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp
+                > cutoffs_d['max_n_snps']
+            )
+            | (
+                hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp
+                < cutoffs_d['min_n_snps']
+            )
             | (
                 hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_singleton
-                > MAX_N_SINGLETONS
+                > cutoffs_d['max_n_singletons']
             )
             | (
                 hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.r_het_hom_var
-                > MAX_N_HET_HOM
+                > cutoffs_d['max_n_het_hom']
             )
         ),
         'bad_biallelic_metrics',
@@ -102,27 +102,22 @@ def compute_hard_filters(
     ht = add_filter(
         ht,
         hl.is_missing(qc_ht[ht.key].freemix)
-        | (qc_ht[ht.key].freemix > MAX_CONTAMINATION),
+        | (qc_ht[ht.key].freemix > cutoffs_d['max_contamination']),
         'contamination',
     )
     ht = add_filter(
         ht,
         hl.is_missing(qc_ht[ht.key].pct_chimeras)
-        | (qc_ht[ht.key].pct_chimeras > MAX_PCT_CHIMERAS),
+        | (qc_ht[ht.key].pct_chimeras > cutoffs_d['max_pct_chimeras']),
         'chimera',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(qc_ht[ht.key].mean_coverage)
-        | (qc_ht[ht.key].mean_coverage < MIN_MEAN_COVERAGE),
-        'coverage',
-    )
-    ht = add_filter(
-        ht,
         hl.is_missing(qc_ht[ht.key].median_insert_size)
-        | (qc_ht[ht.key].median_insert_size < MIN_MEDIAN_IS),
+        | (qc_ht[ht.key].median_insert_size < cutoffs_d['min_median_is']),
         'insert_size',
     )
+    ht = ht.annotate_globals(hard_filter_cutoffs=hl.struct(**cutoffs_d))
     ht = ht.filter(hl.len(ht.hard_filters) > 0)
     ht.write(out_ht_path, overwrite=True)
     return ht

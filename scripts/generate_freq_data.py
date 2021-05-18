@@ -11,7 +11,6 @@ import click
 import hail as hl
 
 from gnomad.resources.grch38.gnomad import (
-    COHORTS_WITH_POP_STORED_AS_SUBPOP,
     DOWNSAMPLINGS,
     POPS,
     POPS_TO_REMOVE_FOR_POPMAX,
@@ -117,17 +116,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         f'generate_frequency_data {("for " + subset) if subset else ""}', local_tmp_dir
     )
 
-    # if test:
-    #     out_ht_path = join(
-    #         work_bucket,
-    #         f'tmp/chr20_test_freq{("." + subset) if subset else ""}.ht'
-    #     )
-    # else:
-    #     out_ht_path = join(
-    #         work_bucket,
-    #         f'frequencies{("." + subset) if subset else ""}.ht'
-    #     )
-
     if not overwrite and file_exists(out_ht_path):
         logger.info(f'{out_ht_path} exists, reusing')
 
@@ -191,11 +179,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         mt = annotate_freq(
             mt,
             sex_expr=mt.meta.sex_karyotype,
-            pop_expr=mt.meta.pop
-            if subset not in COHORTS_WITH_POP_STORED_AS_SUBPOP
-            else mt.meta.project_meta.project_subpop,
-            # NOTE: TGP and HGDP labeled populations are highly specific
-            # and are stored in the project_subpop meta field
+            pop_expr=mt.meta.pop,
         )
 
         # NOTE: no FAFs or popmax needed for subsets

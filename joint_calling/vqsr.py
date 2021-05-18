@@ -4,7 +4,7 @@ Create jobs to create and apply a VQSR model
 
 import os
 from os.path import join
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Union
 import logging
 import hailtop.batch as hb
 from hailtop.batch.job import Job
@@ -18,95 +18,81 @@ logger.setLevel('INFO')
 
 BROAD_REF_BUCKET = 'gs://gcp-public-data--broad-references/hg38/v0'
 
-
-MIN_EXCESS_HET = 54.69
+SNP_RECALIBRATION_TRANCHE_VALUES = [
+    100.0,
+    99.95,
+    99.9,
+    99.8,
+    99.6,
+    99.5,
+    99.4,
+    99.3,
+    99.0,
+    98.0,
+    97.0,
+    90.0,
+]
+SNP_RECALIBRATION_ANNOTATION_VALUES = [
+    'AS_QD',
+    'AS_MQRankSum',
+    'AS_ReadPosRankSum',
+    'AS_FS',
+    'AS_SOR',
+    'AS_MQ',
+]
+INDEL_RECALIBRATION_TRANCHE_VALUES = [
+    100.0,
+    99.95,
+    99.9,
+    99.5,
+    99.0,
+    97.0,
+    96.0,
+    95.0,
+    94.0,
+    93.5,
+    93.0,
+    92.0,
+    91.0,
+    90.0,
+]
+INDEL_RECALIBRATION_ANNOTATION_VALUES = [
+    'AS_FS',
+    'AS_SOR',
+    'AS_ReadPosRankSum',
+    'AS_MQRankSum',
+    'AS_QD',
+]
 
 
 def make_vqsr_jobs(
     b: hb.Batch,
     combined_mt_path: str,
+    hard_filter_ht_path: str,
+    meta_ht_path: str,
     gvcf_count: int,
-    work_bucket: str,
+    vqsr_bucket: str,
+    analysis_bucket: str,
     depends_on: Optional[List[Job]],
     scripts_dir: str,
-    excess_het_threshold: float = MIN_EXCESS_HET,
-    indel_recalibration_tranche_values: List[float] = None,
-    indel_recalibration_annotation_values: List[str] = None,
-    snp_recalibration_tranche_values: List[float] = None,
-    snp_recalibration_annotation_values: List[str] = None,
-    skip_allele_specific_annotations: bool = False,
-    snp_filter_level: float = 99.7,
-    indel_filter_level: float = 99.0,
+    vqsr_params_d: Dict,
 ) -> Tuple[Job, str]:
     """
     Add jobs that perform the allele-specific VQSR variant QC
 
     :param b: Batch object to add jobs to
     :param combined_mt_path: path to a Matrix Table combined with the Hail VCF combiner
-    :param: info_split_ht_path: path to RF annotation data (for evaluation)
-    :param: rf_annotations_ht_path: path to RF annotation data (for evaluation)
-    :param: fam_stats_ht_path: path to RF annotation data (for evaluation)
-    :param: freq_ht_path: path to RF annotation data (for evaluation)
+    :param hard_filter_ht_path: path to HT with samples that failed QC
+    :param meta_ht_path: path to HT with sample QC metadata
     :param gvcf_count: number of input samples. Can't read from combined_mt_path as it
         might not be yet genereated the point of Batch job submission
-    :param work_bucket: bucket for intermediate files
+    :param vqsr_bucket: bucket for intermediate files
+    :param analysis_bucket: bucket for plots and evaluation results
     :param depends_on: job that the created jobs should only run after
     :param scripts_dir: repository directory with scripts
-    :param excess_het_threshold: minimal excess het value
-    :param indel_recalibration_tranche_values:
-    :param indel_recalibration_annotation_values:
-    :param snp_recalibration_tranche_values:
-    :param snp_recalibration_annotation_values:
-    :param skip_allele_specific_annotations:
-    :param snp_filter_level:
-    :param indel_filter_level:
+    :param vqsr_params_d: parameters for VQSR
     :return: a final Job, and a path to the VCF with VQSR annotations
     """
-    snp_recalibration_tranche_values = snp_recalibration_tranche_values or [
-        100.0,
-        99.95,
-        99.9,
-        99.8,
-        99.6,
-        99.5,
-        99.4,
-        99.3,
-        99.0,
-        98.0,
-        97.0,
-        90.0,
-    ]
-    snp_recalibration_annotation_values = snp_recalibration_annotation_values or [
-        'AS_QD',
-        'AS_MQRankSum',
-        'AS_ReadPosRankSum',
-        'AS_FS',
-        'AS_SOR',
-        'AS_MQ',
-    ]
-    indel_recalibration_tranche_values = indel_recalibration_tranche_values or [
-        100.0,
-        99.95,
-        99.9,
-        99.5,
-        99.0,
-        97.0,
-        96.0,
-        95.0,
-        94.0,
-        93.5,
-        93.0,
-        92.0,
-        91.0,
-        90.0,
-    ]
-    indel_recalibration_annotation_values = indel_recalibration_annotation_values or [
-        'AS_FS',
-        'AS_SOR',
-        'AS_ReadPosRankSum',
-        'AS_MQRankSum',
-        'AS_QD',
-    ]
 
     # Reference files. All options have defaults.
     unpadded_intervals_path = os.path.join(
@@ -183,7 +169,6 @@ def make_vqsr_jobs(
     # Make a 2.5:1 interval number to samples in callset ratio interval list.
     # We allow overriding the behavior by specifying the desired number of vcfs
     # to scatter over for testing / special requests.
-
     scatter_count_scale_factor = 0.15
     scatter_count = int(round(scatter_count_scale_factor * gvcf_count))
     scatter_count = max(scatter_count, 2)
@@ -200,12 +185,14 @@ def make_vqsr_jobs(
     medium_disk = 50 if is_small_callset else (100 if not is_huge_callset else 200)
     huge_disk = 100 if is_small_callset else (500 if not is_huge_callset else 2000)
 
-    combined_vcf_path = join(work_bucket, 'vqsr', 'genomes.vcf.gz')
+    combined_vcf_path = join(vqsr_bucket, 'genomes.vcf.gz')
     if not utils.file_exists(combined_vcf_path):
         mt_to_vcf_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/mt_to_vcf.py --overwrite '
             f'--mt {combined_mt_path} '
+            f'--meta-ht {meta_ht_path} '
+            f'--hard-filtered-samples-ht {hard_filter_ht_path} '
             f'-o {combined_vcf_path} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
@@ -228,17 +215,7 @@ def make_vqsr_jobs(
     tabix_job = add_tabix_step(b, combined_vcf_path, medium_disk)
     tabix_job.depends_on(mt_to_vcf_job)
 
-    gnarly_output_vcfs = [
-        add_gnarly_genotyper_on_vcf_step(
-            b,
-            combined_gvcf=tabix_job.combined_vcf,
-            interval=intervals[f'interval_{idx}'],
-            ref_fasta=ref_fasta,
-            dbsnp_vcf=dbsnp_vcf,
-            disk_size=medium_disk,
-        ).output_vcf
-        for idx in range(scatter_count)
-    ]
+    scattered_vcfs: Union[List[hb.ResourceGroup], None] = None
 
     if not is_small_callset:
         # ExcessHet filtering applies only to callsets with a large number of samples,
@@ -249,40 +226,30 @@ def make_vqsr_jobs(
         hard_filtered_vcfs = [
             add_hard_filter_step(
                 b,
-                input_vcf=gnarly_output_vcfs[idx],
-                excess_het_threshold=excess_het_threshold,
+                input_vcf=tabix_job.combined_vcf,
+                excess_het_threshold=vqsr_params_d['min_excess_het'],
                 disk_size=medium_disk,
+                interval=intervals[f'interval_{idx}'],
             ).output_vcf
             for idx in range(scatter_count)
         ]
-    else:
-        hard_filtered_vcfs = gnarly_output_vcfs
-
-    sites_only_vcfs = [
-        add_make_sites_only_vcf_step(
+        gathered_vcf = add_sites_only_gather_vcf_step(
             b,
-            input_vcf=hard_filtered_vcfs[idx],
+            input_vcfs=hard_filtered_vcfs,
             disk_size=medium_disk,
-        ).sites_only_vcf
-        for idx in range(scatter_count)
-    ]
+        ).output_vcf
+        scattered_vcfs = hard_filtered_vcfs
+    else:
+        gathered_vcf = tabix_job.combined_vcf
 
-    sites_only_gathered_vcf = add_sites_only_gather_vcf_step(
-        b,
-        input_vcfs=sites_only_vcfs,
-        disk_size=medium_disk,
-    ).output_vcf
     indels_variant_recalibrator_job = add_indels_variant_recalibrator_step(
         b,
-        sites_only_variant_filtered_vcf=sites_only_gathered_vcf,
-        recalibration_tranche_values=indel_recalibration_tranche_values,
-        recalibration_annotation_values=indel_recalibration_annotation_values,
+        sites_only_variant_filtered_vcf=gathered_vcf,
         mills_resource_vcf=mills_resource_vcf,
         axiom_poly_resource_vcf=axiom_poly_resource_vcf,
         dbsnp_resource_vcf=dbsnp_resource_vcf,
-        use_allele_specific_annotations=not skip_allele_specific_annotations,
         disk_size=small_disk,
-        output_bucket=work_bucket,
+        output_bucket=analysis_bucket,
     )
     indels_recalibration = indels_variant_recalibrator_job.recalibration
     indels_tranches = indels_variant_recalibrator_job.tranches
@@ -297,16 +264,13 @@ def make_vqsr_jobs(
         # Run SNP recalibrator in a scattered mode
         model_file = add_snps_variant_recalibrator_create_model_step(
             b,
-            sites_only_variant_filtered_vcf=sites_only_gathered_vcf,
-            recalibration_tranche_values=snp_recalibration_tranche_values,
-            recalibration_annotation_values=snp_recalibration_annotation_values,
+            sites_only_variant_filtered_vcf=gathered_vcf,
             hapmap_resource_vcf=hapmap_resource_vcf,
             omni_resource_vcf=omni_resource_vcf,
             one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
             dbsnp_resource_vcf=dbsnp_resource_vcf,
             disk_size=small_disk,
-            output_bucket=work_bucket,
-            use_allele_specific_annotations=not skip_allele_specific_annotations,
+            output_bucket=analysis_bucket,
             is_small_callset=is_small_callset,
             is_huge_callset=is_huge_callset,
             max_gaussians=snp_max_gaussians,
@@ -316,9 +280,8 @@ def make_vqsr_jobs(
         snps_recalibrator_jobs = [
             add_snps_variant_recalibrator_scattered_step(
                 b,
-                sites_only_variant_filtered_vcf=sites_only_vcfs[idx],
-                recalibration_tranche_values=snp_recalibration_tranche_values,
-                recalibration_annotation_values=snp_recalibration_annotation_values,
+                sites_only_vcf=scattered_vcfs[idx] if scattered_vcfs else gathered_vcf,
+                interval=intervals[f'interval_{idx}'],
                 model_file=model_file,
                 hapmap_resource_vcf=hapmap_resource_vcf,
                 omni_resource_vcf=omni_resource_vcf,
@@ -326,9 +289,8 @@ def make_vqsr_jobs(
                 dbsnp_resource_vcf=dbsnp_resource_vcf,
                 disk_size=small_disk,
                 max_gaussians=snp_max_gaussians,
-                use_allele_specific_annotations=not skip_allele_specific_annotations,
             )
-            for idx in range(len(sites_only_vcfs))
+            for idx in range(scatter_count)
         ]
         snps_recalibrations = [j.recalibration for j in snps_recalibrator_jobs]
         snps_tranches = [j.tranches for j in snps_recalibrator_jobs]
@@ -341,49 +303,40 @@ def make_vqsr_jobs(
         recalibrated_vcfs = [
             add_apply_recalibration_step(
                 b,
-                input_vcf=hard_filtered_vcfs[idx],
+                input_vcf=scattered_vcfs[idx] if scattered_vcfs else gathered_vcf,
+                interval=intervals[f'interval_{idx}'],
                 indels_recalibration=indels_recalibration,
                 indels_tranches=indels_tranches,
                 snps_recalibration=snps_recalibrations[idx],
                 snps_tranches=snps_gathered_tranches,
                 disk_size=medium_disk,
-                use_allele_specific_annotations=not skip_allele_specific_annotations,
-                indel_filter_level=indel_filter_level,
-                snp_filter_level=snp_filter_level,
+                indel_filter_level=vqsr_params_d['indel_filter_level'],
+                snp_filter_level=vqsr_params_d['snp_filter_level'],
             ).recalibrated_vcf
-            for idx in range(len(hard_filtered_vcfs))
+            for idx in range(scatter_count)
         ]
-        final_gathered_vcf_job = add_final_gather_vcf_step(
+        final_gathered_vcf_job = _add_final_gather_vcf_step(
             b,
             input_vcfs=recalibrated_vcfs,
             disk_size=huge_disk,
-            output_vcf_path=os.path.join(work_bucket, 'recalibrated.vcf.gz'),
+            output_vcf_path=os.path.join(vqsr_bucket, 'recalibrated.vcf.gz'),
         )
         final_gathered_vcf = final_gathered_vcf_job.output_vcf
 
     else:
         snps_recalibrator_job = add_snps_variant_recalibrator_step(
             b,
-            sites_only_variant_filtered_vcf=sites_only_gathered_vcf,
-            recalibration_tranche_values=snp_recalibration_tranche_values,
-            recalibration_annotation_values=snp_recalibration_annotation_values,
+            sites_only_variant_filtered_vcf=gathered_vcf,
             hapmap_resource_vcf=hapmap_resource_vcf,
             omni_resource_vcf=omni_resource_vcf,
             one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
             dbsnp_resource_vcf=dbsnp_resource_vcf,
             disk_size=small_disk,
             max_gaussians=snp_max_gaussians,
-            use_allele_specific_annotations=not skip_allele_specific_annotations,
-            output_bucket=work_bucket,
+            output_bucket=vqsr_bucket,
         )
         snps_recalibration = snps_recalibrator_job.recalibration
         snps_tranches = snps_recalibrator_job.tranches
-
-        gathered_vcf = add_final_gather_vcf_step(
-            b,
-            input_vcfs=hard_filtered_vcfs,
-            disk_size=huge_disk,
-        ).output_vcf
 
         final_gathered_vcf_job = add_apply_recalibration_step(
             b,
@@ -393,9 +346,8 @@ def make_vqsr_jobs(
             snps_recalibration=snps_recalibration,
             snps_tranches=snps_tranches,
             disk_size=medium_disk,
-            use_allele_specific_annotations=not skip_allele_specific_annotations,
-            indel_filter_level=indel_filter_level,
-            snp_filter_level=snp_filter_level,
+            indel_filter_level=vqsr_params_d['indel_filter_level'],
+            snp_filter_level=vqsr_params_d['snp_filter_level'],
         )
         final_gathered_vcf = final_gathered_vcf_job.recalibrated_vcf
 
@@ -404,14 +356,14 @@ def make_vqsr_jobs(
         input_vcf=final_gathered_vcf,
         ref_fasta=ref_fasta,
         dbsnp_vcf=dbsnp_vcf,
-        output_path=os.path.join(work_bucket, 'variant-eval.txt'),
+        output_path=os.path.join(analysis_bucket, 'variant-eval.txt'),
         disk_size=huge_disk,
     )
 
     return final_gathered_vcf_job, final_gathered_vcf['vcf.gz']
 
 
-def make_vqsr_eval_jobs(
+def _make_vqsr_eval_jobs(
     b: hb.Batch,
     combined_mt_path: str,
     info_split_ht_path: str,
@@ -420,6 +372,7 @@ def make_vqsr_eval_jobs(
     fam_stats_ht_path: str,
     freq_ht_path: str,
     work_bucket: str,
+    analysis_bucket: str,  # pylint: disable=unused-argument
     overwrite: bool,
     scripts_dir: str,
     depends_on: Optional[List[Job]],
@@ -483,7 +436,8 @@ def make_vqsr_eval_jobs(
             f'--info-split-ht {info_split_ht_path} '
             f'--freq-ht {freq_ht_path} '
             f'--score-bin-ht {score_bin_ht_path} '
-            f'--score-bin-agg-ht {score_bin_agg_ht_path} ' + f'--bucket {work_bucket} ',
+            f'--score-bin-agg-ht {score_bin_agg_ht_path} '
+            f'--bucket {work_bucket} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=10,
@@ -562,10 +516,10 @@ def add_split_intervals_step(
 def add_gnarly_genotyper_on_vcf_step(
     b: hb.Batch,
     combined_gvcf: hb.ResourceGroup,
-    interval: hb.ResourceGroup,
     ref_fasta: hb.ResourceGroup,
     dbsnp_vcf: hb.ResourceGroup,
     disk_size: int,
+    interval: Optional[hb.ResourceGroup] = None,
 ) -> Job:
     """
     Runs GATK GnarlyGenotyper on a combined_gvcf VCF bgzipped file.
@@ -601,7 +555,7 @@ def add_gnarly_genotyper_on_vcf_step(
       --only-output-calls-starting-in-intervals \\
       --keep-all-sites \\
       -V {combined_gvcf['vcf.gz']} \\
-      -L {interval} \\
+      {f'-L {interval} ' if interval else ''} \\
       --create-output-variant-index"""
     )
     return j
@@ -612,6 +566,7 @@ def add_hard_filter_step(
     input_vcf: hb.ResourceGroup,
     excess_het_threshold: float,
     disk_size: int,
+    interval: Optional[hb.ResourceGroup] = None,
 ) -> Job:
     """
     Hard-filter a large cohort callset on Excess Heterozygosity.
@@ -646,6 +601,7 @@ def add_hard_filter_step(
       VariantFiltration \\
       --filter-expression 'ExcessHet > {excess_het_threshold}' \\
       --filter-name ExcessHet \\
+      {f'-L {interval} ' if interval else ''} \\
       -O {j.output_vcf['vcf.gz']} \\
       -V {input_vcf['vcf.gz']} \\
       2> {j.stderr}
@@ -658,6 +614,7 @@ def add_make_sites_only_vcf_step(
     b: hb.Batch,
     input_vcf: hb.ResourceGroup,
     disk_size: int,
+    interval: Optional[hb.ResourceGroup] = None,
 ) -> Job:
     """
     Create sites-only VCF with only site-level annotations.
@@ -679,7 +636,8 @@ def add_make_sites_only_vcf_step(
     gatk --java-options -Xms6g \\
       MakeSitesOnlyVcf \\
       -I {input_vcf['vcf.gz']} \\
-      -O {j.sites_only_vcf['vcf.gz']}"""
+      -O {j.sites_only_vcf['vcf.gz']} \\
+      {f'-L {interval} ' if interval else ''}"""
     )
     return j
 
@@ -726,12 +684,9 @@ def add_sites_only_gather_vcf_step(
 def add_indels_variant_recalibrator_step(
     b: hb.Batch,
     sites_only_variant_filtered_vcf: hb.ResourceGroup,
-    recalibration_tranche_values: List[float],
-    recalibration_annotation_values: List[str],
     mills_resource_vcf: hb.ResourceGroup,
     axiom_poly_resource_vcf: hb.ResourceGroup,
     dbsnp_resource_vcf: hb.ResourceGroup,
-    use_allele_specific_annotations: bool,
     disk_size: int,
     output_bucket: str = None,
     max_gaussians: int = 4,
@@ -757,8 +712,10 @@ def add_indels_variant_recalibrator_step(
 
     j.declare_resource_group(recalibration={'index': '{root}.idx', 'base': '{root}'})
 
-    tranche_cmdl = ' '.join([f'-tranche {v}' for v in recalibration_tranche_values])
-    an_cmdl = ' '.join([f'-an {v}' for v in recalibration_annotation_values])
+    tranche_cmdl = ' '.join(
+        [f'-tranche {v}' for v in INDEL_RECALIBRATION_TRANCHE_VALUES]
+    )
+    an_cmdl = ' '.join([f'-an {v}' for v in INDEL_RECALIBRATION_ANNOTATION_VALUES])
     j.command(
         f"""set -euo pipefail
 
@@ -771,7 +728,7 @@ def add_indels_variant_recalibrator_step(
       {tranche_cmdl} \\
       {an_cmdl} \\
       -mode INDEL \\
-      {'--use-allele-specific-annotations' if use_allele_specific_annotations else ''} \\
+      --use-allele-specific-annotations \\
       --max-gaussians {max_gaussians} \\
       -resource:mills,known=false,training=true,truth=true,prior=12 {mills_resource_vcf.base} \\
       -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {axiom_poly_resource_vcf.base} \\
@@ -789,15 +746,12 @@ def add_indels_variant_recalibrator_step(
 def add_snps_variant_recalibrator_create_model_step(
     b: hb.Batch,
     sites_only_variant_filtered_vcf: hb.ResourceGroup,
-    recalibration_tranche_values: List[float],
-    recalibration_annotation_values: List[str],
     hapmap_resource_vcf: hb.ResourceGroup,
     omni_resource_vcf: hb.ResourceGroup,
     one_thousand_genomes_resource_vcf: hb.ResourceGroup,
     dbsnp_resource_vcf: hb.ResourceGroup,
     disk_size: int,
     output_bucket: str = None,
-    use_allele_specific_annotations: bool = True,
     is_small_callset: bool = False,
     is_huge_callset: bool = False,
     max_gaussians: int = 4,
@@ -832,8 +786,8 @@ def add_snps_variant_recalibrator_create_model_step(
 
     downsample_factor = 75 if is_huge_callset else 10
 
-    tranche_cmdl = ' '.join([f'-tranche {v}' for v in recalibration_tranche_values])
-    an_cmdl = ' '.join([f'-an {v}' for v in recalibration_annotation_values])
+    tranche_cmdl = ' '.join([f'-tranche {v}' for v in SNP_RECALIBRATION_TRANCHE_VALUES])
+    an_cmdl = ' '.join([f'-an {v}' for v in SNP_RECALIBRATION_ANNOTATION_VALUES])
     j.command(
         f"""set -euo pipefail
 
@@ -846,7 +800,7 @@ def add_snps_variant_recalibrator_create_model_step(
       {tranche_cmdl} \\
       {an_cmdl} \\
       -mode SNP \\
-      {'--use-allele-specific-annotations' if use_allele_specific_annotations else ''} \\
+      --use-allele-specific-annotations \\
       --sample-every-Nth-variant {downsample_factor} \\
       --output-model {j.model_file} \\
       --max-gaussians {max_gaussians} \\
@@ -868,16 +822,14 @@ def add_snps_variant_recalibrator_create_model_step(
 
 def add_snps_variant_recalibrator_scattered_step(
     b: hb.Batch,
-    sites_only_variant_filtered_vcf: hb.ResourceGroup,
+    sites_only_vcf: hb.ResourceGroup,
     model_file: hb.ResourceGroup,
-    recalibration_tranche_values: List[float],
-    recalibration_annotation_values: List[str],
     hapmap_resource_vcf: hb.ResourceGroup,
     omni_resource_vcf: hb.ResourceGroup,
     one_thousand_genomes_resource_vcf: hb.ResourceGroup,
     dbsnp_resource_vcf: hb.ResourceGroup,
     disk_size: int,
-    use_allele_specific_annotations: bool = True,
+    interval: Optional[hb.ResourceGroup] = None,
     max_gaussians: int = 4,
 ) -> Job:
     """
@@ -910,8 +862,8 @@ def add_snps_variant_recalibrator_scattered_step(
 
     j.declare_resource_group(recalibration={'index': '{root}.idx', 'base': '{root}'})
 
-    tranche_cmdl = ' '.join([f'-tranche {v}' for v in recalibration_tranche_values])
-    an_cmdl = ' '.join([f'-an {v}' for v in recalibration_annotation_values])
+    tranche_cmdl = ' '.join([f'-tranche {v}' for v in SNP_RECALIBRATION_TRANCHE_VALUES])
+    an_cmdl = ' '.join([f'-an {v}' for v in SNP_RECALIBRATION_ANNOTATION_VALUES])
     j.command(
         f"""set -euo pipefail
 
@@ -919,14 +871,15 @@ def add_snps_variant_recalibrator_scattered_step(
 
     gatk --java-options -Xms{mem_gb - 1}g \\
       VariantRecalibrator \\
-      -V {sites_only_variant_filtered_vcf['vcf.gz']} \\
+      -V {sites_only_vcf['vcf.gz']} \\
       -O {j.recalibration} \\
       --tranches-file {j.tranches} \\
       --trust-all-polymorphic \\
       {tranche_cmdl} \\
       {an_cmdl} \\
       -mode SNP \\
-      {'--use-allele-specific-annotations' if use_allele_specific_annotations else ''} \\
+      {f'-L {interval} ' if interval else ''} \\
+      --use-allele-specific-annotations \\
       --input-model {model_file} --output-tranches-for-scatter \\
       --max-gaussians {max_gaussians} \\
       -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
@@ -940,15 +893,12 @@ def add_snps_variant_recalibrator_scattered_step(
 def add_snps_variant_recalibrator_step(
     b: hb.Batch,
     sites_only_variant_filtered_vcf: hb.ResourceGroup,
-    recalibration_tranche_values: List[float],
-    recalibration_annotation_values: List[str],
     hapmap_resource_vcf: hb.ResourceGroup,
     omni_resource_vcf: hb.ResourceGroup,
     one_thousand_genomes_resource_vcf: hb.ResourceGroup,
     dbsnp_resource_vcf: hb.ResourceGroup,
     output_bucket: str,
     disk_size: int,
-    use_allele_specific_annotations: bool = True,
     max_gaussians: int = 4,
 ) -> Job:
     """
@@ -964,8 +914,8 @@ def add_snps_variant_recalibrator_step(
 
     j.declare_resource_group(recalibration={'index': '{root}.idx', 'base': '{root}'})
 
-    tranche_cmdl = ' '.join([f'-tranche {v}' for v in recalibration_tranche_values])
-    an_cmdl = ' '.join([f'-an {v}' for v in recalibration_annotation_values])
+    tranche_cmdl = ' '.join([f'-tranche {v}' for v in SNP_RECALIBRATION_TRANCHE_VALUES])
+    an_cmdl = ' '.join([f'-an {v}' for v in SNP_RECALIBRATION_ANNOTATION_VALUES])
     j.command(
         f"""set -euo pipefail
 
@@ -978,7 +928,7 @@ def add_snps_variant_recalibrator_step(
       {tranche_cmdl} \\
       {an_cmdl} \\
       -mode SNP \\
-      {'--use-allele-specific-annotations' if use_allele_specific_annotations else ''} \\
+      --use-allele-specific-annotations \\
       --max-gaussians {max_gaussians} \\
       -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
       -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
@@ -1049,9 +999,9 @@ def add_apply_recalibration_step(
     snps_recalibration: hb.ResourceGroup,
     snps_tranches: hb.ResourceFile,
     disk_size: int,
-    indel_filter_level: float = 99.0,
-    snp_filter_level: float = 99.7,
-    use_allele_specific_annotations: bool = True,
+    indel_filter_level: float,
+    snp_filter_level: float,
+    interval: Optional[hb.ResourceGroup] = None,
 ) -> Job:
     """
     Apply a score cutoff to filter variants based on a recalibration table.
@@ -1092,7 +1042,8 @@ def add_apply_recalibration_step(
       --truth-sensitivity-filter-level {indel_filter_level} \\
       --create-output-variant-index true \\
       -mode INDEL \\
-      {'--use-allele-specific-annotations' if use_allele_specific_annotations else ''}
+      {f'-L {interval} ' if interval else ''} \\
+      --use-allele-specific-annotations
 
     gatk --java-options -Xms5g \\
       ApplyVQSR \\
@@ -1103,7 +1054,8 @@ def add_apply_recalibration_step(
       --truth-sensitivity-filter-level {snp_filter_level} \\
       --create-output-variant-index true \\
       -mode SNP \\
-      {'--use-allele-specific-annotations' if use_allele_specific_annotations else ''}"""
+      {f'-L {interval} ' if interval else ''} \\
+      --use-allele-specific-annotations"""
     )
     return j
 
@@ -1157,7 +1109,7 @@ def add_collect_metrics_sharded_step(
     return j
 
 
-def add_final_gather_vcf_step(
+def _add_final_gather_vcf_step(
     b: hb.Batch,
     input_vcfs: List[hb.ResourceGroup],
     disk_size: int,
