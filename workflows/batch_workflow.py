@@ -19,7 +19,7 @@ https://github.com/populationgenomics/analysis-runner (see helper script `driver
 
 import os
 from os.path import join, dirname, abspath
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple
 import logging
 import click
 import pandas as pd
@@ -29,8 +29,7 @@ from hailtop.batch.job import Job
 from analysis_runner import dataproc
 
 from joint_calling import utils, get_filter_cutoffs_path
-from joint_calling.vqsr import make_vqsr_jobs, _make_vqsr_eval_jobs
-from joint_calling.rf import make_rf_jobs, make_rf_eval_jobs
+from joint_calling.variant_qc import add_variant_qc_jobs
 
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
@@ -261,152 +260,47 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             job_name='Sample QC',
         )
     else:
-        sample_qc_job = b.new_job('Sample QC')
+        sample_qc_job = b.new_job('Sample QC [reuse]')
 
-    variant_qc_job = _add_variant_qc_jobs(
-        b=b,
-        work_bucket=work_bucket,
-        analysis_bucket=analysis_bucket,
-        raw_combined_mt_path=raw_combined_mt_path,
-        info_split_ht_path=info_split_ht_path,
-        hard_filter_ht_path=hard_filtered_samples_ht_path,
-        meta_ht_path=meta_ht_path,
-        samples_df=samples_df,
-        sample_qc_job=sample_qc_job,
-        combiner_job=combiner_job,
-        scripts_dir=scripts_dir,
-        ped_file=ped_file,
-        overwrite=overwrite,
-        run_rf=run_rf,
-        run_vqsr=run_vqsr,
-        vqsr_params_d=filter_cutoffs_d['vqsr'],
-    )
-
-    if not any(
-        utils.file_exists(fp)
-        for fp in [info_ht_path, info_split_ht_path, info_vcf_path]
-    ):
-        finalised_mt_job = dataproc.hail_dataproc_job(
-            b,
-            f'{scripts_dir}/make_finalised_mt.py --overwrite '
-            f'--mt {raw_combined_mt_path} '
-            f'--out-mt {filtered_combined_mt_path} '
-            f'--meta-ht {meta_ht_path} '
-            f'--meta-ht {meta_ht_path} '
-            f'--meta-ht {meta_ht_path} '
-            f'--meta-ht {meta_ht_path} ',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=10,
-            depends_on=[variant_qc_job],
-            job_name='Making finalised MT',
-        )
-    else:
-        finalised_mt_job = b.new_job('Making finalised MT')
-
-    b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
-
-
-def _add_variant_qc_jobs(
-    b: hb.Batch,
-    work_bucket: str,
-    analysis_bucket: str,
-    raw_combined_mt_path: str,
-    info_split_ht_path: str,
-    hard_filter_ht_path: str,
-    meta_ht_path: str,
-    samples_df: pd.DataFrame,
-    sample_qc_job: Job,
-    combiner_job: Job,
-    scripts_dir: str,
-    ped_file: Optional[str],
-    overwrite: bool,
-    run_rf: bool,
-    run_vqsr: bool,
-    vqsr_params_d: Dict,
-) -> Job:
-    final_gathered_vcf_path = None
-    rf_annotations_ht_path = None
-    fam_stats_ht_path = None
-    freq_ht_path = None
-    final_gathered_vcf_job = None
-    final_job = None
-
-    rf_bucket = join(work_bucket, 'variant_qc/rf')
-    vqsr_bucket = join(work_bucket, 'variant_qc/vqsr')
-
-    if run_rf:
-        (
-            rf_job,
-            info_split_ht_path,
-            rf_model_id,
-            rf_annotations_ht_path,
-            rf_result_ht_path,
-            fam_stats_ht_path,
-            freq_ht_path,
-        ) = make_rf_jobs(
-            b,
-            combined_mt_path=raw_combined_mt_path,
+    if run_rf or run_vqsr:
+        var_qc_job, var_qc_final_filter_ht = add_variant_qc_jobs(
+            b=b,
+            work_bucket=join(work_bucket, 'variant_qc'),
+            analysis_bucket=join(analysis_bucket, 'variant_qc'),
+            raw_combined_mt_path=raw_combined_mt_path,
             info_split_ht_path=info_split_ht_path,
-            hard_filtered_samples_ht_path=hard_filter_ht_path,
+            hard_filter_ht_path=hard_filtered_samples_ht_path,
             meta_ht_path=meta_ht_path,
-            work_bucket=rf_bucket,
-            depends_on=[sample_qc_job],
+            samples_df=samples_df,
+            sample_qc_job=sample_qc_job,
+            combiner_job=combiner_job,
             scripts_dir=scripts_dir,
             ped_file=ped_file,
             overwrite=overwrite,
+            run_rf=run_rf,
+            vqsr_params_d=filter_cutoffs_d['vqsr'],
         )
+        if not utils.file_exists(filtered_combined_mt_path):
+            finalised_mt_job = dataproc.hail_dataproc_job(
+                b,
+                f'{scripts_dir}/make_finalised_mt.py --overwrite '
+                f'--mt {raw_combined_mt_path} '
+                f'--var-qc-final-filter-ht {var_qc_final_filter_ht} '
+                f'--out-mt {filtered_combined_mt_path} '
+                f'--meta-ht {meta_ht_path} ',
+                max_age='8h',
+                packages=utils.DATAPROC_PACKAGES,
+                num_secondary_workers=10,
+                depends_on=[var_qc_job],
+                job_name='Making finalised MT',
+            )
+        else:
+            finalised_mt_job = b.new_job('Making finalised MT [reuse]')
 
-        final_job = make_rf_eval_jobs(
-            b=b,
-            combined_mt_path=raw_combined_mt_path,
-            info_split_ht_path=info_split_ht_path,
-            rf_result_ht_path=rf_result_ht_path,
-            rf_annotations_ht_path=rf_annotations_ht_path,
-            fam_stats_ht_path=fam_stats_ht_path,
-            freq_ht_path=freq_ht_path,
-            rf_model_id=rf_model_id,
-            work_bucket=rf_bucket,
-            overwrite=overwrite,
-            scripts_dir=scripts_dir,
-            depends_on=[rf_job],
-        )
+    else:
+        var_qc_job = b.new_job('Var QC [skip]')
 
-    if run_vqsr:
-        final_gathered_vcf_job, final_gathered_vcf_path = make_vqsr_jobs(
-            b,
-            combined_mt_path=raw_combined_mt_path,
-            hard_filter_ht_path=hard_filter_ht_path,
-            meta_ht_path=meta_ht_path,
-            gvcf_count=len(samples_df),
-            vqsr_bucket=vqsr_bucket,
-            analysis_bucket=join(analysis_bucket, 'vqsr'),
-            depends_on=[combiner_job],
-            scripts_dir=scripts_dir,
-            vqsr_params_d=vqsr_params_d,
-        )
-        final_job = final_gathered_vcf_job
-
-    if run_vqsr and run_rf:
-        assert final_gathered_vcf_path
-        assert rf_annotations_ht_path
-        assert fam_stats_ht_path
-        assert freq_ht_path
-        final_job = _make_vqsr_eval_jobs(
-            b=b,
-            combined_mt_path=raw_combined_mt_path,
-            info_split_ht_path=info_split_ht_path,
-            final_gathered_vcf_path=final_gathered_vcf_path,
-            rf_annotations_ht_path=rf_annotations_ht_path,
-            fam_stats_ht_path=fam_stats_ht_path,
-            freq_ht_path=freq_ht_path,
-            work_bucket=vqsr_bucket,
-            analysis_bucket=join(analysis_bucket, 'vqsr'),
-            overwrite=overwrite,
-            scripts_dir=scripts_dir,
-            depends_on=[final_gathered_vcf_job],
-        )
-    return final_job
+    b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
 
 
 def _add_pre_combiner_jobs(
