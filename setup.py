@@ -1,19 +1,8 @@
 #!/usr/bin/env python
 
 import os
-from os.path import join, relpath
+from os.path import join
 import setuptools
-
-
-def find_package_files(dirpath, package, skip_exts=None):
-    paths = []
-    for (path, _dirs, fnames) in os.walk(join(package, dirpath)):
-        for fname in fnames:
-            if skip_exts and any(fname.endswith(ext) for ext in skip_exts):
-                continue
-            fpath = join(path, fname)
-            paths.append(relpath(fpath, package))
-    return paths
 
 
 setuptools.setup(
@@ -26,7 +15,7 @@ setuptools.setup(
     url='https://github.com/populationgenomics/joint-calling',
     license='MIT',
     packages=['joint_calling'],
-    package_data={'joint_calling': find_package_files('', 'joint_calling')},
+    package_data={'joint_calling': ['filter_cutoffs.yaml']},
     include_package_data=True,
     zip_safe=False,
     scripts=[join('scripts', fp) for fp in os.listdir('scripts') if fp.endswith('.py')],
