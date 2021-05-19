@@ -67,12 +67,6 @@ logger.setLevel('INFO')
     '--ped-file', 'ped_file', help='PED file with family information', type=str
 )
 @click.option('--skip-input-meta', 'skip_input_meta', is_flag=True)
-@click.option(
-    '--filter-cutoffs-file',
-    'filter_cutoffs_path',
-    default=get_filter_cutoffs_path(),
-    help=f'YAML file with filtering cutoffs. Defaults to {get_filter_cutoffs_path()}',
-)
 @click.option('--keep-scratch', 'keep_scratch', is_flag=True)
 @click.option(
     '--reuse-scratch-run-id',
@@ -98,7 +92,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     mt_output_bucket_suffix: str,
     analysis_output_bucket_suffix: str,
     ped_file: str,
-    filter_cutoffs_path: str,
     skip_input_meta: bool,
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
@@ -165,7 +158,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     combiner_bucket = f'{work_bucket}/combiner'
 
-    with open(filter_cutoffs_path) as f:
+    with open(get_filter_cutoffs_path()) as f:
         filter_cutoffs_d = yaml.load(f)
 
     logger.info(
@@ -249,7 +242,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'{age_csv_param}'
             f'--meta-csv {samples_csv_path} '
             f'--bucket {combiner_bucket} '
-            f'--filter-cutoffs-file {filter_cutoffs_path} '
             f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
             f'--out-meta-ht {meta_ht_path} '
             f'--hail-billing {billing_project} ',
