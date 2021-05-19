@@ -1,8 +1,8 @@
 hardfiltering:
   min_coverage: 18
-  max_n_snps: 8.0e6
-  min_n_snps: 2.4e6
-  max_n_singletons: 4e5
+  max_n_snps: 8000000
+  min_n_snps: 2400000
+  max_n_singletons: 400000
   max_n_het_hom: 3.3
   max_contamination: 5.00
   max_pct_chimeras: 5.00
