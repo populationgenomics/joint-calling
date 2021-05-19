@@ -15,8 +15,6 @@ setuptools.setup(
     url='https://github.com/populationgenomics/joint-calling',
     license='MIT',
     packages=['joint_calling'],
-    package_data={'joint_calling': ['filter_cutoffs.yaml']},
-    include_package_data=True,
     zip_safe=False,
     scripts=[join('scripts', fp) for fp in os.listdir('scripts') if fp.endswith('.py')],
     keywords='bioinformatics',
