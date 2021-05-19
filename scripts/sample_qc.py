@@ -400,7 +400,7 @@ def _generate_metadata(
             'high_quality': bool =
                 not `hard_filters_ht.hard_filters` &
                 not `regressed_metrics_ht.qc_metrics_filters`
-            'release': bool = high_quality & not `release_related`
+            'release': bool = high_quality & not `related`
     """
     logger.info('Generate the metadata HT and TSV files')
 
@@ -437,7 +437,7 @@ def _generate_metadata(
         meta_ht = meta_ht.annotate(
             hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
             sample_filters=add_filters_expr(
-                filters={'related': meta_ht.release_related},
+                filters={'related': meta_ht.related},
                 current_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters),
             ),
         )
