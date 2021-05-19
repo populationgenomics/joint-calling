@@ -154,7 +154,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     analysis_bucket = f'{analysis_base_bucket}/{callset_version}'
 
     mt_output_bucket = f'gs://cpg-{callset_name}-{mt_output_bucket_suffix}/mt'
-    raw_combined_mt_path = f'{temporary_bucket_suffix}/{callset_version}-raw.mt'
+    raw_combined_mt_path = f'{mt_output_bucket}/{callset_version}-raw.mt'
     # pylint: disable=unused-variable
     filtered_combined_mt_path = f'{mt_output_bucket}/{callset_version}.mt'
 
