@@ -203,7 +203,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     info_ht_path = join(sample_qc_bucket, 'info.ht')
     info_split_ht_path = join(sample_qc_bucket, 'info-split.ht')
     info_vcf_path = join(sample_qc_bucket, 'info.vcf')
-    if all(
+    if any(
         not utils.file_exists(fp)
         for fp in [info_ht_path, info_split_ht_path, info_vcf_path]
     ):
@@ -225,7 +225,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filters.ht')
     meta_ht_path = join(sample_qc_bucket, 'meta.ht')
-    if all(
+    if any(
         not utils.file_exists(fp)
         for fp in [hard_filtered_samples_ht_path, meta_ht_path]
     ):
