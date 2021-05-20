@@ -246,6 +246,15 @@ def make_vqsr_jobs(
         ]
         scattered_vcfs = hard_filtered_vcfs
 
+    scattered_vcfs = [
+        add_make_sites_only_vcf_step(
+            b,
+            input_vcf=scattered_vcfs[idx],
+            disk_size=medium_disk,
+        ).sites_only_vcf
+        for idx in range(scatter_count)
+    ]
+
     gathered_vcf = add_sites_only_gather_vcf_step(
         b,
         input_vcfs=scattered_vcfs,
@@ -290,8 +299,7 @@ def make_vqsr_jobs(
         snps_recalibrator_jobs = [
             add_snps_variant_recalibrator_scattered_step(
                 b,
-                sites_only_vcf=scattered_vcfs[idx] if scattered_vcfs else gathered_vcf,
-                interval=intervals[f'interval_{idx}'],
+                sites_only_vcf=scattered_vcfs[idx],
                 model_file=model_file,
                 hapmap_resource_vcf=hapmap_resource_vcf,
                 omni_resource_vcf=omni_resource_vcf,
@@ -313,8 +321,7 @@ def make_vqsr_jobs(
         recalibrated_vcfs = [
             add_apply_recalibration_step(
                 b,
-                input_vcf=scattered_vcfs[idx] if scattered_vcfs else gathered_vcf,
-                interval=intervals[f'interval_{idx}'],
+                input_vcf=scattered_vcfs[idx],
                 indels_recalibration=indels_recalibration,
                 indels_tranches=indels_tranches,
                 snps_recalibration=snps_recalibrations[idx],
