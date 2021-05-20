@@ -124,10 +124,10 @@ Here we give a brief overview of the sample QC steps:
 
    1. Compute sample QC metrics using Hail’s [`sample_qc`](https://hail.is/docs/0.2/methods/genetics.html#hail.methods.sample_qc) module on all autosomal bi-allelic SNVs.
 
-   1. Filter outlier samples using the following cutoffs:
+   1. Filter outlier samples using the following cutoffs. Note that the most up to date cutoffs are speified in the configuration file [filter_cutoffs.yaml](joint_calling/filter_cutoffs.yaml).
    
-      * Number of SNVs: < 2.4M or > 3.75M
-      * Number of singletons: > 100k
+      * Number of SNVs: < 2.4M or > 8M
+      * Number of singletons: > 400k
       * Hom/het ratio: > 3.3
 
    1. Hard filtering using BAM-level metrics was performed when such metrics were available. We removed samples that were outliers for:
@@ -136,7 +136,7 @@ Here we give a brief overview of the sample QC steps:
       * Chimeras: > 5% (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.alignment_summary_metrics`/`PCT_CHIMERAS`)
       * Duplication: > 30% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-MarkDuplicates/*.duplicate_metrics`/`PERCENT_DUPLICATION`)
       * Median insert size: < 250 (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.insert_size_metrics`/`MEDIAN_INSERT_SIZE`)
-      * Median coverage < 15X (`call-CollectWgsMetrics/*.wgs_metrics`/`MEDIAN_COVERAGE`)
+      * Median coverage < 18X (`call-CollectWgsMetrics/*.wgs_metrics`/`MEDIAN_COVERAGE`)
 
    1. Sex inferred for each sample with Hail's [`impute_sex`](https://hail.is/docs/0.2/methods/genetics.html?highlight=impute_sex#hail.methods.impute_sex). Removed samples with sex chromosome aneuploidies or ambiguous sex assignment.
 
