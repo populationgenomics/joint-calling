@@ -96,7 +96,7 @@ def main(
         meta_ht=hl.read_table(meta_ht_path),
         add_meta=True,
     )
-    mt = mt.filter_cols(hl.is_missing(mt.meta.related))
+    mt = mt.filter_cols(~mt.meta.related)
 
     if file_exists(output_path):
         if overwrite:

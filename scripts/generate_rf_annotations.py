@@ -361,7 +361,7 @@ def export_transmitted_singletons_vcf(
     :return: None
     """
     output_vcf_paths = {
-        conf: join(work_bucket, 'transmitted-singletons-{conf}.vcf.bgz')
+        conf: join(work_bucket, f'transmitted-singletons-{conf}.vcf.bgz')
         for conf in ['adj', 'raw']
     }
     if not overwrite and all(file_exists(path) for path in output_vcf_paths.values()):
