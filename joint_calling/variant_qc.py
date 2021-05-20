@@ -274,7 +274,7 @@ def make_vqsr_eval_jobs(
             job_name='VQSR: load_vqsr',
         )
     else:
-        load_vqsr_job = b.new_job('VQSR: load_vqsr')
+        load_vqsr_job = b.new_job('VQSR: load_vqsr [reuse]')
 
     score_bin_ht_path = join(work_bucket, 'vqsr-score-bin.ht')
     score_bin_agg_ht_path = join(work_bucket, 'vqsr-score-agg-bin.ht')
@@ -302,7 +302,7 @@ def make_vqsr_eval_jobs(
             job_name='VQSR: evaluation',
         )
     else:
-        eval_job = b.new_job('VQSR: evaluation')
+        eval_job = b.new_job('VQSR: evaluation [reuse]')
 
     final_filter_ht_path = join(work_bucket, 'final-filter.ht')
     vqsr_model_id = 'vqsr_model'
@@ -327,5 +327,5 @@ def make_vqsr_eval_jobs(
             job_name='VQSR: final filter',
         )
     else:
-        final_filter_job = b.new_job('VQSR: final filter')
+        final_filter_job = b.new_job('VQSR: final filter [reuse]')
     return final_filter_job, final_filter_ht_path

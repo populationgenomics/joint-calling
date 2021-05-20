@@ -209,7 +209,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             job_name='Combine GVCFs',
         )
     else:
-        combiner_job = b.new_job('Combine GVCFs')
+        combiner_job = b.new_job('Combine GVCFs [reuse]')
 
     info_ht_path = join(sample_qc_bucket, 'info.ht')
     info_split_ht_path = join(sample_qc_bucket, 'info-split.ht')
@@ -442,7 +442,7 @@ def _add_prep_gvcfs_for_combiner_steps(
             noalt_regions=noalt_regions,
         )
         if not utils.file_exists(output_gvcf_path)
-        else b.new_job('SubsetToNoalt')
+        else b.new_job('SubsetToNoalt [reuse]')
         for input_gvcf, output_gvcf_path in [
             (gvcf, join(output_gvcf_bucket, f'{sample}.g.vcf.gz'))
             for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)

@@ -196,7 +196,7 @@ def make_vqsr_jobs(
             job_name='MT to VCF',
         )
     else:
-        mt_to_vcf_job = b.new_job('MT to VCF')
+        mt_to_vcf_job = b.new_job('MT to VCF [reuse]')
 
     split_intervals_job = add_split_intervals_step(
         b,
