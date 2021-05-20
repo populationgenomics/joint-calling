@@ -4,7 +4,7 @@ Create jobs to create and apply a VQSR model
 
 import os
 from os.path import join
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Dict
 import logging
 import hailtop.batch as hb
 from hailtop.batch.job import Job
@@ -77,7 +77,8 @@ def make_vqsr_jobs(
     scripts_dir: str,
     vqsr_params_d: Dict,
     scatter_count: int,
-) -> Tuple[Job, str]:
+    output_vcf_path: str,
+) -> Job:
     """
     Add jobs that perform the allele-specific VQSR variant QC
 
@@ -93,6 +94,7 @@ def make_vqsr_jobs(
     :param scripts_dir: repository directory with scripts
     :param vqsr_params_d: parameters for VQSR
     :param scatter_count: number of shards to patition data for scattering
+    :param output_vcf_path: path to write final recalibrated VCF to
     :return: a final Job, and a path to the VCF with VQSR annotations
     """
 
@@ -336,7 +338,7 @@ def make_vqsr_jobs(
             b,
             input_vcfs=recalibrated_vcfs,
             disk_size=huge_disk,
-            output_vcf_path=os.path.join(vqsr_bucket, 'recalibrated.vcf.gz'),
+            output_vcf_path=output_vcf_path,
         )
         final_gathered_vcf = final_gathered_vcf_job.output_vcf
 
@@ -365,6 +367,7 @@ def make_vqsr_jobs(
             disk_size=medium_disk,
             indel_filter_level=vqsr_params_d['indel_filter_level'],
             snp_filter_level=vqsr_params_d['snp_filter_level'],
+            output_vcf_path=output_vcf_path,
         )
         final_gathered_vcf = final_gathered_vcf_job.recalibrated_vcf
 
@@ -377,7 +380,7 @@ def make_vqsr_jobs(
         disk_size=huge_disk,
     )
 
-    return final_gathered_vcf_job, final_gathered_vcf['vcf.gz']
+    return final_gathered_vcf_job
 
 
 def add_tabix_step(
@@ -933,6 +936,7 @@ def add_apply_recalibration_step(
     indel_filter_level: float,
     snp_filter_level: float,
     interval: Optional[hb.ResourceGroup] = None,
+    output_vcf_path: Optional[str] = None,
 ) -> Job:
     """
     Apply a score cutoff to filter variants based on a recalibration table.
@@ -988,6 +992,9 @@ def add_apply_recalibration_step(
       {f'-L {interval} ' if interval else ''} \\
       --use-allele-specific-annotations"""
     )
+
+    if output_vcf_path:
+        b.write_output(j.recalibrated_vcf, output_vcf_path.replace('.vcf.gz', ''))
     return j
 
 

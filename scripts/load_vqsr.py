@@ -71,6 +71,7 @@ def main(  # pylint: disable=missing-function-docstring
     vqsr_vcf_path: str,
     n_partitions: str,
     header_path: str,
+    work_bucket: str,  # pylint: disable=unused-argument
     local_tmp_dir: str,
     overwrite: bool,
 ):

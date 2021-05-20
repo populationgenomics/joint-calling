@@ -138,34 +138,45 @@ def add_variant_qc_jobs(
         )
 
     else:
-        final_gathered_vcf_job, final_gathered_vcf_path = make_vqsr_jobs(
-            b,
-            combined_mt_path=raw_combined_mt_path,
-            hard_filter_ht_path=hard_filter_ht_path,
-            meta_ht_path=meta_ht_path,
-            gvcf_count=len(samples_df),
-            vqsr_bucket=vqsr_bucket,
-            analysis_bucket=join(analysis_bucket, 'vqsr'),
-            depends_on=[combiner_job],
-            scripts_dir=scripts_dir,
-            vqsr_params_d=vqsr_params_d,
-            scatter_count=scatter_count,
-        )
-        final_job, final_filter_ht_path = make_vqsr_eval_jobs(
-            b=b,
-            combined_mt_path=raw_combined_mt_path,
-            info_split_ht_path=info_split_ht_path,
-            final_gathered_vcf_path=final_gathered_vcf_path,
-            rf_annotations_ht_path=rf_annotations_ht_path,
-            fam_stats_ht_path=fam_stats_ht_path,
-            freq_ht_path=freq_ht_path,
-            work_bucket=vqsr_bucket,
-            analysis_bucket=join(analysis_bucket, 'vqsr'),
-            overwrite=overwrite,
-            scripts_dir=scripts_dir,
-            depends_on=[anno_job, freq_job, final_gathered_vcf_job],
-            scatter_count=scatter_count,
-        )
+        vqsred_vcf_path = join(vqsr_bucket, 'recalibrated.vcf.gz')
+        if overwrite or not utils.file_exists(vqsred_vcf_path):
+            final_gathered_vcf_job = make_vqsr_jobs(
+                b,
+                combined_mt_path=raw_combined_mt_path,
+                hard_filter_ht_path=hard_filter_ht_path,
+                meta_ht_path=meta_ht_path,
+                gvcf_count=len(samples_df),
+                vqsr_bucket=vqsr_bucket,
+                analysis_bucket=join(analysis_bucket, 'vqsr'),
+                depends_on=[combiner_job],
+                scripts_dir=scripts_dir,
+                vqsr_params_d=vqsr_params_d,
+                scatter_count=scatter_count,
+                output_vcf_path=vqsred_vcf_path,
+            )
+        else:
+            final_gathered_vcf_job = b.new_job('VQSR [reuse]')
+
+        final_filter_ht_path = join(vqsr_bucket, 'final-filter.ht')
+        if overwrite or not utils.file_exists(vqsred_vcf_path):
+            final_job = make_vqsr_eval_jobs(
+                b=b,
+                combined_mt_path=raw_combined_mt_path,
+                info_split_ht_path=info_split_ht_path,
+                final_gathered_vcf_path=vqsred_vcf_path,
+                rf_annotations_ht_path=rf_annotations_ht_path,
+                fam_stats_ht_path=fam_stats_ht_path,
+                freq_ht_path=freq_ht_path,
+                work_bucket=vqsr_bucket,
+                analysis_bucket=join(analysis_bucket, 'vqsr'),
+                overwrite=overwrite,
+                scripts_dir=scripts_dir,
+                depends_on=[anno_job, freq_job, final_gathered_vcf_job],
+                scatter_count=scatter_count,
+                output_ht_path=final_filter_ht_path,
+            )
+        else:
+            final_job = b.new_job('VQSR: final filter [reuse]')
     return final_job, final_filter_ht_path
 
 
@@ -252,6 +263,7 @@ def make_vqsr_eval_jobs(
     scripts_dir: str,
     depends_on: Optional[List[Job]],
     scatter_count: int,
+    output_ht_path: str,
 ) -> Tuple[Job, str]:
     """
     Make jobs that do evaluation VQSR model and applies the final filters
@@ -304,13 +316,12 @@ def make_vqsr_eval_jobs(
     else:
         eval_job = b.new_job('VQSR: evaluation [reuse]')
 
-    final_filter_ht_path = join(work_bucket, 'final-filter.ht')
     vqsr_model_id = 'vqsr_model'
-    if not utils.file_exists(final_filter_ht_path):
+    if not utils.file_exists(output_ht_path):
         final_filter_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/final_filter.py --overwrite '
-            f'--out-final-filter-ht {final_filter_ht_path} '
+            f'--out-final-filter-ht {output_ht_path} '
             f'--vqsr-filters-split-ht {vqsr_filters_split_ht_path} '
             f'--model-id {vqsr_model_id} '
             f'--model-name VQSR '
@@ -328,4 +339,4 @@ def make_vqsr_eval_jobs(
         )
     else:
         final_filter_job = b.new_job('VQSR: final filter [reuse]')
-    return final_filter_job, final_filter_ht_path
+    return final_filter_job
