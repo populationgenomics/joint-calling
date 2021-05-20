@@ -34,6 +34,7 @@ def add_variant_qc_jobs(
     overwrite: bool,
     run_rf: bool,
     vqsr_params_d: Dict,
+    scatter_count: int,
 ) -> Tuple[Job, str]:
     """
     Add variant QC related hail-query jobs
@@ -62,7 +63,7 @@ def add_variant_qc_jobs(
             + f'--bucket {work_bucket} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=10,
+            num_secondary_workers=scatter_count,
             depends_on=[sample_qc_job],
             job_name='Var QC: generate QC annotations',
             vep='GRCh38',
@@ -82,7 +83,8 @@ def add_variant_qc_jobs(
             f'--bucket {work_bucket} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=10,
+            # Adding more workers as this is the longest step
+            num_secondary_workers=scatter_count * 3,
             depends_on=[sample_qc_job],
             job_name='Var QC: generate frequencies',
         )
@@ -111,7 +113,7 @@ def add_variant_qc_jobs(
                 f'--out-ht {rf_result_ht_path} ',
                 max_age='8h',
                 packages=utils.DATAPROC_PACKAGES,
-                num_secondary_workers=10,
+                num_secondary_workers=scatter_count,
                 depends_on=[freq_job, anno_job],
                 job_name='Random forest ',
             )
@@ -131,6 +133,7 @@ def add_variant_qc_jobs(
             overwrite=overwrite,
             scripts_dir=scripts_dir,
             depends_on=[rf_job],
+            scatter_count=scatter_count,
         )
 
     else:
@@ -145,6 +148,7 @@ def add_variant_qc_jobs(
             depends_on=[combiner_job],
             scripts_dir=scripts_dir,
             vqsr_params_d=vqsr_params_d,
+            scatter_count=scatter_count,
         )
         final_job, final_filter_ht_path = make_vqsr_eval_jobs(
             b=b,
@@ -159,6 +163,7 @@ def add_variant_qc_jobs(
             overwrite=overwrite,
             scripts_dir=scripts_dir,
             depends_on=[anno_job, freq_job, final_gathered_vcf_job],
+            scatter_count=scatter_count,
         )
     return final_job, final_filter_ht_path
 
@@ -176,6 +181,7 @@ def make_rf_eval_jobs(
     overwrite: bool,
     scripts_dir: str,
     depends_on: Optional[List[Job]],
+    scatter_count: int,
 ) -> Tuple[Job, str]:
     """
     Make jobs that do evaluation RF model and applies the final filters
@@ -199,7 +205,7 @@ def make_rf_eval_jobs(
             f'--run-sanity-checks ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=10,
+            num_secondary_workers=scatter_count,
             depends_on=depends_on,
             job_name='RF: evaluation',
         )
@@ -221,7 +227,7 @@ def make_rf_eval_jobs(
             f'--score-bin-agg-ht {score_bin_agg_ht_path} ' + f'--bucket {work_bucket} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=10,
+            num_secondary_workers=scatter_count,
             depends_on=[eval_job],
             job_name='RF: final filter',
         )
@@ -244,6 +250,7 @@ def make_vqsr_eval_jobs(
     overwrite: bool,
     scripts_dir: str,
     depends_on: Optional[List[Job]],
+    scatter_count: int,
 ) -> Tuple[Job, str]:
     """
     Make jobs that do evaluation VQSR model and applies the final filters
@@ -261,7 +268,7 @@ def make_vqsr_eval_jobs(
             f'--bucket {work_bucket} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=10,
+            num_secondary_workers=scatter_count,
             depends_on=depends_on,
             job_name='VQSR: load_vqsr',
         )
@@ -289,7 +296,7 @@ def make_vqsr_eval_jobs(
             f'--run-sanity-checks ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=10,
+            num_secondary_workers=scatter_count,
             depends_on=[load_vqsr_job],
             job_name='VQSR: evaluation',
         )
@@ -314,7 +321,7 @@ def make_vqsr_eval_jobs(
             f'--bucket {work_bucket} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=10,
+            num_secondary_workers=scatter_count,
             depends_on=[eval_job],
             job_name='VQSR: final filter',
         )

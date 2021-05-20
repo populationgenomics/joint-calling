@@ -76,6 +76,7 @@ def make_vqsr_jobs(
     depends_on: Optional[List[Job]],
     scripts_dir: str,
     vqsr_params_d: Dict,
+    scatter_count: int,
 ) -> Tuple[Job, str]:
     """
     Add jobs that perform the allele-specific VQSR variant QC
@@ -91,6 +92,7 @@ def make_vqsr_jobs(
     :param depends_on: job that the created jobs should only run after
     :param scripts_dir: repository directory with scripts
     :param vqsr_params_d: parameters for VQSR
+    :param scatter_count: number of shards to patition data for scattering
     :return: a final Job, and a path to the VCF with VQSR annotations
     """
 
@@ -165,13 +167,6 @@ def make_vqsr_jobs(
         base=axiom_poly_resource_vcf, index=axiom_poly_resource_vcf_index
     )
     dbsnp_resource_vcf = dbsnp_vcf
-
-    # Make a 2.5:1 interval number to samples in callset ratio interval list.
-    # We allow overriding the behavior by specifying the desired number of vcfs
-    # to scatter over for testing / special requests.
-    scatter_count_scale_factor = 0.15
-    scatter_count = int(round(scatter_count_scale_factor * gvcf_count))
-    scatter_count = max(scatter_count, 2)
 
     is_small_callset = gvcf_count < 1000
     # 1. For small callsets, we don't apply the ExcessHet filtering.

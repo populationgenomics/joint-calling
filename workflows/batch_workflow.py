@@ -189,6 +189,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         overwrite=overwrite,
     )
 
+    # For N samples, scattering over N*0.15 shards
+    scatter_count_scale_factor = 0.15
+    scatter_count = int(round(scatter_count_scale_factor * len(samples_df)))
+    scatter_count = max(scatter_count, 2)
+
     if not utils.file_exists(raw_combined_mt_path):
         combiner_job = dataproc.hail_dataproc_job(
             b,
@@ -199,7 +204,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--hail-billing {billing_project} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=10,
+            num_secondary_workers=scatter_count,
             depends_on=pre_combiner_jobs,
             job_name='Combine GVCFs',
         )
@@ -222,7 +227,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--out-info-vcf {info_vcf_path}',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=10,
+            num_secondary_workers=scatter_count,
             depends_on=[combiner_job],
             job_name='Generate info',
         )
@@ -261,7 +266,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--hail-billing {billing_project} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=10,
+            num_secondary_workers=scatter_count,
             depends_on=[combiner_job, generate_info_job],
             job_name='Sample QC',
         )
@@ -285,6 +290,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             overwrite=overwrite,
             run_rf=run_rf,
             vqsr_params_d=filter_cutoffs_d['vqsr'],
+            scatter_count=scatter_count,
         )
         if not utils.file_exists(filtered_combined_mt_path):
             finalised_mt_job = dataproc.hail_dataproc_job(
