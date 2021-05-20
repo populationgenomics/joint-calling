@@ -30,7 +30,6 @@ from joint_calling import (
     pop_strat_qc,
     utils,
     _version,
-    get_filter_cutoffs_path,
 )
 
 logger = logging.getLogger('joint-calling')
@@ -66,8 +65,8 @@ logger.setLevel('INFO')
 @click.option(
     '--filter-cutoffs-file',
     'filter_cutoffs_path',
-    default=get_filter_cutoffs_path(),
-    help=f'YAML file with filtering cutoffs. Defaults to {get_filter_cutoffs_path()}',
+    default=utils.get_filter_cutoffs(),
+    help=f'YAML file with filtering cutoffs. Default is {utils.get_filter_cutoffs()}',
 )
 @click.option(
     '--info-ht',

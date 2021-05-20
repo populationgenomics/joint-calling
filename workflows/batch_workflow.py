@@ -18,17 +18,17 @@ https://github.com/populationgenomics/analysis-runner (see helper script `driver
 """
 
 import os
+import subprocess
 from os.path import join, dirname, abspath
 from typing import List, Optional, Tuple
 import logging
 import click
 import pandas as pd
 import hailtop.batch as hb
-import yaml
 from hailtop.batch.job import Job
 from analysis_runner import dataproc
 
-from joint_calling import utils, get_filter_cutoffs_path
+from joint_calling import utils
 from joint_calling.variant_qc import add_variant_qc_jobs
 
 logger = logging.getLogger('joint-calling')
@@ -67,6 +67,12 @@ logger.setLevel('INFO')
     '--ped-file', 'ped_file', help='PED file with family information', type=str
 )
 @click.option('--skip-input-meta', 'skip_input_meta', is_flag=True)
+@click.option(
+    '--filter-cutoffs-file',
+    'filter_cutoffs_path',
+    help=f'YAML file with filtering cutoffs. '
+    f'Default is the file within the package: {utils.get_filter_cutoffs()}',
+)
 @click.option('--keep-scratch', 'keep_scratch', is_flag=True)
 @click.option(
     '--reuse-scratch-run-id',
@@ -93,6 +99,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     analysis_output_bucket_suffix: str,
     ped_file: str,
     skip_input_meta: bool,
+    filter_cutoffs_path: str,
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
     dry_run: bool,
@@ -159,8 +166,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     combiner_bucket = f'{work_bucket}/combiner'
     sample_qc_bucket = join(work_bucket, 'sample_qc')
 
-    with open(get_filter_cutoffs_path()) as f:
-        filter_cutoffs_d = yaml.load(f)
+    filter_cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
 
     logger.info(
         f'Starting hail Batch with the project {billing_project}, '
@@ -218,10 +224,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=10,
             depends_on=[combiner_job],
-            job_name='Sample QC',
+            job_name='Generate info',
         )
     else:
-        generate_info_job = b.new_job('Generate info')
+        generate_info_job = b.new_job('Generate info [reuse]')
 
     hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filters.ht')
     meta_ht_path = join(sample_qc_bucket, 'meta.ht')
@@ -234,9 +240,17 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             age_csv_param = f'--age-csv {age_csv} '
         else:
             age_csv_param = ''
+
+        if filter_cutoffs_path:
+            gcs_path = join(work_bucket, 'filter-cutoffs.yaml')
+            subprocess.run(['gsutil', 'cp', filter_cutoffs_path, gcs_path], check=False)
+            filter_cutoffs_param = f'--filter-cutoffs-file {gcs_path}'
+        else:
+            filter_cutoffs_param = ''
+
         sample_qc_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/sample_qc.py --overwrite '
+            f'{scripts_dir}/sample_qc.py {filter_cutoffs_param} --overwrite '
             f'--mt {raw_combined_mt_path} '
             f'--info-ht {info_ht_path} '
             f'{age_csv_param}'

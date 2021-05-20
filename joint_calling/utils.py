@@ -8,15 +8,15 @@ import sys
 import time
 import hashlib
 from os.path import isdir, isfile, exists, join, basename
-from typing import Any, Callable, List
+from typing import Any, Callable, List, Dict, Optional
 import shutil
+import yaml
 
 import pandas as pd
 import hail as hl
 import click
 from google.cloud import storage
-from joint_calling import _version
-
+from joint_calling import _version, get_package_path
 
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
@@ -401,3 +401,28 @@ def get_vqsr_filters_path(
         f'{".split" if split else ""}'
         f'.ht',
     )
+
+
+def get_filter_cutoffs(
+    provided_filter_cutoffs_path: Optional[str] = None,
+) -> Dict:
+    """
+    :provided_filter_cutoffs_path: optional, a path to a YAML file with cutoffs.
+    Can sit on a bucket. If not provided, a default one from the package will be used.
+    gets the a default one within the package
+    :return: a Dict with cutoffs
+    """
+    if provided_filter_cutoffs_path:
+        assert file_exists(provided_filter_cutoffs_path), provided_filter_cutoffs_path
+        path = provided_filter_cutoffs_path
+    else:
+        path = join(get_package_path(), 'filter_cutoffs.yaml')
+
+    if path.startswith('gs://'):
+        contents = subprocess.check_output(['gsutil', 'cat', path])
+        filter_cutoffs_d = yaml.load(contents)
+    else:
+        with open(path) as f:
+            filter_cutoffs_d = yaml.load(f)
+
+    return filter_cutoffs_d
