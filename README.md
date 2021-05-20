@@ -124,21 +124,23 @@ Here we give a brief overview of the sample QC steps:
 
    1. Compute sample QC metrics using Hail’s [`sample_qc`](https://hail.is/docs/0.2/methods/genetics.html#hail.methods.sample_qc) module on all autosomal bi-allelic SNVs.
 
-   1. Filter outlier samples using the following cutoffs. Note that the most up to date cutoffs are speified in the configuration file [filter_cutoffs.yaml](joint_calling/filter_cutoffs.yaml).
+   1. Filter outlier samples using the following cutoffs. Note that the most up to date cutoffs are speified in the configuration file [filter_cutoffs.yaml](joint_calling/filter_cutoffs.yaml), which can be overridden with `--filter-cutoffs-file`.
    
       * Number of SNVs: < 2.4M or > 8M
       * Number of singletons: > 400k
       * Hom/het ratio: > 3.3
 
-   1. Hard filtering using BAM-level metrics was performed when such metrics were available. We removed samples that were outliers for:
+   1. Filter using BAM-level metrics was performed when such metrics were available. We removed samples that were outliers for:
 
       * Contamination: freemix > 5% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-CheckContamination/*.selfSM`/`FREEMIX`)
       * Chimeras: > 5% (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.alignment_summary_metrics`/`PCT_CHIMERAS`)
       * Duplication: > 30% (`call-UnmappedBamToAlignedBam/UnmappedBamToAlignedBam/*/call-MarkDuplicates/*.duplicate_metrics`/`PERCENT_DUPLICATION`)
       * Median insert size: < 250 (`call-AggregatedBamQC/AggregatedBamQC/*/call-CollectAggregationMetrics/*.insert_size_metrics`/`MEDIAN_INSERT_SIZE`)
-      * Median coverage < 18X (`call-CollectWgsMetrics/*.wgs_metrics`/`MEDIAN_COVERAGE`)
+      * Median coverage < 18X (calculated from the GVCFs).
 
-   1. Sex inferred for each sample with Hail's [`impute_sex`](https://hail.is/docs/0.2/methods/genetics.html?highlight=impute_sex#hail.methods.impute_sex). Removed samples with sex chromosome aneuploidies or ambiguous sex assignment.
+   1. Sex inferred for each sample with Hail's [`impute_sex`](https://hail.is/docs/0.2/methods/genetics.html?highlight=impute_sex#hail.methods.impute_sex). Filter samples with sex chromosome aneuploidies or ambiguous sex assignment.
+
+   1. Note that all filtering above makes it exclude samples from the variant QC modelling, as well as from the AC/AF/AN frequency calculation. However, it keeps the samples in the final matrix table, with labels in `mt.meta.hardfilter`.
 
    1. Relatedness inferred between samples using Hail's[`pc_relate`](https://hail.is/docs/0.2/methods/genetics.html?highlight=pc_relate#hail.methods.pc_relate). Identified pairs of 1st and 2nd degree relatives. Filter to a set of unrelated individuals using Hail's [`maximal_independent_set`](https://hail.is/docs/0.2/methods/misc.html?highlight=maximal_independent_set#hail.methods.maximal_independent_set) that tries to keep as many samples as possible. When multiple samples could be selected, we kept the sample with the highest coverage.
    
