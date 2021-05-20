@@ -47,8 +47,8 @@ def add_variant_qc_jobs(
     qc_ac_ht_path = join(work_bucket, 'qc-ac.ht')
     rf_annotations_ht_path = None
 
-    if overwrite or not all(
-        utils.file_exists(fp) for fp in [allele_data_ht_path, qc_ac_ht_path]
+    if overwrite or any(
+        not utils.file_exists(fp) for fp in [allele_data_ht_path, qc_ac_ht_path]
     ):
         anno_job = dataproc.hail_dataproc_job(
             b,
@@ -95,8 +95,8 @@ def add_variant_qc_jobs(
         rf_annotations_ht_path = join(work_bucket, 'rf-annotations.ht')
         rf_result_ht_path = join(work_bucket, 'rf-result.ht')
         rf_model_id = f'rf_{str(uuid.uuid4())[:8]}'
-        if overwrite or not any(
-            utils.file_exists(path)
+        if overwrite or any(
+            not utils.file_exists(path)
             for path in [rf_annotations_ht_path, rf_result_ht_path]
         ):
             rf_job = dataproc.hail_dataproc_job(
@@ -104,13 +104,14 @@ def add_variant_qc_jobs(
                 f'{scripts_dir}/random_forest.py --overwrite '
                 f'--info-split-ht {info_split_ht_path} '
                 f'--freq-ht {freq_ht_path} '
+                f'--fam-stats-ht {fam_stats_ht_path} '
                 f'--allele-data-ht {allele_data_ht_path} '
                 f'--qc-ac-ht {qc_ac_ht_path} '
                 f'--bucket {work_bucket} '
                 f'--use-adj-genotypes '
-                f'--out-model-id {rf_model_id} '
                 f'--out-annotations-ht {rf_annotations_ht_path} '
-                f'--out-ht {rf_result_ht_path} ',
+                f'--out-results-ht {rf_result_ht_path} '
+                f'--out-model-id {rf_model_id} ',
                 max_age='8h',
                 packages=utils.DATAPROC_PACKAGES,
                 num_secondary_workers=scatter_count,
@@ -213,7 +214,7 @@ def make_rf_eval_jobs(
         eval_job = b.new_job('RF: evaluation [reuse]')
 
     final_filter_ht_path = join(work_bucket, 'final-filter.ht')
-    if not utils.file_exists(final_filter_ht_path):
+    if overwrite or not utils.file_exists(final_filter_ht_path):
         final_filter_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/final_filter.py --overwrite '

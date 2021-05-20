@@ -194,7 +194,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     scatter_count = int(round(scatter_count_scale_factor * len(samples_df)))
     scatter_count = max(scatter_count, 2)
 
-    if not utils.file_exists(raw_combined_mt_path):
+    if overwrite or not utils.file_exists(raw_combined_mt_path):
         combiner_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/combine_gvcfs.py '
@@ -214,7 +214,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     info_ht_path = join(sample_qc_bucket, 'info.ht')
     info_split_ht_path = join(sample_qc_bucket, 'info-split.ht')
     info_vcf_path = join(sample_qc_bucket, 'info.vcf')
-    if any(
+    if overwrite or any(
         not utils.file_exists(fp)
         for fp in [info_ht_path, info_split_ht_path, info_vcf_path]
     ):
@@ -236,7 +236,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filters.ht')
     meta_ht_path = join(sample_qc_bucket, 'meta.ht')
-    if any(
+    if overwrite or any(
         not utils.file_exists(fp)
         for fp in [hard_filtered_samples_ht_path, meta_ht_path]
     ):
