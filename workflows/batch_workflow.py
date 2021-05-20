@@ -88,7 +88,7 @@ logger.setLevel('INFO')
 )
 @click.option('--dry-run', 'dry_run', is_flag=True)
 @click.option('--run-vqsr/--skip-vqsr', 'run_vqsr', is_flag=True, default=True)
-@click.option('--run-rf/--skip-rf', 'run_rf', is_flag=True, default=True)
+@click.option('--run-rf/--skip-rf', 'run_rf', is_flag=True, default=False)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     callset_name: str,
     callset_version: str,
@@ -292,7 +292,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             vqsr_params_d=filter_cutoffs_d['vqsr'],
             scatter_count=scatter_count,
         )
-        if not utils.file_exists(filtered_combined_mt_path):
+        if overwrite or not utils.file_exists(filtered_combined_mt_path):
             finalised_mt_job = dataproc.hail_dataproc_job(
                 b,
                 f'{scripts_dir}/make_finalised_mt.py --overwrite '
@@ -302,12 +302,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
                 f'--meta-ht {meta_ht_path} ',
                 max_age='8h',
                 packages=utils.DATAPROC_PACKAGES,
-                num_secondary_workers=10,
+                num_secondary_workers=scatter_count,
                 depends_on=[var_qc_job],
-                job_name='Making finalised MT',
+                job_name='Making final MT',
             )
         else:
-            finalised_mt_job = b.new_job('Making finalised MT [reuse]')
+            finalised_mt_job = b.new_job('Making final MT [reuse]')
 
     else:
         var_qc_job = b.new_job('Var QC [skip]')

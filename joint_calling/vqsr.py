@@ -191,7 +191,7 @@ def make_vqsr_jobs(
             f'-o {combined_vcf_path} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=10,
+            num_secondary_workers=scatter_count,
             depends_on=depends_on,
             job_name='MT to VCF',
         )

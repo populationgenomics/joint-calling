@@ -44,12 +44,6 @@ logger.setLevel('INFO')
     help='Table with AS-VQSR annotations',
 )
 @click.option(
-    '--bucket',
-    'work_bucket',
-    required=True,
-    help='path to write intermediate output and checkpoints',
-)
-@click.option(
     '--local-tmp-dir',
     'local_tmp_dir',
     help='local directory for temporary files and Hail logs (must be local).',
@@ -72,7 +66,6 @@ def main(
     out_mt_path: str,
     meta_ht_path: str,
     var_qc_final_filter_ht_path: str,
-    work_bucket: str,  # pylint: disable=unused-argument
     local_tmp_dir: str,
     overwrite: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
