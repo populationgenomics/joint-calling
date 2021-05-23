@@ -77,6 +77,7 @@ def generate_file_list(samples: List[str]):
 
 
 def run_processor(input_bucket):
+    """ Execute upload processor """
 
     # Process input file of sample names
     samples = determine_samples(input_bucket)
