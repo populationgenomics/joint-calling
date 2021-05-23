@@ -137,7 +137,7 @@ def add_variant_qc_jobs(
         )
 
     else:
-        vqsred_vcf_path = join(vqsr_bucket, 'recalibrated.vcf.gz')
+        vqsred_vcf_path = join(vqsr_bucket, 'output.vcf.gz')
         if overwrite or not utils.file_exists(vqsred_vcf_path):
             final_gathered_vcf_job = make_vqsr_jobs(
                 b,
@@ -157,25 +157,22 @@ def add_variant_qc_jobs(
             final_gathered_vcf_job = b.new_job('VQSR [reuse]')
 
         final_filter_ht_path = join(vqsr_bucket, 'final-filter.ht')
-        if overwrite or not utils.file_exists(vqsred_vcf_path):
-            final_job = make_vqsr_eval_jobs(
-                b=b,
-                combined_mt_path=raw_combined_mt_path,
-                info_split_ht_path=info_split_ht_path,
-                final_gathered_vcf_path=vqsred_vcf_path,
-                rf_annotations_ht_path=rf_annotations_ht_path,
-                fam_stats_ht_path=fam_stats_ht_path,
-                freq_ht_path=freq_ht_path,
-                work_bucket=vqsr_bucket,
-                analysis_bucket=join(analysis_bucket, 'vqsr'),
-                overwrite=overwrite,
-                scripts_dir=scripts_dir,
-                depends_on=[anno_job, freq_job, final_gathered_vcf_job],
-                scatter_count=scatter_count,
-                output_ht_path=final_filter_ht_path,
-            )
-        else:
-            final_job = b.new_job('VQSR: final filter [reuse]')
+        final_job = make_vqsr_eval_jobs(
+            b=b,
+            combined_mt_path=raw_combined_mt_path,
+            info_split_ht_path=info_split_ht_path,
+            final_gathered_vcf_path=vqsred_vcf_path,
+            rf_annotations_ht_path=rf_annotations_ht_path,
+            fam_stats_ht_path=fam_stats_ht_path,
+            freq_ht_path=freq_ht_path,
+            work_bucket=vqsr_bucket,
+            analysis_bucket=join(analysis_bucket, 'vqsr'),
+            overwrite=overwrite,
+            scripts_dir=scripts_dir,
+            depends_on=[anno_job, freq_job, final_gathered_vcf_job],
+            scatter_count=scatter_count,
+            output_ht_path=final_filter_ht_path,
+        )
     return final_job, final_filter_ht_path
 
 

@@ -1,14 +1,6 @@
 """
-Hail Batch workflow to perform joint calling, sample QC, and variant QC with VQSR and random forest methods on a WGS germline callset.
-
-
-Output
- * The output of sample QC is a CSV file:
- `<output_bucket>/meta.tsv`
- * The output of VQSR is a VCF file <output_bucket>/<callset>-recalibrated.vcf.gz,
-   as well as a QC file <output_bucket>/<callset>-eval.txt
-   and R scripts to plot VQSR models: <output_bucket>/plot-snps-recal.Rscript
-   and <output_bucket>/plot-indels-recal.Rscript
+Hail Batch workflow to perform joint calling, sample QC, and variant QC with VQSR and 
+random forest methods on a WGS germline callset.
 
 The workflow is parametrised by the access level, the dataset name, 
 batch names and the output version.

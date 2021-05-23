@@ -182,7 +182,7 @@ def make_vqsr_jobs(
     medium_disk = 50 if is_small_callset else (100 if not is_huge_callset else 200)
     huge_disk = 100 if is_small_callset else (500 if not is_huge_callset else 2000)
 
-    combined_vcf_path = join(vqsr_bucket, 'genomes.vcf.gz')
+    combined_vcf_path = join(vqsr_bucket, 'input.vcf.gz')
     if not utils.file_exists(combined_vcf_path):
         mt_to_vcf_job = dataproc.hail_dataproc_job(
             b,
