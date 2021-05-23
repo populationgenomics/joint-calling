@@ -388,10 +388,6 @@ def create_bin_ht(
             AS_culprit=ht.info.AS_culprit,
         )
 
-        # Remove all samples with an undefined ac_raw because ac_raw was calculated
-        # on the high quality samples only and VQSR was run before sample filtering
-        ht = ht.filter(hl.is_defined(ht.ac_raw))
-
     else:
         logger.info(f'Using an RF model')
         ht = rf_results_ht
