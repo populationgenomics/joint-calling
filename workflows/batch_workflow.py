@@ -284,7 +284,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             meta_ht_path=meta_ht_path,
             samples_df=samples_df,
             sample_qc_job=sample_qc_job,
-            combiner_job=combiner_job,
             scripts_dir=scripts_dir,
             ped_file=ped_file,
             overwrite=overwrite,
