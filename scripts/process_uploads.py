@@ -70,8 +70,8 @@ def generate_file_list(samples: List[str]):
     main_files: List[str] = []
     archive_files: List[str] = []
     for s in samples:
-        main_files.extend([f"{s}.g.vcf.gz", f"{s}.g.vcf.gz.tbi", f"{s}.g.vcf.gz.md5"])
-        archive_files.extend([f"{s}.cram", f"{s}.cram.crai", f"{s}.cram.md5"])
+        main_files.extend([f'{s}.g.vcf.gz', f'{s}.g.vcf.gz.tbi', f'{s}.g.vcf.gz.md5'])
+        archive_files.extend([f'{s}.cram', f'{s}.cram.crai', f'{s}.cram.md5'])
 
     return main_files, archive_files
 
