@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """
-Process TOB-WGS files within upload bucket
+Processes files uploaded to gcp
 """
 
 import os
+import csv
+from os.path import join, basename
+import subprocess
+import tempfile
+import shutil
+from typing import List
 import hail as hl
 import hailtop.batch as hb
 from joint_calling.upload_processor import batch_move_files
 
 
-def filter_files():
-    """ Determine files that should be moved to main vs archive bucket """
+def filter_files_manual():
+    """Determine files that should be moved to main vs archive bucket
+    when given a list of file paths"""
     files_for_main = []
     files_for_archive = []
     prefix = 'gs://cpg-tob-wgs-upload/'
@@ -27,10 +34,53 @@ def filter_files():
     return files_for_main, files_for_archive
 
 
-if __name__ == '__main__':
+def determine_samples(input_bucket: str):
+    """Determine files that should be moved to main vs archive bucket
+    Parameters
+    =========
+    input_bucket:  List[str] The bucket to be processed
+
+    Assumptions
+    ==========
+    Only one .csv file exists in the bucket.
+    """
+    local_tmp_dir = tempfile.mkdtemp()
+    samples: List[str] = []
+
+    # Pull the CSV file that contains the list of samples in the current batch
+
+    cmd = f'gsutil ls \'{input_bucket}/*.csv\''
+    csv_file_path = subprocess.check_output(cmd, shell=True).decode().strip()
+    local_csv_path = join(local_tmp_dir, basename(csv_file_path))
+    subprocess.run(
+        f'gsutil cp {csv_file_path} {local_csv_path}', check=False, shell=True
+    )
+
+    with open(local_csv_path) as csv_file:
+        csv_reader = csv.DictReader(csv_file)
+        for row in csv_reader:
+            samples.append(row['sample.sample_name'])
+
+    shutil.rmtree(local_tmp_dir)
+    return samples
+
+
+def generate_file_list(samples: List[str]):
+    """ Generate list of expected files, given a list of sampleIDs """
+    main_files: List[str] = []
+    archive_files: List[str] = []
+    for s in samples:
+        main_files.extend([f"{s}.g.vcf.gz", f"{s}.g.vcf.gz.tbi", f"{s}.g.vcf.gz.md5"])
+        archive_files.extend([f"{s}.cram", f"{s}.cram.crai", f"{s}.cram.md5"])
+
+    return main_files, archive_files
+
+
+def run_processor(input_bucket):
 
     # Process input file of sample names
-    main_files, archive_files = filter_files()
+    samples = determine_samples(input_bucket)
+    main_files, archive_files = generate_file_list(samples)
 
     # Setting up inputs for batch_move_files
     upload_prefix = os.path.join('cpg-tob-wgs-upload')
