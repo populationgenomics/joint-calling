@@ -124,6 +124,7 @@ def add_variant_qc_jobs(
             b=b,
             combined_mt_path=raw_combined_mt_path,
             info_split_ht_path=info_split_ht_path,
+            qc_ac_ht_path=qc_ac_ht_path,
             rf_result_ht_path=rf_result_ht_path,
             rf_annotations_ht_path=rf_annotations_ht_path,
             fam_stats_ht_path=fam_stats_ht_path,
@@ -164,6 +165,7 @@ def add_variant_qc_jobs(
             qc_ac_ht_path=qc_ac_ht_path,
             final_gathered_vcf_path=vqsred_vcf_path,
             rf_annotations_ht_path=rf_annotations_ht_path,
+            rf_result_ht_path=rf_result_ht_path,
             fam_stats_ht_path=fam_stats_ht_path,
             freq_ht_path=freq_ht_path,
             work_bucket=vqsr_bucket,
@@ -181,6 +183,7 @@ def make_rf_eval_jobs(
     b: hb.Batch,
     combined_mt_path: str,
     info_split_ht_path: str,
+    qc_ac_ht_path: str,
     rf_result_ht_path: str,
     rf_annotations_ht_path: str,
     fam_stats_ht_path: str,
@@ -204,6 +207,7 @@ def make_rf_eval_jobs(
             b,
             f'{scripts_dir}/evaluation.py --overwrite '
             f'--info-split-ht {info_split_ht_path} '
+            f'--qc-ac-ht {qc_ac_ht_path} '
             f'--rf-results-ht {rf_result_ht_path} '
             f'--rf-annotations-ht {rf_annotations_ht_path} '
             f'--fam-stats-ht {fam_stats_ht_path} '
@@ -253,6 +257,7 @@ def make_vqsr_eval_jobs(
     qc_ac_ht_path: str,
     final_gathered_vcf_path: str,
     rf_annotations_ht_path: Optional[str],
+    rf_result_ht_path: Optional[str],
     fam_stats_ht_path: str,
     freq_ht_path: str,
     work_bucket: str,
@@ -292,16 +297,19 @@ def make_vqsr_eval_jobs(
         eval_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/evaluation.py --overwrite '
+            f'--mt {combined_mt_path} '
             f'--info-split-ht {info_split_ht_path} '
+            f'--qc-ac-ht {qc_ac_ht_path} '
+            f'--fam-stats-ht {fam_stats_ht_path} '
             + (
-                f'--rf-annotations-ht {rf_annotations_ht_path} '
-                if rf_annotations_ht_path
+                (
+                    f'--rf-annotations-ht {rf_annotations_ht_path} '
+                    f'--rf-result-ht {rf_result_ht_path} '
+                )
+                if (rf_annotations_ht_path and rf_result_ht_path)
                 else ''
             )
-            + f'--fam-stats-ht {fam_stats_ht_path} '
-            f'--vqsr-filters-split-ht {vqsr_filters_split_ht_path} '
-            f'--qc-ac-ht {qc_ac_ht_path} '
-            f'--mt {combined_mt_path} '
+            + f'--vqsr-filters-split-ht {vqsr_filters_split_ht_path} '
             f'--bucket {work_bucket} '
             f'--out-bin-ht {score_bin_ht_path} '
             f'--out-aggregated-bin-ht {score_bin_agg_ht_path} '

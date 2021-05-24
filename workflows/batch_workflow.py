@@ -156,7 +156,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         hail_bucket = f'{work_bucket}/hail'
 
     combiner_bucket = f'{work_bucket}/combiner'
-    sample_qc_bucket = join(work_bucket, 'sample_qc')
+    sample_qc_bucket = f'{work_bucket}/sample_qc'
 
     filter_cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
 
