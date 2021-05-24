@@ -28,7 +28,6 @@ def add_variant_qc_jobs(
     meta_ht_path: str,
     samples_df: pd.DataFrame,
     sample_qc_job: Job,
-    combiner_job: Job,
     scripts_dir: str,
     ped_file: Optional[str],
     overwrite: bool,
@@ -46,13 +45,14 @@ def add_variant_qc_jobs(
     allele_data_ht_path = join(work_bucket, 'allele-data.ht')
     qc_ac_ht_path = join(work_bucket, 'qc-ac.ht')
     rf_annotations_ht_path = None
+    rf_result_ht_path = None
 
     if overwrite or any(
         not utils.file_exists(fp) for fp in [allele_data_ht_path, qc_ac_ht_path]
     ):
         anno_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/generate_rf_annotations.py --overwrite '
+            f'{scripts_dir}/generate_variant_qc_annotations.py --overwrite '
             + f'--mt {raw_combined_mt_path} '
             + f'--hard-filtered-samples-ht {hard_filter_ht_path} '
             + f'--meta-ht {meta_ht_path} '
@@ -83,8 +83,8 @@ def add_variant_qc_jobs(
             f'--bucket {work_bucket} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            # Adding more workers as this is the longest step
-            num_secondary_workers=scatter_count * 3,
+            # Adding more workers as this is a much longer step
+            num_secondary_workers=scatter_count * 6,
             depends_on=[sample_qc_job],
             job_name='Var QC: generate frequencies',
         )
@@ -125,6 +125,7 @@ def add_variant_qc_jobs(
             b=b,
             combined_mt_path=raw_combined_mt_path,
             info_split_ht_path=info_split_ht_path,
+            qc_ac_ht_path=qc_ac_ht_path,
             rf_result_ht_path=rf_result_ht_path,
             rf_annotations_ht_path=rf_annotations_ht_path,
             fam_stats_ht_path=fam_stats_ht_path,
@@ -138,7 +139,7 @@ def add_variant_qc_jobs(
         )
 
     else:
-        vqsred_vcf_path = join(vqsr_bucket, 'recalibrated.vcf.gz')
+        vqsred_vcf_path = join(vqsr_bucket, 'output.vcf.gz')
         if overwrite or not utils.file_exists(vqsred_vcf_path):
             final_gathered_vcf_job = make_vqsr_jobs(
                 b,
@@ -148,7 +149,7 @@ def add_variant_qc_jobs(
                 gvcf_count=len(samples_df),
                 vqsr_bucket=vqsr_bucket,
                 analysis_bucket=join(analysis_bucket, 'vqsr'),
-                depends_on=[combiner_job],
+                depends_on=[sample_qc_job],
                 scripts_dir=scripts_dir,
                 vqsr_params_d=vqsr_params_d,
                 scatter_count=scatter_count,
@@ -158,25 +159,24 @@ def add_variant_qc_jobs(
             final_gathered_vcf_job = b.new_job('VQSR [reuse]')
 
         final_filter_ht_path = join(vqsr_bucket, 'final-filter.ht')
-        if overwrite or not utils.file_exists(vqsred_vcf_path):
-            final_job = make_vqsr_eval_jobs(
-                b=b,
-                combined_mt_path=raw_combined_mt_path,
-                info_split_ht_path=info_split_ht_path,
-                final_gathered_vcf_path=vqsred_vcf_path,
-                rf_annotations_ht_path=rf_annotations_ht_path,
-                fam_stats_ht_path=fam_stats_ht_path,
-                freq_ht_path=freq_ht_path,
-                work_bucket=vqsr_bucket,
-                analysis_bucket=join(analysis_bucket, 'vqsr'),
-                overwrite=overwrite,
-                scripts_dir=scripts_dir,
-                depends_on=[anno_job, freq_job, final_gathered_vcf_job],
-                scatter_count=scatter_count,
-                output_ht_path=final_filter_ht_path,
-            )
-        else:
-            final_job = b.new_job('VQSR: final filter [reuse]')
+        final_job = make_vqsr_eval_jobs(
+            b=b,
+            combined_mt_path=raw_combined_mt_path,
+            info_split_ht_path=info_split_ht_path,
+            qc_ac_ht_path=qc_ac_ht_path,
+            final_gathered_vcf_path=vqsred_vcf_path,
+            rf_annotations_ht_path=rf_annotations_ht_path,
+            rf_result_ht_path=rf_result_ht_path,
+            fam_stats_ht_path=fam_stats_ht_path,
+            freq_ht_path=freq_ht_path,
+            work_bucket=vqsr_bucket,
+            analysis_bucket=join(analysis_bucket, 'vqsr'),
+            overwrite=overwrite,
+            scripts_dir=scripts_dir,
+            depends_on=[anno_job, freq_job, final_gathered_vcf_job],
+            scatter_count=scatter_count,
+            output_ht_path=final_filter_ht_path,
+        )
     return final_job, final_filter_ht_path
 
 
@@ -184,6 +184,7 @@ def make_rf_eval_jobs(
     b: hb.Batch,
     combined_mt_path: str,
     info_split_ht_path: str,
+    qc_ac_ht_path: str,
     rf_result_ht_path: str,
     rf_annotations_ht_path: str,
     fam_stats_ht_path: str,
@@ -207,6 +208,7 @@ def make_rf_eval_jobs(
             b,
             f'{scripts_dir}/evaluation.py --overwrite '
             f'--info-split-ht {info_split_ht_path} '
+            f'--qc-ac-ht {qc_ac_ht_path} '
             f'--rf-results-ht {rf_result_ht_path} '
             f'--rf-annotations-ht {rf_annotations_ht_path} '
             f'--fam-stats-ht {fam_stats_ht_path} '
@@ -253,8 +255,10 @@ def make_vqsr_eval_jobs(
     b: hb.Batch,
     combined_mt_path: str,
     info_split_ht_path: str,
+    qc_ac_ht_path: str,
     final_gathered_vcf_path: str,
     rf_annotations_ht_path: Optional[str],
+    rf_result_ht_path: Optional[str],
     fam_stats_ht_path: str,
     freq_ht_path: str,
     work_bucket: str,
@@ -290,19 +294,27 @@ def make_vqsr_eval_jobs(
 
     score_bin_ht_path = join(work_bucket, 'vqsr-score-bin.ht')
     score_bin_agg_ht_path = join(work_bucket, 'vqsr-score-agg-bin.ht')
-    if overwrite or not utils.file_exists(score_bin_ht_path):
+    if (
+        overwrite
+        or not utils.file_exists(score_bin_ht_path)
+        or not utils.file_exists(score_bin_agg_ht_path)
+    ):
         eval_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/evaluation.py --overwrite '
+            f'--mt {combined_mt_path} '
             f'--info-split-ht {info_split_ht_path} '
+            f'--qc-ac-ht {qc_ac_ht_path} '
+            f'--fam-stats-ht {fam_stats_ht_path} '
             + (
-                f'--rf-annotations-ht {rf_annotations_ht_path} '
-                if rf_annotations_ht_path
+                (
+                    f'--rf-annotations-ht {rf_annotations_ht_path} '
+                    f'--rf-result-ht {rf_result_ht_path} '
+                )
+                if (rf_annotations_ht_path and rf_result_ht_path)
                 else ''
             )
-            + f'--fam-stats-ht {fam_stats_ht_path} '
-            f'--vqsr-filters-split-ht {vqsr_filters_split_ht_path} '
-            f'--mt {combined_mt_path} '
+            + f'--vqsr-filters-split-ht {vqsr_filters_split_ht_path} '
             f'--bucket {work_bucket} '
             f'--out-bin-ht {score_bin_ht_path} '
             f'--out-aggregated-bin-ht {score_bin_agg_ht_path} '

@@ -91,7 +91,7 @@ def compute_hard_filters(
             )
             | (
                 hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.r_het_hom_var
-                > cutoffs_d['max_n_het_hom']
+                > cutoffs_d['max_r_het_hom']
             )
         ),
         'bad_biallelic_metrics',
@@ -101,20 +101,26 @@ def compute_hard_filters(
     # by 100, e.g. 5% == 5.00, 5% != 0.05
     ht = add_filter(
         ht,
-        hl.is_missing(qc_ht[ht.key].freemix)
-        | (qc_ht[ht.key].freemix > cutoffs_d['max_contamination']),
+        hl.is_missing(qc_ht[ht.key].r_contamination)
+        | (qc_ht[ht.key].r_contamination > cutoffs_d['max_r_contamination']),
         'contamination',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(qc_ht[ht.key].pct_chimeras)
-        | (qc_ht[ht.key].pct_chimeras > cutoffs_d['max_pct_chimeras']),
+        hl.is_missing(qc_ht[ht.key].r_chimera)
+        | (qc_ht[ht.key].r_chimera > cutoffs_d['max_r_chimera']),
         'chimera',
     )
     ht = add_filter(
         ht,
+        hl.is_missing(qc_ht[ht.key].r_duplication)
+        | (qc_ht[ht.key].r_duplication > cutoffs_d['max_r_duplication']),
+        'dup_rate',
+    )
+    ht = add_filter(
+        ht,
         hl.is_missing(qc_ht[ht.key].median_insert_size)
-        | (qc_ht[ht.key].median_insert_size < cutoffs_d['min_median_is']),
+        | (qc_ht[ht.key].median_insert_size < cutoffs_d['min_median_insert_size']),
         'insert_size',
     )
     ht = ht.annotate_globals(hard_filter_cutoffs=hl.struct(**cutoffs_d))

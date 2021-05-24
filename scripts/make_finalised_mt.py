@@ -58,7 +58,6 @@ logger.setLevel('INFO')
 @click.option(
     '--hail-billing',
     'hail_billing',
-    required=True,
     help='Hail billing account ID.',
 )
 def main(

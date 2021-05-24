@@ -12,7 +12,6 @@ import logging
 import click
 import hail as hl
 import pandas as pd
-import yaml
 
 from gnomad.resources.grch38 import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
@@ -23,6 +22,7 @@ from gnomad.utils.filtering import (
     filter_low_conf_regions,
     add_filters_expr,
 )
+from gnomad.utils.sparse_mt import filter_ref_blocks
 
 from joint_calling.utils import file_exists, get_validation_callback, get_mt
 from joint_calling import (
@@ -65,14 +65,14 @@ logger.setLevel('INFO')
 @click.option(
     '--filter-cutoffs-file',
     'filter_cutoffs_path',
-    default=utils.get_filter_cutoffs(),
-    help=f'YAML file with filtering cutoffs. Default is {utils.get_filter_cutoffs()}',
+    help=f'YAML file with filtering cutoffs',
 )
 @click.option(
     '--info-ht',
     'info_ht_path',
     required=True,
-    help='Info Table, genereated by scripts/generate_info_ht.py --out-info-ht',
+    help='Info Table, genereated by scripts/generate_info_ht.py --out-info-ht'
+    'Needed for mt.info.QD, mt.info.FS, mt.info.MQ',
 )
 @click.option(
     '--out-hardfiltered-samples-ht',
@@ -148,8 +148,7 @@ def main(
     df = pd.read_table(local_meta_csv_path)
     input_meta_ht = hl.Table.from_pandas(df).key_by('s')
 
-    with open(filter_cutoffs_path) as f:
-        cutoffs_d = yaml.load(f)
+    cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
 
     # `hail_sample_qc_ht` row fields: sample_qc, bi_allelic_sample_qc
     hail_sample_qc_ht = _compute_hail_sample_qc(mt_split, work_bucket, overwrite)
@@ -284,6 +283,10 @@ def _compute_hail_sample_qc(
         return hl.read_table(out_ht_path)
 
     mt = filter_to_autosomes(mt)
+
+    mt = mt.select_entries('GT')
+
+    mt = filter_ref_blocks(mt)
 
     # Remove centromeres and telomeres incase they were included and any reference blocks
     mt = filter_low_conf_regions(

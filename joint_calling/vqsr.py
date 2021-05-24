@@ -87,7 +87,7 @@ def make_vqsr_jobs(
     :param hard_filter_ht_path: path to HT with samples that failed QC
     :param meta_ht_path: path to HT with sample QC metadata
     :param gvcf_count: number of input samples. Can't read from combined_mt_path as it
-        might not be yet genereated the point of Batch job submission
+           might not be yet genereated the point of Batch job submission
     :param vqsr_bucket: bucket for intermediate files
     :param analysis_bucket: bucket for plots and evaluation results
     :param depends_on: job that the created jobs should only run after
@@ -182,7 +182,7 @@ def make_vqsr_jobs(
     medium_disk = 50 if is_small_callset else (100 if not is_huge_callset else 200)
     huge_disk = 100 if is_small_callset else (500 if not is_huge_callset else 2000)
 
-    combined_vcf_path = join(vqsr_bucket, 'genomes.vcf.gz')
+    combined_vcf_path = join(vqsr_bucket, 'input.vcf.gz')
     if not utils.file_exists(combined_vcf_path):
         mt_to_vcf_job = dataproc.hail_dataproc_job(
             b,
@@ -212,24 +212,8 @@ def make_vqsr_jobs(
     tabix_job = add_tabix_step(b, combined_vcf_path, medium_disk)
     tabix_job.depends_on(mt_to_vcf_job)
 
-    # We don't really joint-call here, but Gnarly genotyper is needed to avoid error
-    # from VariantRecalibrator:
-    # ```A USER ERROR has occurred: Bad input: Values for AS_FS annotation not detected
-    #    for ANY training variant in the input callset. VariantAnnotator may be used to
-    #    add these annotations.
-    # ```
-    gnarly_output_vcfs = [
-        add_gnarly_genotyper_on_vcf_step(
-            b,
-            combined_gvcf=tabix_job.combined_vcf,
-            interval=intervals[f'interval_{idx}'],
-            ref_fasta=ref_fasta,
-            dbsnp_vcf=dbsnp_vcf,
-            disk_size=medium_disk,
-        ).output_vcf
-        for idx in range(scatter_count)
-    ]
-    scattered_vcfs = gnarly_output_vcfs
+    gathered_vcf = tabix_job.combined_vcf
+    scattered_vcfs = [gathered_vcf for _ in range(scatter_count)]
 
     if not is_small_callset:
         # ExcessHet filtering applies only to callsets with a large number of samples,
@@ -240,7 +224,8 @@ def make_vqsr_jobs(
         hard_filtered_vcfs = [
             add_hard_filter_step(
                 b,
-                input_vcf=gnarly_output_vcfs[idx],
+                input_vcf=gathered_vcf,
+                interval=intervals[f'interval_{idx}'],
                 excess_het_threshold=vqsr_params_d['min_excess_het'],
                 disk_size=medium_disk,
             ).output_vcf
@@ -248,20 +233,11 @@ def make_vqsr_jobs(
         ]
         scattered_vcfs = hard_filtered_vcfs
 
-    # scattered_vcfs = [
-    #     add_make_sites_only_vcf_step(
-    #         b,
-    #         input_vcf=scattered_vcfs[idx],
-    #         disk_size=medium_disk,
-    #     ).sites_only_vcf
-    #     for idx in range(scatter_count)
-    # ]
-
-    gathered_vcf = add_sites_only_gather_vcf_step(
-        b,
-        input_vcfs=scattered_vcfs,
-        disk_size=medium_disk,
-    ).output_vcf
+        gathered_vcf = add_sites_only_gather_vcf_step(
+            b,
+            input_vcfs=scattered_vcfs,
+            disk_size=medium_disk,
+        ).output_vcf
 
     indels_variant_recalibrator_job = add_indels_variant_recalibrator_step(
         b,
@@ -302,6 +278,7 @@ def make_vqsr_jobs(
             add_snps_variant_recalibrator_scattered_step(
                 b,
                 sites_only_vcf=scattered_vcfs[idx],
+                interval=intervals[f'interval_{idx}'],
                 model_file=model_file,
                 hapmap_resource_vcf=hapmap_resource_vcf,
                 omni_resource_vcf=omni_resource_vcf,
@@ -320,10 +297,11 @@ def make_vqsr_jobs(
             disk_size=small_disk,
         ).out_tranches
 
-        recalibrated_vcfs = [
+        scattered_vcfs = [
             add_apply_recalibration_step(
                 b,
                 input_vcf=scattered_vcfs[idx],
+                interval=intervals[f'interval_{idx}'],
                 indels_recalibration=indels_recalibration,
                 indels_tranches=indels_tranches,
                 snps_recalibration=snps_recalibrations[idx],
@@ -336,7 +314,7 @@ def make_vqsr_jobs(
         ]
         final_gathered_vcf_job = _add_final_gather_vcf_step(
             b,
-            input_vcfs=recalibrated_vcfs,
+            input_vcfs=scattered_vcfs,
             disk_size=huge_disk,
             output_vcf_path=output_vcf_path,
         )
