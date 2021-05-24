@@ -87,7 +87,7 @@ def run_processor(batch_number):
     )
 
     # upload_prefix = os.path.join(f'cpg-{project}-upload')
-    # main_prefix = os.path.join(f'cpg-{project}-main', 'gvcf', batch)
+    # main_prefix = os.path.join(f'cpg-{project}-main', 'gvcf', batch_number)
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
 
@@ -118,7 +118,7 @@ def run_processor(batch_number):
     archive_prefix = os.path.join(
         f'cpg-{project}-temporary', 'vivian-test', 'archive', 'cram', batch_number
     )
-    # archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', batch)
+    # archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', batch_number)
 
     # Moving the files to the archive bucket
     batch_move_files(
@@ -134,8 +134,8 @@ def run_processor(batch_number):
 
     if status['state'] == 'success':
         # Once all the files have been successfully processed, move the csv file.
-        subprocess.run(f'gsutil mv {csv_path} \'gs://{main_prefix}\'', check=False)
-        pass
+        final_csv_location = join('gs://', main_prefix, basename(csv_path))
+        subprocess.run(f'gsutil mv {csv_path} {final_csv_location}', check=False)
     else:
         batch_url = (
             f"https://batch.hail.populationgenomics.org.au/batches/{status['id']}"
