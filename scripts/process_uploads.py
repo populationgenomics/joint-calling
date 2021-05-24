@@ -62,7 +62,7 @@ def determine_samples(upload_bucket: str):
             samples.append(row['sample.sample_name'])
 
     shutil.rmtree(local_tmp_dir)
-    return samples
+    return samples, csv_file_path
 
 
 def generate_file_list(samples: List[str]):
@@ -92,7 +92,7 @@ def run_processor(batch_number):
     key = os.environ.get('GSA_KEY')
 
     # Process input file of sample names
-    samples = determine_samples(upload_prefix)
+    samples, csv_path = determine_samples(upload_prefix)
     main_files, archive_files = generate_file_list(samples)
 
     # Initialize the service backend.
@@ -133,7 +133,8 @@ def run_processor(batch_number):
     status = batch.run().status()
 
     if status['state'] == 'success':
-        # Move csv file
+        # Once all the files have been successfully processed, move the csv file.
+        subprocess.run(f'gsutil mv {csv_path} \'gs://{main_prefix}\'', check=False)
         pass
     else:
         batch_url = (
