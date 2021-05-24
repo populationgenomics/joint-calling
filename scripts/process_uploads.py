@@ -130,7 +130,17 @@ def run_processor(batch_number):
         key,
     )
 
-    batch.run()
+    status = batch.run().status()
+
+    if status['state'] == 'success':
+        # Move csv file
+        pass
+    else:
+        batch_url = (
+            f"https://batch.hail.populationgenomics.org.au/batches/{status['id']}"
+        )
+        message = f'The batch was not successful. See {batch_url}for more information'
+        raise Exception(message)
 
 
 if __name__ == '__main__':
