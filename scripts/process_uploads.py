@@ -116,7 +116,7 @@ def run_processor(batch_number):
     )
 
     archive_prefix = os.path.join(
-        f'cpg-{project}-temporary', 'vivian-test', 'archive', 'cram', batch
+        f'cpg-{project}-temporary', 'vivian-test', 'archive', 'cram', batch_number
     )
     # archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', batch)
 
