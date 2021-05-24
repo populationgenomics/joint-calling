@@ -76,13 +76,15 @@ def generate_file_list(samples: List[str]):
     return main_files, archive_files
 
 
-def run_processor(batch):
+def run_processor(batch_number):
     """ Execute upload processor """
 
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
     upload_prefix = os.path.join(f'cpg-{project}-temporary', 'vivian-test', 'upload')
-    main_prefix = os.path.join(f'cpg-{project}-temporary', 'vivian-test', 'main', batch)
+    main_prefix = os.path.join(
+        f'cpg-{project}-temporary', 'vivian-test', 'main', batch_number
+    )
 
     # upload_prefix = os.path.join(f'cpg-{project}-upload')
     # main_prefix = os.path.join(f'cpg-{project}-main', 'gvcf', batch)
