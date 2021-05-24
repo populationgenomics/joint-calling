@@ -138,8 +138,9 @@ def run_processor(batch_number):
         final_batch = hb.Batch(name='Move csv', backend=service_backend)
         j = final_batch.new_job(name=f'Move {basename(csv_path)}')
         j.image(docker_image)
-        j.command(f"echo '{key}' > /tmp/key.json")
-        j.command(f'gcloud -q auth activate-service-account --key-file=/tmp/key.json')
+        j.command(
+            'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
+        )
         j.command(f'gsutil mv {csv_path} {final_csv_location}')
         final_batch.run()
 
