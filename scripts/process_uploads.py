@@ -82,10 +82,11 @@ def run_processor(input_bucket):
     # Process input file of sample names
     samples = determine_samples(input_bucket)
     main_files, archive_files = generate_file_list(samples)
+    project = os.getenv('HAIL_BILLING_PROJECT')
 
     # Setting up inputs for batch_move_files
-    upload_prefix = os.path.join('cpg-tob-wgs-upload')
-    main_prefix = os.path.join('cpg-tob-wgs-main', 'gvcf', 'batch2')
+    upload_prefix = os.path.join(f'cpg-{project}-upload')
+    main_prefix = os.path.join(f'cpg-{project}', 'gvcf', 'batch2')
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
 
@@ -93,7 +94,7 @@ def run_processor(input_bucket):
     hl.init()
 
     service_backend = hb.ServiceBackend(
-        billing_project=os.getenv('HAIL_BILLING_PROJECT'),
+        billing_project=project,
         bucket=os.getenv('HAIL_BUCKET'),
     )
 
@@ -109,7 +110,7 @@ def run_processor(input_bucket):
         key,
     )
 
-    archive_prefix = os.path.join('cpg-tob-wgs-archive', 'cram', 'batch2')
+    archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', 'batch2')
 
     # Moving the files to the archive bucket
     batch_move_files(
