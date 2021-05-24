@@ -87,7 +87,7 @@ def make_vqsr_jobs(
     :param hard_filter_ht_path: path to HT with samples that failed QC
     :param meta_ht_path: path to HT with sample QC metadata
     :param gvcf_count: number of input samples. Can't read from combined_mt_path as it
-        might not be yet genereated the point of Batch job submission
+           might not be yet genereated the point of Batch job submission
     :param vqsr_bucket: bucket for intermediate files
     :param analysis_bucket: bucket for plots and evaluation results
     :param depends_on: job that the created jobs should only run after

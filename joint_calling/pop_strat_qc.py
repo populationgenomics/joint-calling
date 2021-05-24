@@ -48,7 +48,7 @@ def make_mt_for_pca(
     """
     logger.info('Making MatrixTable for PCA analysis')
     mt = mt.select_entries(
-        'END', 'LGT', GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
+        'END', GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
     )
     mt = mt.filter_rows(
         (hl.len(mt.alleles) == 2) & hl.is_snp(mt.alleles[0], mt.alleles[1])

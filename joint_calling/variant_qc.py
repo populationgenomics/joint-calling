@@ -51,7 +51,7 @@ def add_variant_qc_jobs(
     ):
         anno_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/generate_rf_annotations.py --overwrite '
+            f'{scripts_dir}/generate_variant_qc_annotations.py --overwrite '
             + f'--mt {raw_combined_mt_path} '
             + f'--hard-filtered-samples-ht {hard_filter_ht_path} '
             + f'--meta-ht {meta_ht_path} '
@@ -161,6 +161,7 @@ def add_variant_qc_jobs(
             b=b,
             combined_mt_path=raw_combined_mt_path,
             info_split_ht_path=info_split_ht_path,
+            qc_ac_ht_path=qc_ac_ht_path,
             final_gathered_vcf_path=vqsred_vcf_path,
             rf_annotations_ht_path=rf_annotations_ht_path,
             fam_stats_ht_path=fam_stats_ht_path,
@@ -249,6 +250,7 @@ def make_vqsr_eval_jobs(
     b: hb.Batch,
     combined_mt_path: str,
     info_split_ht_path: str,
+    qc_ac_ht_path: str,
     final_gathered_vcf_path: str,
     rf_annotations_ht_path: Optional[str],
     fam_stats_ht_path: str,
@@ -298,6 +300,7 @@ def make_vqsr_eval_jobs(
             )
             + f'--fam-stats-ht {fam_stats_ht_path} '
             f'--vqsr-filters-split-ht {vqsr_filters_split_ht_path} '
+            f'--qc-ac-ht {qc_ac_ht_path} '
             f'--mt {combined_mt_path} '
             f'--bucket {work_bucket} '
             f'--out-bin-ht {score_bin_ht_path} '

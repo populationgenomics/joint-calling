@@ -22,6 +22,7 @@ from gnomad.utils.filtering import (
     filter_low_conf_regions,
     add_filters_expr,
 )
+from gnomad.utils.sparse_mt import filter_ref_blocks
 
 from joint_calling.utils import file_exists, get_validation_callback, get_mt
 from joint_calling import (
@@ -281,6 +282,10 @@ def _compute_hail_sample_qc(
         return hl.read_table(out_ht_path)
 
     mt = filter_to_autosomes(mt)
+
+    mt = mt.select_entries('GT')
+
+    mt = filter_ref_blocks(mt)
 
     # Remove centromeres and telomeres incase they were included and any reference blocks
     mt = filter_low_conf_regions(
