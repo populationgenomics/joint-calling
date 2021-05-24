@@ -135,7 +135,11 @@ def run_processor(batch_number):
     if status['state'] == 'success':
         # Once all the files have been successfully processed, move the csv file.
         final_csv_location = join('gs://', main_prefix, basename(csv_path))
-        subprocess.run(f'gsutil mv {csv_path} {final_csv_location}', check=False)
+        final_batch = hb.Batch(name='Move csv', backend=service_backend)
+        j = final_batch.new_job(name=f'Move {basename(csv_path)}')
+        j.command(f'gsutil mv {csv_path} {final_csv_location}')
+        final_batch.run()
+
     else:
         batch_url = (
             f"https://batch.hail.populationgenomics.org.au/batches/{status['id']}"
