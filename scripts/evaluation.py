@@ -402,6 +402,7 @@ def create_bin_ht(
         ht = ht.annotate(
             ac=qc_ac_ht[ht.key].ac_release_samples_adj,
             ac_raw=qc_ac_ht[ht.key].ac_qc_samples_raw,
+            singleton=ht.ac_release_samples_raw == 1,
         )
 
         # Remove all samples with an undefined ac_raw, because ac_raw was
