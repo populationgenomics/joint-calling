@@ -403,6 +403,7 @@ def create_bin_ht(
             ac=qc_ac_ht[ht.key].ac_release_samples_adj,
             ac_raw=qc_ac_ht[ht.key].ac_qc_samples_raw,
             singleton=qc_ac_ht[ht.key].ac_release_samples_raw == 1,
+            ac_qc_samples_unrelated_raw=qc_ac_ht[ht.key].ac_qc_samples_unrelated_raw,
         )
 
         # Remove all samples with an undefined ac_raw, because ac_raw was
@@ -432,7 +433,6 @@ def create_bin_ht(
     )
     ht = ht.annotate(non_lcr=hl.is_defined(ht_non_lcr[ht.key]))
     bin_ht = create_binned_ht(ht, n_bins, add_substrat={'non_lcr': ht.non_lcr})
-
     return bin_ht
 
 
