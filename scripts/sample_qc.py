@@ -71,7 +71,8 @@ logger.setLevel('INFO')
     '--info-ht',
     'info_ht_path',
     required=True,
-    help='Info Table, genereated by scripts/generate_info_ht.py --out-info-ht',
+    help='Info Table, genereated by scripts/generate_info_ht.py --out-info-ht'
+    'Needed for mt.info.QD, mt.info.FS, mt.info.MQ',
 )
 @click.option(
     '--out-hardfiltered-samples-ht',

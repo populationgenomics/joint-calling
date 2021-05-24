@@ -122,11 +122,10 @@ def find_inputs(
         # 633,TOB1532,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_C05,KCCG,hg38,0.0121946000,F(-1),0.024425,0.151094,453.0,37.0
         columns = {
             'sample.sample_name': 's',
-            'raw_data.FREEMIX': 'freemix',
-            'raw_data.PCT_CHIMERAS': 'pct_chimeras',
-            'raw_data.PERCENT_DUPLICATION': 'duplication',
+            'raw_data.FREEMIX': 'r_contamination',
+            'raw_data.PCT_CHIMERAS': 'r_chimera',
+            'raw_data.PERCENT_DUPLICATION': 'r_duplication',
             'raw_data.MEDIAN_INSERT_SIZE': 'median_insert_size',
-            'raw_data.MEDIAN_COVERAGE': 'mean_coverage',
         }
         for qc_csv in qc_csvs:
             local_qc_csv_path = join(local_tmp_dir, basename(qc_csv))
