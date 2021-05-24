@@ -45,6 +45,7 @@ def add_variant_qc_jobs(
     allele_data_ht_path = join(work_bucket, 'allele-data.ht')
     qc_ac_ht_path = join(work_bucket, 'qc-ac.ht')
     rf_annotations_ht_path = None
+    rf_result_ht_path = None
 
     if overwrite or any(
         not utils.file_exists(fp) for fp in [allele_data_ht_path, qc_ac_ht_path]
