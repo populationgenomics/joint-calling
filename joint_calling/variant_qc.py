@@ -83,8 +83,8 @@ def add_variant_qc_jobs(
             f'--bucket {work_bucket} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            # Adding more workers as this is the longest step
-            num_secondary_workers=scatter_count * 3,
+            # Adding more workers as this is a much longer step
+            num_secondary_workers=scatter_count * 6,
             depends_on=[sample_qc_job],
             job_name='Var QC: generate frequencies',
         )

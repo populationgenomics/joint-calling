@@ -190,7 +190,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--out-info-vcf {info_vcf_path}',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count * 5,
+            # Adding more workers as this is a much longer step
+            num_secondary_workers=scatter_count * 8,
             depends_on=[combiner_job],
             job_name='Generate info',
         )
