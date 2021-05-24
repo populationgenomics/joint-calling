@@ -34,7 +34,7 @@ def filter_files_manual():
     return files_for_main, files_for_archive
 
 
-def determine_samples(input_bucket: str):
+def determine_samples(upload_bucket: str):
     """Determine files that should be moved to main vs archive bucket
     Parameters
     =========
@@ -49,7 +49,7 @@ def determine_samples(input_bucket: str):
 
     # Pull the CSV file that contains the list of samples in the current batch
 
-    cmd = f'gsutil ls \'{input_bucket}/*.csv\''
+    cmd = f'gsutil ls \'gs://{upload_bucket}/*.csv\''
     csv_file_path = subprocess.check_output(cmd, shell=True).decode().strip()
     local_csv_path = join(local_tmp_dir, basename(csv_file_path))
     subprocess.run(
@@ -76,19 +76,19 @@ def generate_file_list(samples: List[str]):
     return main_files, archive_files
 
 
-def run_processor(input_bucket):
+def run_processor():
     """ Execute upload processor """
 
-    # Process input file of sample names
-    samples = determine_samples(input_bucket)
-    main_files, archive_files = generate_file_list(samples)
-    project = os.getenv('HAIL_BILLING_PROJECT')
-
     # Setting up inputs for batch_move_files
+    project = os.getenv('HAIL_BILLING_PROJECT')
     upload_prefix = os.path.join(f'cpg-{project}-upload')
     main_prefix = os.path.join(f'cpg-{project}', 'gvcf', 'batch2')
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
+
+    # Process input file of sample names
+    samples = determine_samples(upload_prefix)
+    main_files, archive_files = generate_file_list(samples)
 
     # Initialize the service backend.
     hl.init()
