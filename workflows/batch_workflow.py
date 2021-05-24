@@ -32,28 +32,16 @@ logger.setLevel('INFO')
 @click.option('--version', 'callset_version', type=str, required=True)
 @click.option('--batch', 'callset_batches', type=str, multiple=True)
 @click.option(
-    '--access-level', 'access_level', type=click.Choice(['test', 'standard', 'full'])
-)
-@click.option(
     '--from',
     'input_bucket_suffix',
     type=click.Choice(['main', 'test']),
-    help='The bucket type to read from (default: "test" for "test" access level, '
-    '"main" for "standard" and "full")',
+    help='The bucket type to read from',
 )
 @click.option(
-    '--mt-to',
-    'mt_output_bucket_suffix',
-    type=click.Choice(['main', 'temporary']),
-    help='The bucket type to write matrix tables to (default: "temporary" for "test" '
-    'and "standard" access levels, "main" for "full")',
-)
-@click.option(
-    '--analysis-to',
-    'analysis_output_bucket_suffix',
-    type=click.Choice(['analysis', 'temporary']),
-    help='The bucket type to write analysis files to (default: "temporary" for "test" '
-    'and "standard" access levels, "analysis" for "full")',
+    '--to',
+    'output_bucket_suffix',
+    type=click.Choice(['main', 'test', 'temporary']),
+    help='The bucket type to write matrix tables to',
 )
 @click.option(
     '--ped-file', 'ped_file', help='PED file with family information', type=str
@@ -85,10 +73,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     callset_name: str,
     callset_version: str,
     callset_batches: List[str],
-    access_level: str,
     input_bucket_suffix: str,
-    mt_output_bucket_suffix: str,
-    analysis_output_bucket_suffix: str,
+    output_bucket_suffix: str,
     ped_file: str,
     skip_input_meta: bool,
     filter_cutoffs_path: str,
@@ -111,41 +97,26 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     temporary_bucket_suffix = 'temporary'
 
-    if not mt_output_bucket_suffix:
-        if access_level == 'full':
-            mt_output_bucket_suffix = 'main'
-        else:
-            mt_output_bucket_suffix = temporary_bucket_suffix
-
-    if not analysis_output_bucket_suffix:
-        if access_level == 'full':
-            analysis_output_bucket_suffix = 'analysis'
-        else:
-            analysis_output_bucket_suffix = temporary_bucket_suffix
-
-    if not input_bucket_suffix:
-        if access_level in ['standard', 'full']:
-            input_bucket_suffix = 'main'
-        else:
-            input_bucket_suffix = 'test'
-
     if not callset_batches:
-        if access_level == 'test':
-            callset_batches = ['0']
+        if input_bucket_suffix == 'test':
+            callset_batches = ['batch0']
         else:
             raise click.BadParameter(
                 'Please, specify batch numbers with --batch '
-                '(can put multiple times, e.g. --batch 0 --batch 1)'
+                '(can put multiple times, e.g. --batch batch0 --batch batch1)'
             )
 
     work_bucket = f'gs://cpg-{callset_name}-{temporary_bucket_suffix}/joint-calling/{callset_version}'
 
+    analysis_bucket_suffix = (
+        'analysis' if output_bucket_suffix == 'main' else output_bucket_suffix
+    )
     analysis_base_bucket = (
-        f'gs://cpg-{callset_name}-{analysis_output_bucket_suffix}/joint-calling'
+        f'gs://cpg-{callset_name}-{analysis_bucket_suffix}/joint-calling'
     )
     analysis_bucket = f'{analysis_base_bucket}/{callset_version}'
 
-    mt_output_bucket = f'gs://cpg-{callset_name}-{mt_output_bucket_suffix}/mt'
+    mt_output_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/mt'
     raw_combined_mt_path = f'{mt_output_bucket}/{callset_version}-raw.mt'
     # pylint: disable=unused-variable
     filtered_combined_mt_path = f'{mt_output_bucket}/{callset_version}.mt'
@@ -351,7 +322,6 @@ def _add_pre_combiner_jobs(
         else:
             input_buckets = []
             for cb in callset_batches:
-                cb = f'batch{cb}' if not cb.startswith('batch') else cb
                 input_buckets.append(join(input_gvcfs_bucket, cb))
             samples_df = utils.find_inputs(input_buckets, skip_qc=skip_input_meta)
         samples_df = samples_df[pd.notnull(samples_df.s)]

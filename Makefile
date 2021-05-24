@@ -7,9 +7,9 @@ package:
 	twine upload dist/*
 
 .PHONY: patch
-bump:
+patch:
 	bump2version patch
 
 .PHONY: minor
-bump:
+minor:
 	bump2version minor
