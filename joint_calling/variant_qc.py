@@ -294,7 +294,11 @@ def make_vqsr_eval_jobs(
 
     score_bin_ht_path = join(work_bucket, 'vqsr-score-bin.ht')
     score_bin_agg_ht_path = join(work_bucket, 'vqsr-score-agg-bin.ht')
-    if overwrite or not utils.file_exists(score_bin_ht_path):
+    if (
+        overwrite
+        or not utils.file_exists(score_bin_ht_path)
+        or not utils.file_exists(score_bin_agg_ht_path)
+    ):
         eval_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/evaluation.py --overwrite '
