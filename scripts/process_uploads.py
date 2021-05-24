@@ -76,13 +76,13 @@ def generate_file_list(samples: List[str]):
     return main_files, archive_files
 
 
-def run_processor():
+def run_processor(batch):
     """ Execute upload processor """
 
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
     upload_prefix = os.path.join(f'cpg-{project}-upload')
-    main_prefix = os.path.join(f'cpg-{project}', 'gvcf', 'batch2')
+    main_prefix = os.path.join(f'cpg-{project}', 'gvcf', batch)
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
 
@@ -110,7 +110,7 @@ def run_processor():
         key,
     )
 
-    archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', 'batch2')
+    archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', batch)
 
     # Moving the files to the archive bucket
     batch_move_files(
