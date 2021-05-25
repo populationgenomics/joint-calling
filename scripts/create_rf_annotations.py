@@ -122,6 +122,13 @@ TRUTH_DATA = ['hapmap', 'omni', 'mills', 'kgp_phase1_hc']
     help='Use adj genotypes',
     is_flag=True,
 )
+@click.option(
+    '--overwrite/--reuse',
+    'overwrite',
+    is_flag=True,
+    help='if an intermediate or a final file exists, skip running the code '
+    'that generates it.',
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals
     info_split_ht_path: str,
     freq_ht_path: str,
@@ -134,6 +141,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     impute_features: bool,
     n_partitions: int,
     use_adj_genotypes: bool,
+    overwrite: bool,  # pylint: disable=unused-argument
 ):
     """
     Creates a Table with all necessary annotations for the random forest model.
