@@ -131,6 +131,10 @@ def run_processor(batch_number):
     )
 
     csv_job = batch.new_job(name=f'Move {basename(csv_path)}')
+    csv_job.image(docker_image)
+    csv_job.command(
+        'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
+    )
     all_jobs = main_jobs + archive_jobs
     csv_job.depends_on(*all_jobs)
     final_csv_location = join('gs://', main_prefix, basename(csv_path))
@@ -140,4 +144,4 @@ def run_processor(batch_number):
 
 
 if __name__ == '__main__':
-    run_processor('batch6')
+    run_processor('batch5')
