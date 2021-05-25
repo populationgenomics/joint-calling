@@ -81,13 +81,9 @@ def run_processor(batch_number):
 
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
-    upload_prefix = os.path.join(f'cpg-{project}-temporary', 'vivian-test', 'upload')
-    main_prefix = os.path.join(
-        f'cpg-{project}-temporary', 'vivian-test', 'main', batch_number
-    )
 
-    # upload_prefix = os.path.join(f'cpg-{project}-upload')
-    # main_prefix = os.path.join(f'cpg-{project}-main', 'gvcf', batch_number)
+    upload_prefix = os.path.join(f'cpg-{project}-upload')
+    main_prefix = os.path.join(f'cpg-{project}-main', 'gvcf', batch_number)
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
 
@@ -115,10 +111,7 @@ def run_processor(batch_number):
         key,
     )
 
-    archive_prefix = os.path.join(
-        f'cpg-{project}-temporary', 'vivian-test', 'archive', 'cram', batch_number
-    )
-    # archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', batch_number)
+    archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', batch_number)
 
     # Moving the files to the archive bucket
     archive_jobs = batch_move_files(
@@ -141,7 +134,3 @@ def run_processor(batch_number):
     csv_job.command(f'gsutil mv {csv_path} {final_csv_location}')
 
     batch.run()
-
-
-if __name__ == '__main__':
-    run_processor('batch5')
