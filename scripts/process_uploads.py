@@ -15,25 +15,6 @@ import hailtop.batch as hb
 from joint_calling.upload_processor import batch_move_files
 
 
-def filter_files_manual():
-    """Determine files that should be moved to main vs archive bucket
-    when given a list of file paths"""
-    files_for_main = []
-    files_for_archive = []
-    prefix = 'gs://cpg-tob-wgs-upload/'
-    with open('test/data/tob_wgs_batch2.txt') as f:
-        for file_path in f:
-            file_path = file_path.strip()
-            if file_path.endswith(
-                ('.g.vcf.gz', '.g.vcf.gz.tbi', '.g.vcf.gz.md5', 'csv')
-            ):
-                files_for_main.append(file_path[len(prefix) :])
-            else:
-                files_for_archive.append(file_path[len(prefix) :])
-
-    return files_for_main, files_for_archive
-
-
 def determine_samples(upload_bucket: str):
     """Determine files that should be moved to main vs archive bucket
     Parameters
@@ -76,8 +57,15 @@ def generate_file_list(samples: List[str]):
     return main_files, archive_files
 
 
-def run_processor(batch_number):
-    """ Execute upload processor """
+def run_processor(batch_number: str):
+    """Execute upload processor
+    Parameters
+    =========
+    batch_number: str
+    Corresponds to the folder within main that the files should be moved to
+    e.g. "batch0"
+
+    """
 
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
