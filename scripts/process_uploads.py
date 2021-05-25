@@ -131,7 +131,8 @@ def run_processor(batch_number):
     )
 
     csv_job = batch.new_job(name=f'Move {basename(csv_path)}')
-    csv_job.depends_on(main_jobs + archive_jobs)
+    all_jobs = main_jobs + archive_jobs
+    csv_job.depends_on(*all_jobs)
     final_csv_location = join('gs://', main_prefix, basename(csv_path))
     csv_job.command(f'gsutil mv {csv_path} {final_csv_location}')
 
