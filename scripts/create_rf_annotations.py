@@ -205,11 +205,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
         *FEATURES,
         *TRUTH_DATA,
         fail_hard_filters=(ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30),
-        transmitted_singleton=ht[f'n_transmitted_{group}']
-        == 1 & (ht[f'ac_qc_samples_{group}'] == 2)
+        transmitted_singleton=(
+            (ht[f'n_transmitted_{group}'] == 1) & (ht[f'ac_qc_samples_{group}'] == 2)
+        )
         if fam_stats_ht_path is not None
         else hl.literal(False),
-        singleton=ht.ac_release_samples_raw == 1,
+        singleton=(ht.ac_release_samples_raw == 1),
         ac_raw=ht.ac_qc_samples_raw,
         ac=ht.ac_release_samples_adj,
         ac_qc_samples_unrelated_raw=ht.ac_qc_samples_unrelated_raw,
