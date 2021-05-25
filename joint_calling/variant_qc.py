@@ -47,11 +47,13 @@ def add_variant_qc_jobs(
     rf_result_ht_path = None
 
     if overwrite or any(
-        not utils.file_exists(fp) for fp in [allele_data_ht_path, qc_ac_ht_path]
+        not utils.file_exists(fp)
+        for fp in [allele_data_ht_path, qc_ac_ht_path, fam_stats_ht_path]
     ):
         var_qc_anno_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/generate_variant_qc_annotations.py --overwrite '
+            f'{scripts_dir}/generate_variant_qc_annotations.py '
+            + f'{"--overwrite " if overwrite else ""}'
             + f'--mt {raw_combined_mt_path} '
             + f'--hard-filtered-samples-ht {hard_filter_ht_path} '
             + f'--meta-ht {meta_ht_path} '
