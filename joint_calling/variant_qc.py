@@ -183,7 +183,8 @@ def add_variant_qc_jobs(
             analysis_bucket=join(analysis_bucket, 'vqsr'),
             overwrite=overwrite,
             scripts_dir=scripts_dir,
-            depends_on=[rf_anno_job, final_gathered_vcf_job],
+            final_gathered_vcf_job=final_gathered_vcf_job,
+            rf_anno_job=rf_anno_job,
             scatter_count=scatter_count,
             output_ht_path=final_filter_ht_path,
         )
@@ -272,7 +273,8 @@ def make_vqsr_eval_jobs(
     analysis_bucket: str,  # pylint: disable=unused-argument
     overwrite: bool,
     scripts_dir: str,
-    depends_on: Optional[List[Job]],
+    final_gathered_vcf_job: Job,
+    rf_anno_job: Job,
     scatter_count: int,
     output_ht_path: str,
 ) -> Tuple[Job, str]:
@@ -293,7 +295,7 @@ def make_vqsr_eval_jobs(
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            depends_on=depends_on,
+            depends_on=[final_gathered_vcf_job],
             job_name='VQSR: load_vqsr',
         )
     else:
@@ -326,7 +328,7 @@ def make_vqsr_eval_jobs(
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            depends_on=[load_vqsr_job],
+            depends_on=[load_vqsr_job, rf_anno_job],
             job_name='VQSR: evaluation',
         )
     else:
