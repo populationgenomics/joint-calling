@@ -109,10 +109,10 @@ def add_variant_qc_jobs(
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count * 3,
             depends_on=[freq_job, var_qc_anno_job],
-            job_name='Var QC: generate RF annotations',
+            job_name='Var QC: create RF annotations',
         )
     else:
-        rf_anno_job = b.new_job('Var QC: generate RF annotations [reuse]')
+        rf_anno_job = b.new_job('Var QC: create RF annotations [reuse]')
 
     if run_rf:
         rf_result_ht_path = join(work_bucket, 'rf-result.ht')
