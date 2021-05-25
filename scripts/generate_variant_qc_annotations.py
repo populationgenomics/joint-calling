@@ -297,9 +297,9 @@ def generate_fam_stats(
 ) -> hl.Table:
     """
     Calculate transmission and de novo mutation statistics using trios in the dataset.
+
     :param mt: input MatrixTable
     :param out_fam_stats_ht_path: path to write the resulting Table to
-    :param work_bucket: bucket to write intermediate and output files to
     :param overwrite: overwrite existing intermediate and output files
     :param trios_fam_ped_file: path to text file containing trio pedigree
     :return: Table containing trio stats
@@ -335,6 +335,10 @@ def generate_fam_stats(
             mt,
             transmitted_strata={'raw': True, 'adj': trio_adj},
             de_novo_strata={
+                'raw': True,
+                'adj': trio_adj,
+            },
+            ac_strata={
                 'raw': True,
                 'adj': trio_adj,
             },

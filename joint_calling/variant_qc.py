@@ -9,8 +9,8 @@ import logging
 import pandas as pd
 import hailtop.batch as hb
 from hailtop.batch.job import Job
-from analysis_runner import dataproc
 
+from analysis_runner import dataproc
 from joint_calling import utils
 from joint_calling.vqsr import make_vqsr_jobs
 
@@ -44,15 +44,16 @@ def add_variant_qc_jobs(
     fam_stats_ht_path = join(work_bucket, 'fam-stats.ht')
     allele_data_ht_path = join(work_bucket, 'allele-data.ht')
     qc_ac_ht_path = join(work_bucket, 'qc-ac.ht')
-    rf_annotations_ht_path = None
     rf_result_ht_path = None
 
     if overwrite or any(
-        not utils.file_exists(fp) for fp in [allele_data_ht_path, qc_ac_ht_path]
+        not utils.file_exists(fp)
+        for fp in [allele_data_ht_path, qc_ac_ht_path, fam_stats_ht_path]
     ):
-        anno_job = dataproc.hail_dataproc_job(
+        var_qc_anno_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/generate_variant_qc_annotations.py --overwrite '
+            f'{scripts_dir}/generate_variant_qc_annotations.py '
+            + f'{"--overwrite " if overwrite else ""}'
             + f'--mt {raw_combined_mt_path} '
             + f'--hard-filtered-samples-ht {hard_filter_ht_path} '
             + f'--meta-ht {meta_ht_path} '
@@ -65,11 +66,11 @@ def add_variant_qc_jobs(
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
             depends_on=[sample_qc_job],
-            job_name='Var QC: generate QC annotations',
+            job_name='Var QC: generate annotations',
             vep='GRCh38',
         )
     else:
-        anno_job = b.new_job('Var QC: generate QC annotations [reuse]')
+        var_qc_anno_job = b.new_job('Var QC: generate annotations [reuse]')
 
     freq_ht_path = join(work_bucket, 'frequencies.ht')
     if overwrite or not utils.file_exists(freq_ht_path):
@@ -89,34 +90,47 @@ def add_variant_qc_jobs(
             job_name='Var QC: generate frequencies',
         )
     else:
-        freq_job = b.new_job('RF: generate frequencies [reuse]')
+        freq_job = b.new_job('Var QC: generate frequencies [reuse]')
+
+    rf_annotations_ht_path = join(work_bucket, 'rf-annotations.ht')
+    if overwrite or not utils.file_exists(rf_annotations_ht_path):
+        rf_anno_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/create_rf_annotations.py --overwrite '
+            f'--info-split-ht {info_split_ht_path} '
+            f'--freq-ht {freq_ht_path} '
+            f'--fam-stats-ht {fam_stats_ht_path} '
+            f'--allele-data-ht {allele_data_ht_path} '
+            f'--qc-ac-ht {qc_ac_ht_path} '
+            f'--bucket {work_bucket} '
+            f'--use-adj-genotypes '
+            f'--out-ht {rf_annotations_ht_path} ',
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=scatter_count * 3,
+            depends_on=[freq_job, var_qc_anno_job],
+            job_name='Var QC: create RF annotations',
+        )
+    else:
+        rf_anno_job = b.new_job('Var QC: create RF annotations [reuse]')
 
     if run_rf:
-        rf_annotations_ht_path = join(work_bucket, 'rf-annotations.ht')
         rf_result_ht_path = join(work_bucket, 'rf-result.ht')
         rf_model_id = f'rf_{str(uuid.uuid4())[:8]}'
-        if overwrite or any(
-            not utils.file_exists(path)
-            for path in [rf_annotations_ht_path, rf_result_ht_path]
-        ):
+        if overwrite or not utils.file_exists(rf_result_ht_path):
             rf_job = dataproc.hail_dataproc_job(
                 b,
                 f'{scripts_dir}/random_forest.py --overwrite '
-                f'--info-split-ht {info_split_ht_path} '
-                f'--freq-ht {freq_ht_path} '
-                f'--fam-stats-ht {fam_stats_ht_path} '
-                f'--allele-data-ht {allele_data_ht_path} '
-                f'--qc-ac-ht {qc_ac_ht_path} '
+                f'--annotations-ht {rf_annotations_ht_path} '
                 f'--bucket {work_bucket} '
                 f'--use-adj-genotypes '
-                f'--out-annotations-ht {rf_annotations_ht_path} '
                 f'--out-results-ht {rf_result_ht_path} '
                 f'--out-model-id {rf_model_id} ',
                 max_age='8h',
                 packages=utils.DATAPROC_PACKAGES,
                 num_secondary_workers=scatter_count,
-                depends_on=[freq_job, anno_job],
-                job_name='Random forest ',
+                depends_on=[rf_anno_job],
+                job_name='Random forest',
             )
         else:
             rf_job = b.new_job('Random forest [reuse]')
@@ -125,7 +139,6 @@ def add_variant_qc_jobs(
             b=b,
             combined_mt_path=raw_combined_mt_path,
             info_split_ht_path=info_split_ht_path,
-            qc_ac_ht_path=qc_ac_ht_path,
             rf_result_ht_path=rf_result_ht_path,
             rf_annotations_ht_path=rf_annotations_ht_path,
             fam_stats_ht_path=fam_stats_ht_path,
@@ -162,10 +175,9 @@ def add_variant_qc_jobs(
         final_job = make_vqsr_eval_jobs(
             b=b,
             combined_mt_path=raw_combined_mt_path,
-            info_split_ht_path=info_split_ht_path,
-            qc_ac_ht_path=qc_ac_ht_path,
-            final_gathered_vcf_path=vqsred_vcf_path,
             rf_annotations_ht_path=rf_annotations_ht_path,
+            info_split_ht_path=info_split_ht_path,
+            final_gathered_vcf_path=vqsred_vcf_path,
             rf_result_ht_path=rf_result_ht_path,
             fam_stats_ht_path=fam_stats_ht_path,
             freq_ht_path=freq_ht_path,
@@ -173,7 +185,8 @@ def add_variant_qc_jobs(
             analysis_bucket=join(analysis_bucket, 'vqsr'),
             overwrite=overwrite,
             scripts_dir=scripts_dir,
-            depends_on=[anno_job, freq_job, final_gathered_vcf_job],
+            final_gathered_vcf_job=final_gathered_vcf_job,
+            rf_anno_job=rf_anno_job,
             scatter_count=scatter_count,
             output_ht_path=final_filter_ht_path,
         )
@@ -184,7 +197,6 @@ def make_rf_eval_jobs(
     b: hb.Batch,
     combined_mt_path: str,
     info_split_ht_path: str,
-    qc_ac_ht_path: str,
     rf_result_ht_path: str,
     rf_annotations_ht_path: str,
     fam_stats_ht_path: str,
@@ -207,12 +219,11 @@ def make_rf_eval_jobs(
         eval_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/evaluation.py --overwrite '
-            f'--info-split-ht {info_split_ht_path} '
-            f'--qc-ac-ht {qc_ac_ht_path} '
-            f'--rf-results-ht {rf_result_ht_path} '
-            f'--rf-annotations-ht {rf_annotations_ht_path} '
-            f'--fam-stats-ht {fam_stats_ht_path} '
             f'--mt {combined_mt_path} '
+            f'--rf-annotations-ht {rf_annotations_ht_path} '
+            f'--info-split-ht {info_split_ht_path} '
+            f'--fam-stats-ht {fam_stats_ht_path} '
+            f'--rf-results-ht {rf_result_ht_path} '
             f'--bucket {work_bucket} '
             f'--out-bin-ht {score_bin_ht_path} '
             f'--out-aggregated-bin-ht {score_bin_agg_ht_path} '
@@ -254,10 +265,9 @@ def make_rf_eval_jobs(
 def make_vqsr_eval_jobs(
     b: hb.Batch,
     combined_mt_path: str,
+    rf_annotations_ht_path: str,
     info_split_ht_path: str,
-    qc_ac_ht_path: str,
     final_gathered_vcf_path: str,
-    rf_annotations_ht_path: Optional[str],
     rf_result_ht_path: Optional[str],
     fam_stats_ht_path: str,
     freq_ht_path: str,
@@ -265,7 +275,8 @@ def make_vqsr_eval_jobs(
     analysis_bucket: str,  # pylint: disable=unused-argument
     overwrite: bool,
     scripts_dir: str,
-    depends_on: Optional[List[Job]],
+    final_gathered_vcf_job: Job,
+    rf_anno_job: Job,
     scatter_count: int,
     output_ht_path: str,
 ) -> Tuple[Job, str]:
@@ -286,7 +297,7 @@ def make_vqsr_eval_jobs(
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            depends_on=depends_on,
+            depends_on=[final_gathered_vcf_job],
             job_name='VQSR: load_vqsr',
         )
     else:
@@ -303,14 +314,11 @@ def make_vqsr_eval_jobs(
             b,
             f'{scripts_dir}/evaluation.py --overwrite '
             f'--mt {combined_mt_path} '
+            f'--rf-annotations-ht {rf_annotations_ht_path} '
             f'--info-split-ht {info_split_ht_path} '
-            f'--qc-ac-ht {qc_ac_ht_path} '
             f'--fam-stats-ht {fam_stats_ht_path} '
             + (
-                (
-                    f'--rf-annotations-ht {rf_annotations_ht_path} '
-                    f'--rf-result-ht {rf_result_ht_path} '
-                )
+                (f'--rf-result-ht {rf_result_ht_path} ')
                 if (rf_annotations_ht_path and rf_result_ht_path)
                 else ''
             )
@@ -322,7 +330,7 @@ def make_vqsr_eval_jobs(
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            depends_on=[load_vqsr_job],
+            depends_on=[load_vqsr_job, rf_anno_job],
             job_name='VQSR: evaluation',
         )
     else:
