@@ -41,14 +41,13 @@ def add_variant_qc_jobs(
     rf_bucket = join(work_bucket, 'rf')
     vqsr_bucket = join(work_bucket, 'vqsr')
 
-    fam_stats_ht_path = join(work_bucket, 'fam-stats.ht')
+    fam_stats_ht_path = join(work_bucket, 'fam-stats.ht') if ped_file else None
     allele_data_ht_path = join(work_bucket, 'allele-data.ht')
     qc_ac_ht_path = join(work_bucket, 'qc-ac.ht')
     rf_result_ht_path = None
 
     if overwrite or any(
-        not utils.file_exists(fp)
-        for fp in [allele_data_ht_path, qc_ac_ht_path, fam_stats_ht_path]
+        not utils.file_exists(fp) for fp in [allele_data_ht_path, qc_ac_ht_path]
     ):
         var_qc_anno_job = dataproc.hail_dataproc_job(
             b,
@@ -59,7 +58,7 @@ def add_variant_qc_jobs(
             + f'--meta-ht {meta_ht_path} '
             + f'--out-allele-data-ht {allele_data_ht_path} '
             + f'--out-qc-ac-ht {qc_ac_ht_path} '
-            + f'--out-fam-stats-ht {fam_stats_ht_path} '
+            + (f'--out-fam-stats-ht {fam_stats_ht_path} ' if ped_file else '')
             + (f'--fam-file {ped_file} ' if ped_file else '')
             + f'--bucket {work_bucket} ',
             max_age='8h',
@@ -99,8 +98,8 @@ def add_variant_qc_jobs(
             f'{scripts_dir}/create_rf_annotations.py --overwrite '
             f'--info-split-ht {info_split_ht_path} '
             f'--freq-ht {freq_ht_path} '
-            f'--fam-stats-ht {fam_stats_ht_path} '
-            f'--allele-data-ht {allele_data_ht_path} '
+            + (f'--fam-stats-ht {fam_stats_ht_path} ' if fam_stats_ht_path else '')
+            + f'--allele-data-ht {allele_data_ht_path} '
             f'--qc-ac-ht {qc_ac_ht_path} '
             f'--bucket {work_bucket} '
             f'--use-adj-genotypes '
@@ -199,7 +198,7 @@ def make_rf_eval_jobs(
     info_split_ht_path: str,
     rf_result_ht_path: str,
     rf_annotations_ht_path: str,
-    fam_stats_ht_path: str,
+    fam_stats_ht_path: Optional[str],
     freq_ht_path: str,
     rf_model_id: str,
     work_bucket: str,
@@ -222,8 +221,8 @@ def make_rf_eval_jobs(
             f'--mt {combined_mt_path} '
             f'--rf-annotations-ht {rf_annotations_ht_path} '
             f'--info-split-ht {info_split_ht_path} '
-            f'--fam-stats-ht {fam_stats_ht_path} '
-            f'--rf-results-ht {rf_result_ht_path} '
+            + (f'--fam-stats-ht {fam_stats_ht_path} ' if fam_stats_ht_path else '')
+            + f'--rf-results-ht {rf_result_ht_path} '
             f'--bucket {work_bucket} '
             f'--out-bin-ht {score_bin_ht_path} '
             f'--out-aggregated-bin-ht {score_bin_agg_ht_path} '
@@ -269,7 +268,7 @@ def make_vqsr_eval_jobs(
     info_split_ht_path: str,
     final_gathered_vcf_path: str,
     rf_result_ht_path: Optional[str],
-    fam_stats_ht_path: str,
+    fam_stats_ht_path: Optional[str],
     freq_ht_path: str,
     work_bucket: str,
     analysis_bucket: str,  # pylint: disable=unused-argument
@@ -316,7 +315,7 @@ def make_vqsr_eval_jobs(
             f'--mt {combined_mt_path} '
             f'--rf-annotations-ht {rf_annotations_ht_path} '
             f'--info-split-ht {info_split_ht_path} '
-            f'--fam-stats-ht {fam_stats_ht_path} '
+            + (f'--fam-stats-ht {fam_stats_ht_path} ' if fam_stats_ht_path else '')
             + (
                 (f'--rf-result-ht {rf_result_ht_path} ')
                 if (rf_annotations_ht_path and rf_result_ht_path)

@@ -46,7 +46,6 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--out-fam-stats-ht',
     'out_fam_stats_ht_path',
-    required=True,
 )
 @click.option(
     '--out-vep-ht',
@@ -99,7 +98,7 @@ logger.setLevel(logging.INFO)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements,missing-function-docstring
     out_allele_data_ht_path: str,
     out_qc_ac_ht_path: str,
-    out_fam_stats_ht_path: str,
+    out_fam_stats_ht_path: Optional[str],
     out_vep_ht_path: Optional[str],
     mt_path: str,
     hard_filtered_samples_ht_path: str,
@@ -132,20 +131,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         overwrite=overwrite,
     )
 
-    if not trios_fam_ped_file:
-        trios_fam_ped_file = _make_fam_file(
-            sex_ht=hl.read_table(meta_ht_path),
-            work_bucket=work_bucket,
+    if trios_fam_ped_file and out_fam_stats_ht_path:
+        fam_stats_ht = generate_fam_stats(
+            hard_filtered_mt,
+            str(out_fam_stats_ht_path),
+            overwrite=overwrite,
+            trios_fam_ped_file=trios_fam_ped_file,
         )
-
-    fam_stats_ht = generate_fam_stats(
-        hard_filtered_mt,
-        out_fam_stats_ht_path,
-        overwrite=overwrite,
-        trios_fam_ped_file=trios_fam_ped_file,
-    )
-
-    if fam_stats_ht:
         export_transmitted_singletons_vcf(
             fam_stats_ht=fam_stats_ht,
             qc_ac_ht=qc_ac_ht,
