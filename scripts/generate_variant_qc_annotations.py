@@ -202,7 +202,6 @@ def generate_allele_data(
     if not overwrite and file_exists(out_ht_path):
         return hl.read_table(out_ht_path)
 
-    ht = ht.select()
     allele_data = hl.struct(
         nonsplit_alleles=ht.alleles, has_star=hl.any(lambda a: a == '*', ht.alleles)
     )
