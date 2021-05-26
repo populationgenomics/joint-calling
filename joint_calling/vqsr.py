@@ -312,13 +312,12 @@ def make_vqsr_jobs(
             ).recalibrated_vcf
             for idx in range(scatter_count)
         ]
-        final_gathered_vcf_job = _add_final_gather_vcf_step(
+        recalibrated_gathered_vcf_job = _add_final_gather_vcf_step(
             b,
             input_vcfs=scattered_vcfs,
             disk_size=huge_disk,
-            output_vcf_path=output_vcf_path,
         )
-        final_gathered_vcf = final_gathered_vcf_job.output_vcf
+        recalibrated_gathered_vcf = recalibrated_gathered_vcf_job.output_vcf
 
     else:
         snps_recalibrator_job = add_snps_variant_recalibrator_step(
@@ -335,7 +334,7 @@ def make_vqsr_jobs(
         snps_recalibration = snps_recalibrator_job.recalibration
         snps_tranches = snps_recalibrator_job.tranches
 
-        final_gathered_vcf_job = add_apply_recalibration_step(
+        recalibrated_gathered_vcf_job = add_apply_recalibration_step(
             b,
             input_vcf=gathered_vcf,
             indels_recalibration=indels_recalibration,
@@ -345,13 +344,19 @@ def make_vqsr_jobs(
             disk_size=medium_disk,
             indel_filter_level=vqsr_params_d['indel_filter_level'],
             snp_filter_level=vqsr_params_d['snp_filter_level'],
-            output_vcf_path=output_vcf_path,
         )
-        final_gathered_vcf = final_gathered_vcf_job.recalibrated_vcf
+        recalibrated_gathered_vcf = recalibrated_gathered_vcf_job.recalibrated_vcf
 
-    add_variant_eval_step(
+    final_gathered_vcf_job = _add_filter_sb_step(
         b,
-        input_vcf=final_gathered_vcf,
+        input_vcf=recalibrated_gathered_vcf,
+        disk_size=medium_disk,
+        output_vcf_path=output_vcf_path,
+    )
+
+    _add_variant_eval_step(
+        b,
+        input_vcf=final_gathered_vcf_job.output_vcf,
         ref_fasta=ref_fasta,
         dbsnp_vcf=dbsnp_vcf,
         output_path=os.path.join(analysis_bucket, 'variant-eval.txt'),
@@ -1065,7 +1070,35 @@ def _add_final_gather_vcf_step(
     return j
 
 
-def add_variant_eval_step(
+def _add_filter_sb_step(
+    b: hb.Batch,
+    input_vcf: hb.ResourceGroup,
+    disk_size: int,
+    output_vcf_path: str = None,
+) -> Job:
+    """
+    Run VariantEval for site-level evaluation.
+    Saves the QC to `output_path` bucket
+    """
+    j = b.new_job('Remove SB')
+    j.image(utils.BCFTOOLS_DOCKER)
+    j.memory(f'8G')
+    j.storage(f'{disk_size}G')
+    j.declare_resource_group(
+        output_vcf={'vcf.gz': '{root}.vcf.gz', 'vcf.gz.tbi': '{root}.vcf.gz.tbi'}
+    )
+
+    j.command(
+        f"""
+    bcftools annotate -x INFO/SB {input_vcf['vcf.gz']} -Oz -o {j.output_vcf['vcf.gz']}
+    """
+    )
+    if output_vcf_path:
+        b.write_output(j.output_vcf, output_vcf_path.replace('.vcf.gz', ''))
+    return j
+
+
+def _add_variant_eval_step(
     b: hb.Batch,
     input_vcf: hb.ResourceGroup,
     ref_fasta: hb.ResourceGroup,
