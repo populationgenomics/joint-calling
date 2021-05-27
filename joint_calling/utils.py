@@ -94,7 +94,6 @@ def find_inputs(
         r_chimera
         r_duplication
         median_insert_size
-        mean_coverage
     """
     gvcf_paths: List[str] = []
     for ib in input_buckets:
