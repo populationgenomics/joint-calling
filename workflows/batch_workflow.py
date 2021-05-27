@@ -119,7 +119,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         billing_project=billing_project,
         bucket=hail_bucket.replace('gs://', ''),
     )
-    b = hb.Batch('Joint calling', backend=backend)
+    b = hb.Batch(
+        f'Joint calling: {callset_name}'
+        f', version: {callset_version}'
+        f', batches: {", ".join(callset_batches)}'
+        f', from: {input_bucket_suffix}'
+        f', to: {output_bucket_suffix}',
+        backend=backend,
+    )
     scripts_dir = abspath(join(dirname(__file__), '..', 'scripts'))
 
     analysis_bucket_suffix = (
