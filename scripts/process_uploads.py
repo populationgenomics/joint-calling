@@ -93,22 +93,10 @@ def run_processor(batch_number: str, prev_batch: str):
 
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
-    # upload_prefix = os.path.join(f'cpg-{project}-upload')
-    # main_prefix = os.path.join(f'cpg-{project}-main', 'gvcf', batch_number)
-    # prev_prefix = os.path.join(f'cpg-{project}-main', 'gvcf', prev_batch)
-    # archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', batch_number)
-
-    upload_prefix = os.path.join(f'cpg-{project}-temporary', 'vivian-test', 'upload')
-    main_prefix = os.path.join(
-        f'cpg-{project}-temporary', 'vivian-test', 'main', batch_number
-    )
-    prev_prefix = os.path.join(
-        f'cpg-{project}-temporary', 'vivian-test', 'main', prev_batch
-    )
-    archive_prefix = os.path.join(
-        f'cpg-{project}-temporary', 'vivian-test', 'archive', 'cram', batch_number
-    )
-
+    upload_prefix = os.path.join(f'cpg-{project}-upload')
+    main_prefix = os.path.join(f'cpg-{project}-main', 'gvcf', batch_number)
+    prev_prefix = os.path.join(f'cpg-{project}-main', 'gvcf', prev_batch)
+    archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', batch_number)
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
 
