@@ -97,21 +97,12 @@ def run_processor(batch_number: str, prev_batch: str):
 
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
-    # upload_bucket = os.path.join(f'cpg-{project}-upload')
-    # upload_prefix = os.path.join(upload_bucket)
-    # main_bucket = os.path.join(f'cpg-{project}-main')
-    # main_prefix = os.path.join(main_bucket, 'gvcf', batch_number)
-    # prev_prefix = os.path.join('gvcf', prev_batch)
-    # archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', batch_number)
-
-    upload_bucket = f'cpg-{project}-temporary'
-    upload_prefix = os.path.join(upload_bucket, 'vivian-test', 'upload')
-    main_bucket = f'cpg-{project}-temporary'
-    main_prefix = os.path.join(main_bucket, 'vivian-test', 'main', 'gvcf', batch_number)
-    prev_prefix = os.path.join(main_bucket, 'vivian-test', 'main', 'gvcf', prev_batch)
-    archive_prefix = os.path.join(
-        f'cpg-{project}-temporary', 'vivian-test', 'archive', 'cram', batch_number
-    )
+    upload_bucket = f'cpg-{project}-upload'
+    upload_prefix = os.path.join(upload_bucket)
+    main_bucket = f'cpg-{project}-main'
+    main_prefix = os.path.join(main_bucket, 'gvcf', batch_number)
+    prev_prefix = os.path.join(main_bucket, 'gvcf', prev_batch)
+    archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', batch_number)
 
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
