@@ -60,8 +60,6 @@ def determine_samples(
     # upload_path = os.path.join('gs://', upload_bucket, upload_path)
 
     # Pull the samples listed in the most recent CSV file
-    cmd = f'gsutil ls \'gs://{upload_bucket}\''
-    curr_csv_file_path = subprocess.check_output(cmd, shell=True).decode().strip()
     # local_curr_csv_path = join(local_tmp_dir, basename(curr_csv_file_path))
     # subprocess.run(
     #     f'gsutil cp {curr_csv_file_path} {local_curr_csv_path}', check=False, shell=True
@@ -86,6 +84,8 @@ def determine_samples(
     samples = set(all_samples) - set(previous_samples)
 
     # shutil.rmtree(local_tmp_dir)
+    cmd = f'gsutil ls \'gs://{upload_path}\''
+    curr_csv_file_path = subprocess.check_output(cmd, shell=True).decode().strip()
 
     return samples, curr_csv_file_path
 
