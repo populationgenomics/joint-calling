@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-Processes files uploaded to gcp
+Processes a new batch of samples from the UPLOAD bucket,
+into the MAIN and ARCHIVE buckets using the batch_move_files function. 
+
+Determines the files to be moved through a comparison of the 
+most recently updated CSV and the CSV uploaded in a previous batch run. 
 """
 
 import os
@@ -48,42 +52,13 @@ def determine_samples(
     ==========
     Only one .csv file exists in the upload bucket and previous batch directory.
     """
-    # local_tmp_dir = tempfile.mkdtemp()
     all_samples: List[str] = []
     previous_samples: List[str] = []
-
-    # cmd = f'gsutil ls \'gs://{upload_bucket}/*.csv\''
-    # curr_csv_file_path = subprocess.check_output(cmd, shell=True).decode().strip()
-    # blob = bucket.get_blob(basename(curr_csv_file_path))
-    # data = blob.download_as_string().decode("utf-8")
-    # reader_list = csv.DictReader(io.StringIO(data))
-    # upload_path = os.path.join('gs://', upload_bucket, upload_path)
-
-    # Pull the samples listed in the most recent CSV file
-    # local_curr_csv_path = join(local_tmp_dir, basename(curr_csv_file_path))
-    # subprocess.run(
-    #     f'gsutil cp {curr_csv_file_path} {local_curr_csv_path}', check=False, shell=True
-    # )
-
     all_samples = samples_from_csv(upload_bucket, upload_path)
-
-    # Pull the samples listed in the CSV file from the previous batch
-    # cmd = f'gsutil ls \'gs://{previous_batch_path}/*.csv\''
-    # prev_csv_file_path = subprocess.check_output(cmd, shell=True).decode().strip()
-    # blob = bucket.get_blob(basename(curr_csv_file_path))
-    # data = blob.download_as_string().decode("utf-8")
-    # reader_list = csv.DictReader(io.StringIO(data))
-
-    # local_prev_csv_path = join(local_tmp_dir, basename(prev_csv_file_path))
-    # subprocess.run(
-    #     f'gsutil cp {prev_csv_file_path} {local_prev_csv_path}', check=False, shell=True
-    # )
-
     previous_samples = samples_from_csv(main_bucket, previous_batch_path)
 
     samples = set(all_samples) - set(previous_samples)
 
-    # shutil.rmtree(local_tmp_dir)
     cmd = f'gsutil ls \'gs://{upload_path}/*.csv\''
     curr_csv_file_path = subprocess.check_output(cmd, shell=True).decode().strip()
 
