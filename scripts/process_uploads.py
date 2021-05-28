@@ -20,9 +20,9 @@ def samples_from_csv(bucket, path):
 
     client = storage.Client()
     bucket = client.get_bucket(bucket)
-    full_path = os.path.join('gs://', bucket, path)
+    # full_path = os.path.join('gs://', bucket, path)
 
-    cmd = f'gsutil ls \'{full_path}\''
+    cmd = f'gsutil ls \'gs://{bucket}/{path}\''
     csv_path = subprocess.check_output(cmd, shell=True).decode().strip()
     blob = bucket.get_blob(basename(csv_path))
     data = blob.download_as_string().decode('utf-8')
@@ -124,9 +124,9 @@ def run_processor(batch_number: str, prev_batch: str):
     # prev_prefix = os.path.join('gvcf', prev_batch)
     # archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', batch_number)
 
-    upload_bucket = os.path.join(f'cpg-{project}-temporary')
-    upload_prefix = os.path.join('')
-    main_bucket = os.path.join(f'cpg-{project}-temporary')
+    upload_bucket = f'cpg-{project}-temporary'
+    upload_prefix = os.path.join(upload_bucket)
+    main_bucket = f'cpg-{project}-temporary'
     main_prefix = os.path.join(main_bucket, 'vivian-test', 'main', 'gvcf', batch_number)
     prev_prefix = os.path.join('gvcf', prev_batch)
     archive_prefix = os.path.join(
