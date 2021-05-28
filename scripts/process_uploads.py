@@ -84,7 +84,7 @@ def determine_samples(
     samples = set(all_samples) - set(previous_samples)
 
     # shutil.rmtree(local_tmp_dir)
-    cmd = f'gsutil ls \'gs://{upload_path}\''
+    cmd = f'gsutil ls \'gs://{upload_path}/*.csv\''
     curr_csv_file_path = subprocess.check_output(cmd, shell=True).decode().strip()
 
     return samples, curr_csv_file_path
