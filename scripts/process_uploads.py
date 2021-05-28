@@ -35,9 +35,7 @@ def samples_from_csv(bucket, path):
     return samples
 
 
-def determine_samples(
-    upload_bucket: str, upload_path: str, main_bucket: str, previous_batch_path: str
-):
+def determine_samples(upload_bucket: str, main_bucket: str, previous_batch_path: str):
     """Determine files that should be moved to main vs archive bucket.
     Determines the difference between the latest CSV file within upload
     and the CSV file from the most recent batch as the list of samples to
@@ -56,10 +54,10 @@ def determine_samples(
     # blob = bucket.get_blob(basename(curr_csv_file_path))
     # data = blob.download_as_string().decode("utf-8")
     # reader_list = csv.DictReader(io.StringIO(data))
-    upload_path = os.path.join('gs://', upload_bucket, upload_path)
+    # upload_path = os.path.join('gs://', upload_bucket, upload_path)
 
     # Pull the samples listed in the most recent CSV file
-    cmd = f'gsutil ls \'{upload_path}\''
+    cmd = f'gsutil ls \'gs://{upload_bucket}\''
     curr_csv_file_path = subprocess.check_output(cmd, shell=True).decode().strip()
     # local_curr_csv_path = join(local_tmp_dir, basename(curr_csv_file_path))
     # subprocess.run(
@@ -137,9 +135,7 @@ def run_processor(batch_number: str, prev_batch: str):
     key = os.environ.get('GSA_KEY')
 
     # Determine files to be processed
-    samples, csv_path = determine_samples(
-        upload_bucket, upload_prefix, main_bucket, prev_prefix
-    )
+    samples, csv_path = determine_samples(upload_bucket, main_bucket, prev_prefix)
     main_files, archive_files = generate_file_list(samples)
 
     # Initialize the service backend.
