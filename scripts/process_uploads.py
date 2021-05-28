@@ -28,15 +28,14 @@ def samples_from_csv(local_csv_path):
 
 
 def determine_samples(upload_bucket: str, previous_batch_path: str):
-    """Determine files that should be moved to main vs archive bucket
-    Parameters
-    =========
-    upload_bucket : Name of the upload bucket
-    previous_batch_path : Previous batch folder
+    """Determine files that should be moved to main vs archive bucket.
+    Determines the difference between the latest CSV file within upload
+    and the CSV file from the most recent batch as the list of samples to
+    be moved.
 
     Assumptions
     ==========
-    Only one .csv file exists in the bucket.
+    Only one .csv file exists in the upload bucket and previous batch directory.
     """
     local_tmp_dir = tempfile.mkdtemp()
     all_samples: List[str] = []
@@ -88,6 +87,9 @@ def run_processor(batch_number: str, prev_batch: str):
     batch_number: str
     Corresponds to the folder within main that the files should be moved to
     e.g. "batch0"
+
+    prev_batch: str
+    Corresponds to the most recent batch subdirectory.
 
     """
 
