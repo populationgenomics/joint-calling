@@ -15,14 +15,14 @@ from google.cloud import storage
 from joint_calling.upload_processor import batch_move_files
 
 
-def samples_from_csv(bucket, path):
+def samples_from_csv(bucket_name, path):
     """ Determines list of samples from a given csv file. """
 
     client = storage.Client()
-    bucket = client.get_bucket(bucket)
+    bucket = client.get_bucket(bucket_name)
     # full_path = os.path.join('gs://', bucket, path)
 
-    cmd = f'gsutil ls \'gs://{bucket}/{path}\''
+    cmd = f'gsutil ls \'gs://{bucket_name}/{path}\''
     csv_path = subprocess.check_output(cmd, shell=True).decode().strip()
     blob = bucket.get_blob(basename(csv_path))
     data = blob.download_as_string().decode('utf-8')
