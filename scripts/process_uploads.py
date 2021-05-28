@@ -123,7 +123,7 @@ def run_processor(batch_number: str, prev_batch: str):
     # archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', batch_number)
 
     upload_bucket = f'cpg-{project}-temporary'
-    upload_prefix = os.path.join(upload_bucket)
+    upload_prefix = os.path.join(upload_bucket, 'vivian-test', 'upload')
     main_bucket = f'cpg-{project}-temporary'
     main_prefix = os.path.join(main_bucket, 'vivian-test', 'main', 'gvcf', batch_number)
     prev_prefix = os.path.join('gvcf', prev_batch)
