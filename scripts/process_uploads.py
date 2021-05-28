@@ -22,7 +22,7 @@ def samples_from_csv(bucket_name, path):
     bucket = client.get_bucket(bucket_name)
     # full_path = os.path.join('gs://', bucket, path)
 
-    cmd = f'gsutil ls \'gs://{path}\''
+    cmd = f'gsutil ls \'gs://{path}/*.csv\''
     csv_path = subprocess.check_output(cmd, shell=True).decode().strip()
     blob = bucket.get_blob(basename(csv_path))
     data = blob.download_as_string().decode('utf-8')
