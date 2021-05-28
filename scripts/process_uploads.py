@@ -19,7 +19,7 @@ def samples_from_csv(bucket, path):
     """ Determines list of samples from a given csv file. """
 
     client = storage.Client()
-    bucket = client.get_bucket({bucket})
+    bucket = client.get_bucket(bucket)
     full_path = os.path.join('gs://', bucket, path)
 
     cmd = f'gsutil ls \'{full_path}\''
