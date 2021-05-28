@@ -13,6 +13,7 @@ import csv
 from os.path import join, basename
 import subprocess
 from typing import List
+import click
 import hail as hl
 import hailtop.batch as hb
 from google.cloud import storage
@@ -76,6 +77,9 @@ def generate_file_list(samples: List[str]):
     return main_files, archive_files
 
 
+@click.command()
+@click.option('--batch_number')
+@click.option('--prev_batch')
 def run_processor(batch_number: str, prev_batch: str):
     """Set up and execute batch_move_files
 
@@ -163,6 +167,4 @@ def run_processor(batch_number: str, prev_batch: str):
 
 
 if __name__ == '__main__':
-
-    # Run the processor on the 4th batch, i.e. batch3.
-    run_processor('batch3', 'batch2')
+    run_processor()  # pylint: disable=E1120
