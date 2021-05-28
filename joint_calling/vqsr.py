@@ -1094,7 +1094,7 @@ def _add_filter_sb_step(
     j.command(
         f"""
     bcftools annotate -x INFO/SB {input_vcf['vcf.gz']} -Oz -o {j.output_vcf['vcf.gz']}
-    tabix {input_vcf['vcf.gz']}
+    && tabix {input_vcf['vcf.gz']}
     """
     )
     if output_vcf_path:
