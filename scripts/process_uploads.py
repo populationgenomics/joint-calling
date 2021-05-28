@@ -20,11 +20,12 @@ def samples_from_csv(bucket_name, path):
 
     client = storage.Client()
     bucket = client.get_bucket(bucket_name)
-    # full_path = os.path.join('gs://', bucket, path)
+    full_path = os.path.join('gs://', path, '*.csv')
 
-    cmd = f'gsutil ls \'gs://{path}/*.csv\''
+    cmd = f'gsutil ls \'{full_path}\''
     csv_path = subprocess.check_output(cmd, shell=True).decode().strip()
-    blob = bucket.get_blob(csv_path[len(bucket_name) :])
+    prefix = len('gs:///') + len(bucket_name)
+    blob = bucket.get_blob(csv_path[prefix:])
     data = blob.download_as_string().decode('utf-8')
     csv_reader = csv.DictReader(io.StringIO(data))
 
@@ -128,7 +129,7 @@ def run_processor(batch_number: str, prev_batch: str):
     upload_prefix = os.path.join(upload_bucket, 'vivian-test', 'upload')
     main_bucket = f'cpg-{project}-temporary'
     main_prefix = os.path.join(main_bucket, 'vivian-test', 'main', 'gvcf', batch_number)
-    prev_prefix = os.path.join(main_prefix, 'vivian-test', 'main', 'gvcf', prev_batch)
+    prev_prefix = os.path.join(main_bucket, 'vivian-test', 'main', 'gvcf', prev_batch)
     archive_prefix = os.path.join(
         f'cpg-{project}-temporary', 'vivian-test', 'archive', 'cram', batch_number
     )
