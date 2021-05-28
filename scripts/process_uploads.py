@@ -58,7 +58,8 @@ def generate_file_list(samples: List[str]):
 
 
 def run_processor(batch_number: str):
-    """Execute upload processor
+    """Set up and execute batch_move_files
+
     Parameters
     =========
     batch_number: str
@@ -122,3 +123,9 @@ def run_processor(batch_number: str):
     csv_job.command(f'gsutil mv {csv_path} {final_csv_location}')
 
     batch.run()
+
+
+if __name__ == '__main__':
+
+    # Run the processor on the 4th batch, i.e. batch3.
+    run_processor('batch3')
