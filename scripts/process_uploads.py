@@ -86,10 +86,11 @@ def run_processor(batch_number: str, prev_batch: str):
     =========
     batch_number: str
     Corresponds to the folder within main that the files should be moved to
-    e.g. "batch0"
+    e.g. "batch2"
 
     prev_batch: str
     Corresponds to the most recent batch subdirectory.
+    e.g. "batch1"
 
     """
 
