@@ -15,7 +15,7 @@ import hailtop.batch as hb
 from joint_calling.upload_processor import batch_move_files
 
 
-def return_samples_from_csv(local_csv_path):
+def samples_from_csv(local_csv_path):
     """ Determines list of samples from a given csv file. """
 
     samples: List[str] = []
@@ -50,7 +50,7 @@ def determine_samples(upload_bucket: str, previous_batch_path: str):
         f'gsutil cp {curr_csv_file_path} {local_curr_csv_path}', check=False, shell=True
     )
 
-    all_samples = return_samples_from_csv(local_curr_csv_path)
+    all_samples = samples_from_csv(local_curr_csv_path)
 
     # Pull the samples listed in the CSV file from the previous batch
     cmd = f'gsutil ls \'gs://{previous_batch_path}/*.csv\''
@@ -60,7 +60,7 @@ def determine_samples(upload_bucket: str, previous_batch_path: str):
         f'gsutil cp {prev_csv_file_path} {local_prev_csv_path}', check=False, shell=True
     )
 
-    previous_samples = return_samples_from_csv(local_prev_csv_path)
+    previous_samples = samples_from_csv(local_prev_csv_path)
 
     samples = set(all_samples) - set(previous_samples)
 
