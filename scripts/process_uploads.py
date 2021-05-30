@@ -11,7 +11,6 @@ import os
 import io
 import csv
 from os.path import join, basename
-import subprocess
 from typing import List
 import click
 import hail as hl
@@ -20,29 +19,27 @@ from google.cloud import storage
 from joint_calling.upload_processor import batch_move_files
 
 
-def samples_from_csv(bucket_name, path):
+def samples_from_csv(bucket_name, prefix):
     """ Determines list of samples from a given csv file. """
 
     client = storage.Client()
     bucket = client.get_bucket(bucket_name)
-    full_path = os.path.join('gs://', path, '*.csv')
 
-    cmd = f'gsutil ls \'{full_path}\''
-    csv_path = subprocess.check_output(cmd, shell=True).decode().strip()
-    prefix = len('gs:///') + len(bucket_name)
-    blob = bucket.get_blob(csv_path[prefix:])
-    data = blob.download_as_string().decode('utf-8')
-    csv_reader = csv.DictReader(io.StringIO(data))
+    all_blobs = list(client.list_blobs(bucket_name, prefix=prefix))
+    csv_path = list(filter(lambda blob: blob.name.endswith('.csv'), all_blobs))[0].name
+
+    blob = bucket.get_blob(csv_path).download_as_text()
+    csv_reader = csv.DictReader(io.StringIO(blob))
 
     samples: List[str] = []
     for row in csv_reader:
         samples.append(row['sample.sample_name'])
 
-    return samples
+    return samples, csv_path
 
 
 def determine_samples(
-    upload_bucket: str, upload_path: str, main_bucket: str, previous_batch_path: str
+    upload_bucket: str, upload_prefix: str, main_bucket: str, previous_batch_prefix: str
 ):
     """Determine files that should be moved to main vs archive bucket.
     Determines the difference between the latest CSV file within upload
@@ -55,13 +52,13 @@ def determine_samples(
     """
     all_samples: List[str] = []
     previous_samples: List[str] = []
-    all_samples = samples_from_csv(upload_bucket, upload_path)
-    previous_samples = samples_from_csv(main_bucket, previous_batch_path)
+
+    all_samples, csv_path_upload = samples_from_csv(upload_bucket, upload_prefix)
+    previous_samples, _ = samples_from_csv(main_bucket, previous_batch_prefix)
 
     samples = set(all_samples) - set(previous_samples)
 
-    cmd = f'gsutil ls \'gs://{upload_path}/*.csv\''
-    curr_csv_file_path = subprocess.check_output(cmd, shell=True).decode().strip()
+    curr_csv_file_path = join(upload_bucket, csv_path_upload)
 
     return samples, curr_csv_file_path
 
@@ -79,30 +76,31 @@ def generate_file_list(samples: List[str]):
 
 @click.command()
 @click.option('--batch_number')
-@click.option('--prev_batch')
-def run_processor(batch_number: str, prev_batch: str):
+def run_processor(
+    batch_number: int,
+):
     """Set up and execute batch_move_files
 
     Parameters
     =========
-    batch_number: str
-    Corresponds to the folder within main that the files should be moved to
-    e.g. "batch2"
-
-    prev_batch: str
-    Corresponds to the most recent batch subdirectory.
-    e.g. "batch1"
+    batch_number: int
+    Indexed starting at 0. Used to navigate subdirectory structure
+    e.g. 0 --> batch0
 
     """
 
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
+    batch_path = f'batch{batch_number}'
+    prev_batch = f'batch{int(batch_number)-1}'
     upload_bucket = f'cpg-{project}-upload'
-    upload_prefix = os.path.join(upload_bucket)
+    upload_prefix = ''
+    upload_path = join(upload_bucket, upload_prefix)
     main_bucket = f'cpg-{project}-main'
-    main_prefix = os.path.join(main_bucket, 'gvcf', batch_number)
-    prev_prefix = os.path.join(main_bucket, 'gvcf', prev_batch)
-    archive_prefix = os.path.join(f'cpg-{project}-archive', 'cram', batch_number)
+    main_prefix = join('gvcf', batch_path)
+    main_path = join(main_bucket, main_prefix)
+    prev_prefix = join('gvcf', prev_batch)
+    archive_path = join(f'cpg-{project}-archive', 'cram', batch_path)
 
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
@@ -127,8 +125,8 @@ def run_processor(batch_number: str, prev_batch: str):
     main_jobs = batch_move_files(
         batch,
         main_files,
-        upload_prefix,
-        main_prefix,
+        upload_path,
+        main_path,
         docker_image,
         key,
     )
@@ -137,8 +135,8 @@ def run_processor(batch_number: str, prev_batch: str):
     archive_jobs = batch_move_files(
         batch,
         archive_files,
-        upload_prefix,
-        archive_prefix,
+        upload_path,
+        archive_path,
         docker_image,
         key,
     )
@@ -151,8 +149,9 @@ def run_processor(batch_number: str, prev_batch: str):
     )
     all_jobs = main_jobs + archive_jobs
     csv_job.depends_on(*all_jobs)
-    final_csv_location = join('gs://', main_prefix, basename(csv_path))
-    csv_job.command(f'gsutil mv {csv_path} {final_csv_location}')
+    current_csv_location = join('gs://', csv_path)
+    final_csv_location = join('gs://', main_path, basename(csv_path))
+    csv_job.command(f'gsutil mv {current_csv_location} {final_csv_location}')
 
     batch.run()
 
