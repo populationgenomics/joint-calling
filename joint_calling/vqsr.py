@@ -199,158 +199,153 @@ def make_vqsr_jobs(
         )
     else:
         mt_to_vcf_job = b.new_job('MT to VCF [reuse]')
-        
-    recalibrated_gathered_vcf = b.read_input_group(**{
-        'vcf.gz': 'gs://cpg-tob-wgs-temporary/joint-calling/tmp-v0.2/hail/batch/b61a22/12/recalibrated_vcf.vcf.gz',
-        'vcf.gz.tbi': 'gs://cpg-tob-wgs-temporary/joint-calling/tmp-v0.2/hail/batch/b61a22/12/recalibrated_vcf.vcf.gz.tbi',
-    })
 
-    # split_intervals_job = add_split_intervals_step(
-    #     b,
-    #     unpadded_intervals_path,
-    #     scatter_count,
-    #     ref_fasta,
-    #     disk_size=small_disk,
-    # )
-    # intervals = split_intervals_job.intervals
-    # 
-    # tabix_job = add_tabix_step(b, combined_vcf_path, medium_disk)
-    # tabix_job.depends_on(mt_to_vcf_job)
-    # 
-    # gathered_vcf = tabix_job.combined_vcf
-    # scattered_vcfs = [gathered_vcf for _ in range(scatter_count)]
-    # 
-    # if not is_small_callset:
-    #     # ExcessHet filtering applies only to callsets with a large number of samples,
-    #     # e.g. hundreds of unrelated samples. Small cohorts should not trigger ExcessHet
-    #     # filtering as values should remain small. Note cohorts of consanguinous samples
-    #     # will inflate ExcessHet, and it is possible to limit the annotation to founders
-    #     # for such cohorts by providing a pedigree file during variant calling.
-    #     hard_filtered_vcfs = [
-    #         add_hard_filter_step(
-    #             b,
-    #             input_vcf=gathered_vcf,
-    #             interval=intervals[f'interval_{idx}'],
-    #             excess_het_threshold=vqsr_params_d['min_excess_het'],
-    #             disk_size=medium_disk,
-    #         ).output_vcf
-    #         for idx in range(scatter_count)
-    #     ]
-    #     scattered_vcfs = hard_filtered_vcfs
-    # 
-    #     gathered_vcf = add_sites_only_gather_vcf_step(
-    #         b,
-    #         input_vcfs=scattered_vcfs,
-    #         disk_size=medium_disk,
-    #     ).output_vcf
-    # 
-    # indels_variant_recalibrator_job = add_indels_variant_recalibrator_step(
-    #     b,
-    #     sites_only_variant_filtered_vcf=gathered_vcf,
-    #     mills_resource_vcf=mills_resource_vcf,
-    #     axiom_poly_resource_vcf=axiom_poly_resource_vcf,
-    #     dbsnp_resource_vcf=dbsnp_resource_vcf,
-    #     disk_size=small_disk,
-    #     output_bucket=analysis_bucket,
-    # )
-    # indels_recalibration = indels_variant_recalibrator_job.recalibration
-    # indels_tranches = indels_variant_recalibrator_job.tranches
-    # 
-    # snp_max_gaussians = 6
-    # if is_small_callset:
-    #     snp_max_gaussians = 4
-    # elif is_huge_callset:
-    #     snp_max_gaussians = 8
-    # 
-    # if is_huge_callset:
-    #     # Run SNP recalibrator in a scattered mode
-    #     model_file = add_snps_variant_recalibrator_create_model_step(
-    #         b,
-    #         sites_only_variant_filtered_vcf=gathered_vcf,
-    #         hapmap_resource_vcf=hapmap_resource_vcf,
-    #         omni_resource_vcf=omni_resource_vcf,
-    #         one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
-    #         dbsnp_resource_vcf=dbsnp_resource_vcf,
-    #         disk_size=small_disk,
-    #         output_bucket=analysis_bucket,
-    #         is_small_callset=is_small_callset,
-    #         is_huge_callset=is_huge_callset,
-    #         max_gaussians=snp_max_gaussians,
-    #     ).model_file
-    #     # model_file = b.read_input('gs://playground-au/batch/859e9a/18/model_report')
-    # 
-    #     snps_recalibrator_jobs = [
-    #         add_snps_variant_recalibrator_scattered_step(
-    #             b,
-    #             sites_only_vcf=scattered_vcfs[idx],
-    #             interval=intervals[f'interval_{idx}'],
-    #             model_file=model_file,
-    #             hapmap_resource_vcf=hapmap_resource_vcf,
-    #             omni_resource_vcf=omni_resource_vcf,
-    #             one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
-    #             dbsnp_resource_vcf=dbsnp_resource_vcf,
-    #             disk_size=small_disk,
-    #             max_gaussians=snp_max_gaussians,
-    #         )
-    #         for idx in range(scatter_count)
-    #     ]
-    #     snps_recalibrations = [j.recalibration for j in snps_recalibrator_jobs]
-    #     snps_tranches = [j.tranches for j in snps_recalibrator_jobs]
-    #     snps_gathered_tranches = add_snps_gather_tranches_step(
-    #         b,
-    #         tranches=snps_tranches,
-    #         disk_size=small_disk,
-    #     ).out_tranches
-    # 
-    #     scattered_vcfs = [
-    #         add_apply_recalibration_step(
-    #             b,
-    #             input_vcf=scattered_vcfs[idx],
-    #             interval=intervals[f'interval_{idx}'],
-    #             indels_recalibration=indels_recalibration,
-    #             indels_tranches=indels_tranches,
-    #             snps_recalibration=snps_recalibrations[idx],
-    #             snps_tranches=snps_gathered_tranches,
-    #             disk_size=medium_disk,
-    #             indel_filter_level=vqsr_params_d['indel_filter_level'],
-    #             snp_filter_level=vqsr_params_d['snp_filter_level'],
-    #         ).recalibrated_vcf
-    #         for idx in range(scatter_count)
-    #     ]
-    #     recalibrated_gathered_vcf_job = _add_final_gather_vcf_step(
-    #         b,
-    #         input_vcfs=scattered_vcfs,
-    #         disk_size=huge_disk,
-    #     )
-    #     recalibrated_gathered_vcf = recalibrated_gathered_vcf_job.output_vcf
-    # 
-    # else:
-    #     snps_recalibrator_job = add_snps_variant_recalibrator_step(
-    #         b,
-    #         sites_only_variant_filtered_vcf=gathered_vcf,
-    #         hapmap_resource_vcf=hapmap_resource_vcf,
-    #         omni_resource_vcf=omni_resource_vcf,
-    #         one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
-    #         dbsnp_resource_vcf=dbsnp_resource_vcf,
-    #         disk_size=small_disk,
-    #         max_gaussians=snp_max_gaussians,
-    #         output_bucket=vqsr_bucket,
-    #     )
-    #     snps_recalibration = snps_recalibrator_job.recalibration
-    #     snps_tranches = snps_recalibrator_job.tranches
-    # 
-    #     recalibrated_gathered_vcf_job = add_apply_recalibration_step(
-    #         b,
-    #         input_vcf=gathered_vcf,
-    #         indels_recalibration=indels_recalibration,
-    #         indels_tranches=indels_tranches,
-    #         snps_recalibration=snps_recalibration,
-    #         snps_tranches=snps_tranches,
-    #         disk_size=medium_disk,
-    #         indel_filter_level=vqsr_params_d['indel_filter_level'],
-    #         snp_filter_level=vqsr_params_d['snp_filter_level'],
-    #     )
-    #     recalibrated_gathered_vcf = recalibrated_gathered_vcf_job.recalibrated_vcf
+    split_intervals_job = add_split_intervals_step(
+        b,
+        unpadded_intervals_path,
+        scatter_count,
+        ref_fasta,
+        disk_size=small_disk,
+    )
+    intervals = split_intervals_job.intervals
+
+    tabix_job = add_tabix_step(b, combined_vcf_path, medium_disk)
+    tabix_job.depends_on(mt_to_vcf_job)
+
+    gathered_vcf = tabix_job.combined_vcf
+    scattered_vcfs = [gathered_vcf for _ in range(scatter_count)]
+
+    if not is_small_callset:
+        # ExcessHet filtering applies only to callsets with a large number of samples,
+        # e.g. hundreds of unrelated samples. Small cohorts should not trigger ExcessHet
+        # filtering as values should remain small. Note cohorts of consanguinous samples
+        # will inflate ExcessHet, and it is possible to limit the annotation to founders
+        # for such cohorts by providing a pedigree file during variant calling.
+        hard_filtered_vcfs = [
+            add_hard_filter_step(
+                b,
+                input_vcf=gathered_vcf,
+                interval=intervals[f'interval_{idx}'],
+                excess_het_threshold=vqsr_params_d['min_excess_het'],
+                disk_size=medium_disk,
+            ).output_vcf
+            for idx in range(scatter_count)
+        ]
+        scattered_vcfs = hard_filtered_vcfs
+
+        gathered_vcf = add_sites_only_gather_vcf_step(
+            b,
+            input_vcfs=scattered_vcfs,
+            disk_size=medium_disk,
+        ).output_vcf
+
+    indels_variant_recalibrator_job = add_indels_variant_recalibrator_step(
+        b,
+        sites_only_variant_filtered_vcf=gathered_vcf,
+        mills_resource_vcf=mills_resource_vcf,
+        axiom_poly_resource_vcf=axiom_poly_resource_vcf,
+        dbsnp_resource_vcf=dbsnp_resource_vcf,
+        disk_size=small_disk,
+        output_bucket=analysis_bucket,
+    )
+    indels_recalibration = indels_variant_recalibrator_job.recalibration
+    indels_tranches = indels_variant_recalibrator_job.tranches
+
+    snp_max_gaussians = 6
+    if is_small_callset:
+        snp_max_gaussians = 4
+    elif is_huge_callset:
+        snp_max_gaussians = 8
+
+    if is_huge_callset:
+        # Run SNP recalibrator in a scattered mode
+        model_file = add_snps_variant_recalibrator_create_model_step(
+            b,
+            sites_only_variant_filtered_vcf=gathered_vcf,
+            hapmap_resource_vcf=hapmap_resource_vcf,
+            omni_resource_vcf=omni_resource_vcf,
+            one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
+            dbsnp_resource_vcf=dbsnp_resource_vcf,
+            disk_size=small_disk,
+            output_bucket=analysis_bucket,
+            is_small_callset=is_small_callset,
+            is_huge_callset=is_huge_callset,
+            max_gaussians=snp_max_gaussians,
+        ).model_file
+        # model_file = b.read_input('gs://playground-au/batch/859e9a/18/model_report')
+
+        snps_recalibrator_jobs = [
+            add_snps_variant_recalibrator_scattered_step(
+                b,
+                sites_only_vcf=scattered_vcfs[idx],
+                interval=intervals[f'interval_{idx}'],
+                model_file=model_file,
+                hapmap_resource_vcf=hapmap_resource_vcf,
+                omni_resource_vcf=omni_resource_vcf,
+                one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
+                dbsnp_resource_vcf=dbsnp_resource_vcf,
+                disk_size=small_disk,
+                max_gaussians=snp_max_gaussians,
+            )
+            for idx in range(scatter_count)
+        ]
+        snps_recalibrations = [j.recalibration for j in snps_recalibrator_jobs]
+        snps_tranches = [j.tranches for j in snps_recalibrator_jobs]
+        snps_gathered_tranches = add_snps_gather_tranches_step(
+            b,
+            tranches=snps_tranches,
+            disk_size=small_disk,
+        ).out_tranches
+
+        scattered_vcfs = [
+            add_apply_recalibration_step(
+                b,
+                input_vcf=scattered_vcfs[idx],
+                interval=intervals[f'interval_{idx}'],
+                indels_recalibration=indels_recalibration,
+                indels_tranches=indels_tranches,
+                snps_recalibration=snps_recalibrations[idx],
+                snps_tranches=snps_gathered_tranches,
+                disk_size=medium_disk,
+                indel_filter_level=vqsr_params_d['indel_filter_level'],
+                snp_filter_level=vqsr_params_d['snp_filter_level'],
+            ).recalibrated_vcf
+            for idx in range(scatter_count)
+        ]
+        recalibrated_gathered_vcf_job = _add_final_gather_vcf_step(
+            b,
+            input_vcfs=scattered_vcfs,
+            disk_size=huge_disk,
+        )
+        recalibrated_gathered_vcf = recalibrated_gathered_vcf_job.output_vcf
+
+    else:
+        snps_recalibrator_job = add_snps_variant_recalibrator_step(
+            b,
+            sites_only_variant_filtered_vcf=gathered_vcf,
+            hapmap_resource_vcf=hapmap_resource_vcf,
+            omni_resource_vcf=omni_resource_vcf,
+            one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
+            dbsnp_resource_vcf=dbsnp_resource_vcf,
+            disk_size=small_disk,
+            max_gaussians=snp_max_gaussians,
+            output_bucket=vqsr_bucket,
+        )
+        snps_recalibration = snps_recalibrator_job.recalibration
+        snps_tranches = snps_recalibrator_job.tranches
+
+        recalibrated_gathered_vcf_job = add_apply_recalibration_step(
+            b,
+            input_vcf=gathered_vcf,
+            indels_recalibration=indels_recalibration,
+            indels_tranches=indels_tranches,
+            snps_recalibration=snps_recalibration,
+            snps_tranches=snps_tranches,
+            disk_size=medium_disk,
+            indel_filter_level=vqsr_params_d['indel_filter_level'],
+            snp_filter_level=vqsr_params_d['snp_filter_level'],
+        )
+        recalibrated_gathered_vcf = recalibrated_gathered_vcf_job.recalibrated_vcf
 
     final_gathered_vcf_job = _add_filter_sb_step(
         b,
