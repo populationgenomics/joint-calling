@@ -20,7 +20,12 @@ from joint_calling.upload_processor import batch_move_files
 
 
 def samples_from_csv(bucket_name, prefix):
-    """ Determines list of samples from a given csv file. """
+    """Determines list of samples from a csv file within a specified bucket
+
+    Assumptions
+    ==========
+    Only one .csv file exists in the upload bucket and previous batch directory.
+    """
 
     client = storage.Client()
     bucket = client.get_bucket(bucket_name)
@@ -45,10 +50,6 @@ def determine_samples(
     Determines the difference between the latest CSV file within upload
     and the CSV file from the most recent batch as the list of samples to
     be moved.
-
-    Assumptions
-    ==========
-    Only one .csv file exists in the upload bucket and previous batch directory.
     """
     all_samples: List[str] = []
     previous_samples: List[str] = []
