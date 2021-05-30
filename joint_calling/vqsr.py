@@ -1080,8 +1080,16 @@ def _add_filter_sb_step(
     output_vcf_path: str = None,
 ) -> Job:
     """
-    Run VariantEval for site-level evaluation.
-    Saves the QC to `output_path` bucket
+    Removes the INFO/SB field from a VCF.
+
+    The reason we are doing that is because gatk ApplyVQSR replaces the VCF header
+    ##INFO=<ID=SB,Number=.,Type=Int,Description="Strand Bias">
+
+    with
+    ##INFO=<ID=SB,Number=1,Type=Float,Description="Strand Bias">
+
+    Even though the actual SB field is still a list of integers: SB=5,2,18,29
+    It breaks parsing the VCF into Hail.
     """
     j = b.new_job('Remove SB')
     j.image(utils.BCFTOOLS_DOCKER)
