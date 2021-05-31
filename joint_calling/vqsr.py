@@ -419,8 +419,8 @@ def add_split_intervals_step(
     j.command(
         f"""set -e
 
-    # Modes other than INTERVAL_SUBDIVISION will produce an unpredicted number
-    # of intervals. But we have to expect exactly the {scatter_count} number of
+    # Modes other than INTERVAL_SUBDIVISION will produce an unpredictable number
+    # of intervals. But we have to produce exactly {scatter_count} number of
     # output files because our workflow is not dynamic.
     gatk --java-options -Xms{mem_gb - 1}g SplitIntervals \\
       -L {interval_list} \\
