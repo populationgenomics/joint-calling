@@ -31,7 +31,7 @@ def samples_from_csv(bucket_name, prefix):
     bucket = client.get_bucket(bucket_name)
 
     all_blobs = list(client.list_blobs(bucket_name, prefix=prefix))
-    csv_path = list(filter(lambda blob: blob.name.endswith('.csv'), all_blobs))[0].name
+    csv_path = next(filter(lambda blob: blob.name.endswith('.csv'), all_blobs)).name
 
     blob = bucket.get_blob(csv_path).download_as_text()
     csv_reader = csv.DictReader(io.StringIO(blob))
