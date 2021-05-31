@@ -13,7 +13,6 @@ import csv
 from os.path import join, basename
 from typing import List
 import click
-import hail as hl
 import hailtop.batch as hb
 from google.cloud import storage
 from joint_calling.upload_processor import batch_move_files
@@ -111,9 +110,6 @@ def run_processor(
         upload_bucket, upload_prefix, main_bucket, prev_prefix
     )
     main_files, archive_files = generate_file_list(samples)
-
-    # Initialize the service backend.
-    hl.init()
 
     service_backend = hb.ServiceBackend(
         billing_project=project,
