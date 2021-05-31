@@ -84,8 +84,8 @@ def run_processor(
     Parameters
     =========
     batch_number: int
-    Indexed starting at 0. Used to navigate subdirectory structure
-    e.g. 0 --> batch0
+    Indexed starting at 1. Used to navigate subdirectory structure
+    e.g. 1 --> batch1
 
     """
 
