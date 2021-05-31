@@ -40,7 +40,7 @@ def batch_move_files(
         For example "cpg-tob-wgs-upload" or "cpg-tob-wgs-upload/v1"
     destination_prefix: str
         The path to the sub-directory where the files should be moved.
-        For example "cpg-tob-wgs-main" or "cpg-tob-wgs-upload/batch0"
+        For example "cpg-tob-wgs-main" or "cpg-tob-wgs-upload/batch1"
     docker_image: str, optional
         The address and tag of a previously built docker image, within the
         artifact registry. Each batch job will run in this image.

@@ -99,11 +99,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     if not callset_batches:
         if input_bucket_suffix == 'test':
-            callset_batches = ['batch0']
+            callset_batches = ['batch1']
         else:
             raise click.BadParameter(
                 'Please, specify batch numbers with --batch '
-                '(can put multiple times, e.g. --batch batch0 --batch batch1)'
+                '(can put multiple times, e.g. --batch batch1 --batch batch2)'
             )
 
     work_bucket = f'gs://cpg-{callset_name}-{temporary_bucket_suffix}/joint-calling/{callset_version}'

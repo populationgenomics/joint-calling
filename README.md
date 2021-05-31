@@ -50,7 +50,7 @@ joint-calling/driver_for_analysis_runner.sh workflows/batch_workflow.py\
 --version test-$(VERSION)
 ```
 
-This command will use the `test` access level, which means finding the input GVCFs in the `test` bucket `gs://cpg-$DATASET-test/gvcf/batch0/*.g.vcf.gz`, writing the resulting matrix tables to the `temporary` bucket, `gs://cpg-fewgenomes-temporary/mt/v0.mt`, and writing plots to `gs://cpg-fewgenomes-temporary/joint-calling/v0`.
+This command will use the `test` access level, which means finding the input GVCFs in the `test` bucket `gs://cpg-$DATASET-test/gvcf/batch1/*.g.vcf.gz`, writing the resulting matrix tables to the `temporary` bucket, `gs://cpg-fewgenomes-temporary/mt/v0.mt`, and writing plots to `gs://cpg-fewgenomes-temporary/joint-calling/v0`.
 
 To use the `main` bucket for input and output, run the workflow with the `full` access level:
 
@@ -66,12 +66,12 @@ joint-calling/driver_for_analysis_runner.sh workflows/batch_workflow.py\
 --to main \
 --callset ${DATASET} \
 --version $(VERSION) \
---batch batch0 \
 --batch batch1 \
---batch batch2
+--batch batch2 \
+--batch batch3
 ```
 
-It will find input GVCFs in the `main` bucket, assuming the batch IDs are `batch1`, `batch2`, `batch3`: `gs://cpg-$DATASET-main/gvcf/{batch0,batch1,batch3}/*.g.vcf.gz`; write the resulting matrix table to the `main` bucket: `gs://cpg-fewgenomes-main/mt/v0.mt`, and plots to `gs://cpg-fewgenomes-analysis/joint-calling/v0`.
+It will find input GVCFs in the `main` bucket, assuming the batch IDs are `batch1`, `batch2`, `batch3`: `gs://cpg-$DATASET-main/gvcf/{batch1,batch2,batch3}/*.g.vcf.gz`; write the resulting matrix table to the `main` bucket: `gs://cpg-fewgenomes-main/mt/v0.mt`, and plots to `gs://cpg-fewgenomes-analysis/joint-calling/v0`.
 
 
 ## Overview of the pipeline steps
