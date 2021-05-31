@@ -107,6 +107,27 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             )
 
     work_bucket = f'gs://cpg-{callset_name}-{temporary_bucket_suffix}/joint-calling/{callset_version}'
+    hail_bucket = os.environ.get('HAIL_BUCKET')
+    if not hail_bucket or keep_scratch or reuse_scratch_run_id:
+        # Scratch files are large, so we want to use the temporary bucket for them
+        hail_bucket = f'{work_bucket}/hail'
+    logger.info(
+        f'Starting hail Batch with the project {billing_project}, '
+        f'bucket {hail_bucket}'
+    )
+    backend = hb.ServiceBackend(
+        billing_project=billing_project,
+        bucket=hail_bucket.replace('gs://', ''),
+    )
+    b = hb.Batch(
+        f'Joint calling: {callset_name}'
+        f', version: {callset_version}'
+        f', batches: {", ".join(callset_batches)}'
+        f', from: {input_bucket_suffix}'
+        f', to: {output_bucket_suffix}',
+        backend=backend,
+    )
+    scripts_dir = abspath(join(dirname(__file__), '..', 'scripts'))
 
     analysis_bucket_suffix = (
         'analysis' if output_bucket_suffix == 'main' else output_bucket_suffix
@@ -121,26 +142,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     # pylint: disable=unused-variable
     filtered_combined_mt_path = f'{mt_output_bucket}/{callset_version}.mt'
 
-    hail_bucket = os.environ.get('HAIL_BUCKET')
-    if not hail_bucket or keep_scratch or reuse_scratch_run_id:
-        # Scratch files are large, so we want to use the temporary bucket for them
-        hail_bucket = f'{work_bucket}/hail'
-
     combiner_bucket = f'{work_bucket}/combiner'
     sample_qc_bucket = f'{work_bucket}/sample_qc'
 
     filter_cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
-
-    logger.info(
-        f'Starting hail Batch with the project {billing_project}, '
-        f'bucket {hail_bucket}'
-    )
-    backend = hb.ServiceBackend(
-        billing_project=billing_project,
-        bucket=hail_bucket.replace('gs://', ''),
-    )
-    b = hb.Batch('Joint calling', backend=backend)
-    scripts_dir = abspath(join(dirname(__file__), '..', 'scripts'))
 
     samples_df, samples_csv_path, pre_combiner_jobs = _add_pre_combiner_jobs(
         b=b,

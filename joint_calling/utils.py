@@ -90,11 +90,10 @@ def find_inputs(
         s (key)
         population
         gvcf
-        freemix
-        pct_chimeras
-        duplication
+        r_contamination
+        r_chimera
+        r_duplication
         median_insert_size
-        mean_coverage
     """
     gvcf_paths: List[str] = []
     for ib in input_buckets:
@@ -150,11 +149,10 @@ def find_inputs(
                 s=sample_names,
                 population='EUR',
                 gvcf=gvcf_paths,
-                freemix=pd.NA,
-                pct_chimeras=pd.NA,
-                duplication=pd.NA,
+                r_contamination=pd.NA,
+                r_chimera=pd.NA,
+                r_duplication=pd.NA,
                 median_insert_size=pd.NA,
-                mean_coverage=pd.NA,
             )
         ).set_index('s', drop=False)
 

@@ -5,9 +5,8 @@ Generates annotations for random_forest.py
 """
 
 import logging
-from os.path import join, basename
+from os.path import join
 from typing import Dict, Optional
-import subprocess
 import click
 import hail as hl
 
@@ -21,11 +20,9 @@ from gnomad.utils.sparse_mt import (
     split_info_annotation,
     split_lowqual_annotation,
 )
-from gnomad.utils.vep import vep_or_lookup_vep
 
 from joint_calling.utils import file_exists
 from joint_calling import utils, _version
-import joint_calling
 
 logger = logging.getLogger('qc-annotations')
 logger.setLevel(logging.INFO)
@@ -46,11 +43,6 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--out-fam-stats-ht',
     'out_fam_stats_ht_path',
-    required=True,
-)
-@click.option(
-    '--out-vep-ht',
-    'out_vep_ht_path',
 )
 @click.option(
     '--mt',
@@ -92,15 +84,10 @@ logger.setLevel(logging.INFO)
     help='if an intermediate or a final file exists, skip running the code '
     'that generates it.',
 )
-@click.option(
-    '--vep-version',
-    'vep_version',
-)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements,missing-function-docstring
     out_allele_data_ht_path: str,
     out_qc_ac_ht_path: str,
-    out_fam_stats_ht_path: str,
-    out_vep_ht_path: Optional[str],
+    out_fam_stats_ht_path: Optional[str],
     mt_path: str,
     hard_filtered_samples_ht_path: str,
     trios_fam_ped_file: Optional[str],
@@ -108,11 +95,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     work_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,
-    vep_version: Optional[str],
 ):
     utils.init_hail('qc_annotations', local_tmp_dir)
 
-    all_samples_mt = utils.get_mt(mt_path)
     hard_filtered_mt = utils.get_mt(
         mt_path,
         hard_filtered_samples_to_remove_ht=hl.read_table(hard_filtered_samples_ht_path),
@@ -132,34 +117,16 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         overwrite=overwrite,
     )
 
-    if not trios_fam_ped_file:
-        trios_fam_ped_file = _make_fam_file(
-            sex_ht=hl.read_table(meta_ht_path),
-            work_bucket=work_bucket,
+    if trios_fam_ped_file and out_fam_stats_ht_path:
+        fam_stats_ht = generate_fam_stats(
+            hard_filtered_mt,
+            str(out_fam_stats_ht_path),
+            overwrite=overwrite,
+            trios_fam_ped_file=trios_fam_ped_file,
         )
-
-    fam_stats_ht = generate_fam_stats(
-        hard_filtered_mt,
-        out_fam_stats_ht_path,
-        overwrite=overwrite,
-        trios_fam_ped_file=trios_fam_ped_file,
-    )
-
-    if fam_stats_ht:
         export_transmitted_singletons_vcf(
             fam_stats_ht=fam_stats_ht,
             qc_ac_ht=qc_ac_ht,
-            work_bucket=work_bucket,
-            overwrite=overwrite,
-        )
-
-    if vep_version or out_vep_ht_path:
-        if not out_vep_ht_path:
-            logger.critical('--out-vep-ht must be specified along with --vep-version')
-        run_vep(
-            out_ht_path=str(out_vep_ht_path),
-            mt=all_samples_mt,
-            vep_version=vep_version,
             work_bucket=work_bucket,
             overwrite=overwrite,
         )
@@ -202,7 +169,6 @@ def generate_allele_data(
     if not overwrite and file_exists(out_ht_path):
         return hl.read_table(out_ht_path)
 
-    ht = ht.select()
     allele_data = hl.struct(
         nonsplit_alleles=ht.alleles, has_star=hl.any(lambda a: a == '*', ht.alleles)
     )
@@ -388,36 +354,6 @@ def export_transmitted_singletons_vcf(
             tabix=True,
         )
     return output_vcf_paths
-
-
-def run_vep(
-    out_ht_path: str,
-    mt: hl.MatrixTable,
-    vep_version: Optional[str],
-    work_bucket: str,
-    overwrite: bool = False,
-) -> hl.Table:
-    """
-    Returns a table with a VEP annotation for each variant in the raw MatrixTable.
-    :param mt: keyed by locus and allele, soft-filtered
-    :param vep_version:
-    :return: VEPed Table
-    """
-    if not overwrite and file_exists(out_ht_path):
-        return hl.read_table(out_ht_path)
-    vep_config_local = join(joint_calling.get_package_path(), 'vep-config.json')
-    vep_config_gs = join(work_bucket, basename(vep_config_local))
-    subprocess.run(
-        f'gsutil cp {vep_config_local} {vep_config_gs}', check=False, shell=True
-    )
-    ht = mt.rows()
-    ht = ht.filter(hl.len(ht.alleles) > 1)
-    ht = hl.split_multi_hts(ht)
-    # TODO: rerun VEP instead of reading gnomAD vep reference file
-    ht = vep_or_lookup_vep(ht, vep_version=vep_version, vep_config_path=vep_config_gs)
-    ht = ht.annotate_globals(version=f'v{vep_version}')
-    ht.write(out_ht_path, overwrite=True)
-    return ht
 
 
 if __name__ == '__main__':
