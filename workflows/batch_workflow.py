@@ -66,6 +66,12 @@ logger.setLevel('INFO')
     help='if an intermediate or a final file exists, skip running the code '
     'that generates it.',
 )
+@click.option(
+    '--scatter-count',
+    'scatter_count',
+    type=int,
+    help='Number of secondary workers for Dataproc clusters',
+)
 @click.option('--dry-run', 'dry_run', is_flag=True)
 @click.option('--run-vqsr/--skip-vqsr', 'run_vqsr', is_flag=True, default=True)
 @click.option('--run-rf/--skip-rf', 'run_rf', is_flag=True, default=False)
@@ -80,8 +86,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     filter_cutoffs_path: str,
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
-    dry_run: bool,
     overwrite: bool,
+    scatter_count: int,
+    dry_run: bool,
     run_vqsr: bool,
     run_rf: bool,
 ):
@@ -157,10 +164,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         overwrite=overwrite,
     )
 
-    # For N samples, scattering over N*0.15 shards
-    scatter_count_scale_factor = 0.15
-    scatter_count = int(round(scatter_count_scale_factor * len(samples_df)))
-    scatter_count = max(scatter_count, 2)
+    if not scatter_count:
+        # For N samples, scattering over N*0.2 shards
+        scatter_count_scale_factor = 0.2
+        scatter_count = int(round(scatter_count_scale_factor * len(samples_df)))
+        scatter_count = min(max(scatter_count, 2), 200)
 
     if overwrite or not utils.file_exists(raw_combined_mt_path):
         combiner_job = dataproc.hail_dataproc_job(
@@ -196,7 +204,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             # Adding more workers as this is a much longer step
-            num_secondary_workers=scatter_count * 8,
+            num_secondary_workers=scatter_count,
             depends_on=[combiner_job],
             job_name='Generate info',
         )
