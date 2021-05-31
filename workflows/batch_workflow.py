@@ -160,7 +160,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     # For N samples, scattering over N*0.15 shards
     scatter_count_scale_factor = 0.15
     scatter_count = int(round(scatter_count_scale_factor * len(samples_df)))
-    scatter_count = max(scatter_count, 2)
+    scatter_count = min(max(scatter_count, 2), 200)
 
     if overwrite or not utils.file_exists(raw_combined_mt_path):
         combiner_job = dataproc.hail_dataproc_job(
@@ -196,7 +196,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             # Adding more workers as this is a much longer step
-            num_secondary_workers=scatter_count * 8,
+            num_secondary_workers=min(scatter_count * 6, 200),
             depends_on=[combiner_job],
             job_name='Generate info',
         )

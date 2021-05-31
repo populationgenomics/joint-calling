@@ -84,7 +84,7 @@ def add_variant_qc_jobs(
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             # Adding more workers as this is a much longer step
-            num_secondary_workers=scatter_count * 6,
+            num_secondary_workers=min(scatter_count * 6, 200),
             depends_on=[sample_qc_job],
             job_name='Var QC: generate frequencies',
         )
@@ -106,7 +106,7 @@ def add_variant_qc_jobs(
             f'--out-ht {rf_annotations_ht_path} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count * 3,
+            num_secondary_workers=min(scatter_count * 3, 200),
             depends_on=[freq_job, var_qc_anno_job],
             job_name='Var QC: create RF annotations',
         )
