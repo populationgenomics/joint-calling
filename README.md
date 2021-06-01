@@ -45,12 +45,12 @@ analysis-runner \
 --access-level test \
 joint-calling/driver_for_analysis_runner.sh workflows/batch_workflow.py\
 --from test \
---to temporary \
+--to test-tmp \
 --callset ${DATASET} \
 --version test-$(VERSION)
 ```
 
-This command will use the `test` access level, which means finding the input GVCFs in the `test` bucket `gs://cpg-$DATASET-test/gvcf/batch1/*.g.vcf.gz`, writing the resulting matrix tables to the `temporary` bucket, `gs://cpg-fewgenomes-temporary/mt/v0.mt`, and writing plots to `gs://cpg-fewgenomes-temporary/joint-calling/v0`.
+This command will use the `test` access level, which means finding the input GVCFs in the `test` bucket `gs://cpg-$DATASET-test/gvcf/batch1/*.g.vcf.gz`, writing the resulting matrix tables to the `test-tmp` bucket, `gs://cpg-fewgenomes-test-tmp/mt/v0.mt`, and writing plots to `gs://cpg-fewgenomes-test-tmp/joint-calling/v0`.
 
 To use the `main` bucket for input and output, run the workflow with the `full` access level:
 
@@ -76,7 +76,7 @@ It will find input GVCFs in the `main` bucket, assuming the batch IDs are `batch
 
 ## Overview of the pipeline steps
 
-1. Find inputs. According to the specified `--dataset` and `--batch` parameters, look at `gs://cpg-<dataset>-main/gvcf/<batch-id>/*.g.vcf.gz` (or`gs://cpg-<dataset>-temporary/gvcf/<batch-id>/*.g.vcf.gz`) for the GVCFs and a CSV file with QC metadata.
+1. Find inputs. According to the specified `--dataset` and `--batch` parameters, look at `gs://cpg-<dataset>-main/gvcf/<batch-id>/*.g.vcf.gz` (or`gs://cpg-<dataset>-test/gvcf/<batch-id>/*.g.vcf.gz`) for the GVCFs and a CSV file with QC metadata.
 
 1. Post-process the GVCFs:
 
