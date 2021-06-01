@@ -71,6 +71,7 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--n-partitions',
     'n_partitions',
+    type=click.INT,
     default=5000,
     help='Desired base number of partitions for the output matrix table',
 )

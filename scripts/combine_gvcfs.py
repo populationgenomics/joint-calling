@@ -85,6 +85,7 @@ TARGET_RECORDS = 25_000
 @click.option(
     '--n-partitions',
     'n_partitions',
+    type=click.INT,
     help='Number of partitions for the output matrix table',
 )
 def main(
