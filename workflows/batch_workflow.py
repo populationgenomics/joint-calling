@@ -40,7 +40,7 @@ logger.setLevel('INFO')
 @click.option(
     '--to',
     'output_bucket_suffix',
-    type=click.Choice(['main', 'test', 'temporary']),
+    type=click.Choice(['main', 'test', 'test-tmp']),
     help='The bucket type to write matrix tables to',
 )
 @click.option(
@@ -102,8 +102,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     billing_project = os.getenv('HAIL_BILLING_PROJECT') or callset_name
 
-    temporary_bucket_suffix = 'temporary'
-
     if not callset_batches:
         if input_bucket_suffix == 'test':
             callset_batches = ['batch1']
@@ -113,7 +111,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
                 '(can put multiple times, e.g. --batch batch1 --batch batch2)'
             )
 
-    work_bucket = f'gs://cpg-{callset_name}-{temporary_bucket_suffix}/joint-calling/{callset_version}'
+    if output_bucket_suffix.startswith('test'):
+        tmp_bucket_suffix = 'test-tmp'
+    else:
+        tmp_bucket_suffix = 'main-tmp'
+
+    work_bucket = (
+        f'gs://cpg-{callset_name}-{tmp_bucket_suffix}/joint-calling/{callset_version}'
+    )
     hail_bucket = os.environ.get('HAIL_BUCKET')
     if not hail_bucket or keep_scratch or reuse_scratch_run_id:
         # Scratch files are large, so we want to use the temporary bucket for them
@@ -136,11 +141,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     )
     scripts_dir = abspath(join(dirname(__file__), '..', 'scripts'))
 
-    analysis_bucket_suffix = (
-        'analysis' if output_bucket_suffix == 'main' else output_bucket_suffix
-    )
     analysis_base_bucket = (
-        f'gs://cpg-{callset_name}-{analysis_bucket_suffix}/joint-calling'
+        f'gs://cpg-{callset_name}-{output_bucket_suffix}/joint-calling'
     )
     analysis_bucket = f'{analysis_base_bucket}/{callset_version}'
 
@@ -213,6 +215,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filters.ht')
     meta_ht_path = join(sample_qc_bucket, 'meta.ht')
+    meta_tsv_path = join(analysis_bucket, 'meta.tsv')
     if overwrite or any(
         not utils.file_exists(fp)
         for fp in [hard_filtered_samples_ht_path, meta_ht_path]
@@ -240,6 +243,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--bucket {combiner_bucket} '
             f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
             f'--out-meta-ht {meta_ht_path} '
+            f'--out-meta-tsv {meta_tsv_path} '
             f'--hail-billing {billing_project} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
