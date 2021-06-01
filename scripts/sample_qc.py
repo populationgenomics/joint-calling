@@ -85,6 +85,10 @@ logger.setLevel('INFO')
     required=True,
 )
 @click.option(
+    '--out-meta-tsv',
+    'out_meta_tsv_path',
+)
+@click.option(
     '--bucket',
     'work_bucket',
     required=True,
@@ -125,6 +129,7 @@ def main(
     info_ht_path: str,
     out_hardfiltered_samples_ht_path: str,
     out_meta_ht_path: str,
+    out_meta_tsv_path: str,
     work_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,
@@ -245,6 +250,7 @@ def main(
         related_samples_to_drop_before_qc_ht=intermediate_related_samples_to_drop_ht,
         related_samples_to_drop_after_qc_ht=final_related_samples_to_drop_ht,
         out_ht_path=out_meta_ht_path,
+        out_tsv_path=out_meta_tsv_path,
         overwrite=overwrite,
         age_ht=hl.import_table(age_csv, delimiter=',', types={'age': 'float'})
         .rename({'TOBIID': 's'})
@@ -370,6 +376,7 @@ def _generate_metadata(
     related_samples_to_drop_before_qc_ht: hl.Table,
     related_samples_to_drop_after_qc_ht: hl.Table,
     out_ht_path: str,
+    out_tsv_path: str,
     overwrite: bool = False,
     age_ht: Optional[hl.Table] = None,
 ) -> hl.Table:
@@ -451,7 +458,8 @@ def _generate_metadata(
         )
         meta_ht.write(out_ht_path, overwrite=True)
 
-    if overwrite or not file_exists(splitext(out_ht_path)[0] + '.tsv'):
+    out_tsv_path = out_tsv_path or splitext(out_ht_path)[0] + '.tsv'
+    if overwrite or not file_exists(out_tsv_path):
         n_pcs = meta_ht.aggregate(hl.agg.min(hl.len(meta_ht.pca_scores)))
         meta_ht = meta_ht.transmute(
             **{f'PC{i + 1}': meta_ht.pca_scores[i] for i in range(n_pcs)},
@@ -463,7 +471,7 @@ def _generate_metadata(
                 hl.delimit(meta_ht.qc_metrics_filters),
             ),
         )
-        meta_ht.flatten().export(splitext(out_ht_path)[0] + '.tsv')
+        meta_ht.flatten().export(out_tsv_path)
 
     return meta_ht
 
