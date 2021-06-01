@@ -44,12 +44,23 @@ logger.setLevel('INFO')
     help='The bucket type to write matrix tables to',
 )
 @click.option(
-    '--ped-file', 'ped_file', help='PED file with family information', type=str
+    '--existing-mt',
+    'existing_mt_path',
+    callback=utils.get_validation_callback(ext='mt', must_exist=True),
+    help='Path to an existing matrix table to combine with',
+)
+@click.option(
+    '--ped-file',
+    'ped_file',
+    help='PED file with family information',
+    type=str,
+    callback=utils.get_validation_callback(ext='ped', must_exist=True),
 )
 @click.option('--skip-input-meta', 'skip_input_meta', is_flag=True)
 @click.option(
     '--filter-cutoffs-file',
     'filter_cutoffs_path',
+    callback=utils.get_validation_callback(ext='yaml', must_exist=True),
     help=f'YAML file with filtering cutoffs. '
     f'Default is the file within the package: {utils.get_filter_cutoffs()}',
 )
@@ -70,7 +81,9 @@ logger.setLevel('INFO')
     '--scatter-count',
     'scatter_count',
     type=int,
-    help='Number of secondary workers for Dataproc clusters',
+    required=True,
+    help='Number of secondary workers for Dataproc clusters, as well as the'
+    'number of shards to parition data for the AS-VQSR analysis',
 )
 @click.option('--dry-run', 'dry_run', is_flag=True)
 @click.option('--run-vqsr/--skip-vqsr', 'run_vqsr', is_flag=True, default=True)
@@ -81,6 +94,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     callset_batches: List[str],
     input_bucket_suffix: str,
     output_bucket_suffix: str,
+    existing_mt_path: str,
     ped_file: str,
     skip_input_meta: bool,
     filter_cutoffs_path: str,
@@ -166,12 +180,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         overwrite=overwrite,
     )
 
-    if not scatter_count:
-        # For N samples, scattering over N*0.2 shards
-        scatter_count_scale_factor = 0.2
-        scatter_count = int(round(scatter_count_scale_factor * len(samples_df)))
-        scatter_count = min(max(scatter_count, 2), 200)
-
     if overwrite or not utils.file_exists(raw_combined_mt_path):
         combiner_job = dataproc.hail_dataproc_job(
             b,
@@ -179,7 +187,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--meta-csv {samples_csv_path} '
             f'--out-mt {raw_combined_mt_path} '
             f'--bucket {combiner_bucket}/work '
-            f'--hail-billing {billing_project} ',
+            + (f'--existing-mt {existing_mt_path} ' if existing_mt_path else '')
+            + f'--hail-billing {billing_project} '
+            f'--n-partitions {scatter_count * 25}',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,

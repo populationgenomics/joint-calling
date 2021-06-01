@@ -113,7 +113,7 @@ TRUTH_DATA = ['hapmap', 'omni', 'mills', 'kgp_phase1_hc']
     '--n-partitions',
     'n_partitions',
     type=click.INT,
-    help='Desired number of partitions for annotated RF Table',
+    help='Desired base number of partitions for output tables',
     default=5000,
 )
 @click.option(

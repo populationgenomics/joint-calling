@@ -9,7 +9,7 @@ from gnomad.utils.vcf import ht_to_vcf_mt
 from gnomad.utils.sparse_mt import default_compute_info
 
 
-def mt_to_sites_only_mt(mt: hl.MatrixTable, partitions: int):
+def mt_to_sites_only_mt(mt: hl.MatrixTable, n_partitions: int):
     """
     Convert matrix table (mt) into sites-only VCF by applying operations:
         - filter_rows_and_add_tags
@@ -22,7 +22,7 @@ def mt_to_sites_only_mt(mt: hl.MatrixTable, partitions: int):
     # chain these operations together
     operations = [
         filter_rows_and_add_tags,
-        lambda mt: create_info_ht(mt, partitions=partitions),
+        lambda mt: create_info_ht(mt, n_partitions=n_partitions),
         ht_to_vcf_mt,
     ]
 
@@ -48,9 +48,9 @@ def filter_rows_and_add_tags(mt: hl.MatrixTable):
     return mt.annotate_rows(ANS=hl.agg.count_where(hl.is_defined(mt.LGT)) * 2)
 
 
-def create_info_ht(mt: hl.MatrixTable, partitions: int):
+def create_info_ht(mt: hl.MatrixTable, n_partitions: int):
     """Create info table from vcf matrix table"""
-    info_ht = default_compute_info(mt, site_annotations=True, n_partitions=partitions)
+    info_ht = default_compute_info(mt, site_annotations=True, n_partitions=n_partitions)
     info_ht = info_ht.annotate(
         info=info_ht.info.annotate(DP=mt.rows()[info_ht.key].site_dp)
     )

@@ -60,7 +60,8 @@ def add_variant_qc_jobs(
             + f'--out-qc-ac-ht {qc_ac_ht_path} '
             + (f'--out-fam-stats-ht {fam_stats_ht_path} ' if ped_file else '')
             + (f'--fam-file {ped_file} ' if ped_file else '')
-            + f'--bucket {work_bucket} ',
+            + f'--bucket {work_bucket} '
+            + f'--n-partitions {scatter_count * 25}',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
@@ -103,7 +104,8 @@ def add_variant_qc_jobs(
             f'--qc-ac-ht {qc_ac_ht_path} '
             f'--bucket {work_bucket} '
             f'--use-adj-genotypes '
-            f'--out-ht {rf_annotations_ht_path} ',
+            f'--out-ht {rf_annotations_ht_path} '
+            + f'--n-partitions {scatter_count * 15}',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,

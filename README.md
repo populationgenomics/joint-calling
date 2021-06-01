@@ -44,6 +44,7 @@ analysis-runner \
 --description "Joint calling, test" \
 --access-level test \
 joint-calling/driver_for_analysis_runner.sh workflows/batch_workflow.py\
+--scatter-count 10 \
 --from test \
 --to test-tmp \
 --callset ${DATASET} \
@@ -51,6 +52,8 @@ joint-calling/driver_for_analysis_runner.sh workflows/batch_workflow.py\
 ```
 
 This command will use the `test` access level, which means finding the input GVCFs in the `test` bucket `gs://cpg-$DATASET-test/gvcf/batch1/*.g.vcf.gz`, writing the resulting matrix tables to the `test-tmp` bucket, `gs://cpg-fewgenomes-test-tmp/mt/v0.mt`, and writing plots to `gs://cpg-fewgenomes-test-tmp/joint-calling/v0`.
+
+`--scatter-count` controls the number of secondary workers for Dataproc clusters, as well as the number of shards to parition data for the AS-VQSR analysis.
 
 To use the `main` bucket for input and output, run the workflow with the `full` access level:
 
@@ -62,6 +65,7 @@ analysis-runner \
 --description "Joint calling, full" \
 --access-level full \
 joint-calling/driver_for_analysis_runner.sh workflows/batch_workflow.py\
+--scatter-count 200 \
 --from main \
 --to main \
 --callset ${DATASET} \
