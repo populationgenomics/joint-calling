@@ -37,7 +37,7 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--n-partitions',
     'n_partitions',
-    help='Number of desired partitions for output Table',
+    help='Desired base number of partitions for output tables',
     default=5000,
     type=click.INT,
 )

@@ -84,6 +84,13 @@ logger.setLevel(logging.INFO)
     help='if an intermediate or a final file exists, skip running the code '
     'that generates it.',
 )
+@click.option(
+    '--n-partitions',
+    'n_partitions',
+    type=click.INT,
+    help='Desired base number of partitions for output tables',
+    default=5000,
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements,missing-function-docstring
     out_allele_data_ht_path: str,
     out_qc_ac_ht_path: str,
@@ -95,6 +102,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     work_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,
+    n_partitions: int,
 ):
     utils.init_hail('qc_annotations', local_tmp_dir)
 
@@ -115,6 +123,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         mt=hard_filtered_mt,
         out_ht_path=out_qc_ac_ht_path,
         overwrite=overwrite,
+        n_partitions=n_partitions * 2,
     )
 
     if trios_fam_ped_file and out_fam_stats_ht_path:
@@ -192,12 +201,18 @@ def generate_allele_data(
     return ht
 
 
-def generate_ac(mt: hl.MatrixTable, out_ht_path: str, overwrite: bool) -> hl.Table:
+def generate_ac(
+    mt: hl.MatrixTable,
+    out_ht_path: str,
+    overwrite: bool,
+    n_partitions: int,
+) -> hl.Table:
     """
     Creates Table containing allele counts per variant.
     :param Table mt: input hard-filtered, meta-annotated matrix table
     :param Table out_ht_path: path to writ the resulting table
     :param overwrite: overwrite checkpoints if they exist
+    :param n_partitions: number of partitions for the output
     :return: table containing allele counts annotations:
         - `ac_qc_samples_raw`: Allele count of high quality samples
         - `ac_qc_samples_unrelated_raw`: Allele count of high quality
@@ -238,7 +253,7 @@ def generate_ac(mt: hl.MatrixTable, out_ht_path: str, overwrite: bool) -> hl.Tab
         ),
     )
     ht = mt.rows()
-    ht = ht.repartition(10000, shuffle=False)
+    ht = ht.repartition(n_partitions, shuffle=False)
     ht.write(out_ht_path, overwrite=True)
     return ht
 

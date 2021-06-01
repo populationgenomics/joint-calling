@@ -82,6 +82,12 @@ TARGET_RECORDS = 25_000
     'hail_billing',
     help='Hail billing account ID.',
 )
+@click.option(
+    '--n-partitions',
+    'n_partitions',
+    type=click.INT,
+    help='Number of partitions for the output matrix table',
+)
 def main(
     vcf_buckets: List[str],
     skip_qc: bool,
@@ -92,6 +98,7 @@ def main(
     local_tmp_dir: str,
     overwrite: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
+    n_partitions: int,
 ):
     """
     Runs the Hail
@@ -122,9 +129,7 @@ def main(
     else:
         new_samples_df = utils.find_inputs(vcf_buckets, skip_qc=skip_qc)
 
-    new_mt_path = (
-        os.path.join(work_bucket, 'new.mt') if existing_mt_path else out_mt_path
-    )
+    new_mt_path = os.path.join(work_bucket, 'new.mt')
     combine_gvcfs(
         gvcf_paths=list(new_samples_df.gvcf),
         out_mt_path=new_mt_path,
@@ -133,29 +138,40 @@ def main(
     )
     new_mt = hl.read_matrix_table(new_mt_path)
     logger.info(
-        f'Written {new_mt.cols().count()} samples into a MatrixTable {out_mt_path}'
+        f'Written {new_mt.cols().count()} new samples to {out_mt_path}, '
+        f'n_partitions={new_mt.n_partitions()}'
     )
+
+    new_plus_existing_mt = None
     if existing_mt_path:
         logger.info(f'Combining with the existing matrix table {existing_mt_path}')
-        _combine_with_the_existing_mt(
+        new_plus_existing_mt = _combine_with_the_existing_mt(
             existing_mt=hl.read_matrix_table(existing_mt_path),
             new_mt_path=new_mt_path,
-            out_mt_path=out_mt_path,
         )
+
+    mt = new_plus_existing_mt or new_mt
+    mt.repartition(n_partitions)
+    mt.write(out_mt_path, overwrite=True)
+    logger.info(
+        f'Written {mt.count_cols()} samples to {out_mt_path}, '
+        f'n_partitions={mt.n_partitions()}'
+    )
 
     shutil.rmtree(local_tmp_dir)
 
 
 def _combine_with_the_existing_mt(
     existing_mt: hl.MatrixTable,
-    new_mt_path: str,  # passing as a path because we are going
+    # passing as a path because we are going
     # to re-read it with different intervals
-    out_mt_path: str,
-):
+    new_mt_path: str,
+) -> hl.MatrixTable:
     existing_mt = existing_mt.drop('gvcf_info')
     logger.info(
         f'Combining with the existing MatrixTable '
-        f'({existing_mt.count_cols()} samples)'
+        f'({existing_mt.count_cols()} samples, '
+        f'split into {existing_mt.n_partitions()} partitions)'
     )
     intervals = vcf_combiner.calculate_new_intervals(
         hl.read_matrix_table(new_mt_path).rows(),
@@ -165,7 +181,7 @@ def _combine_with_the_existing_mt(
     new_mt = hl.read_matrix_table(new_mt_path, _intervals=intervals)
     new_mt = new_mt.drop('gvcf_info')
     out_mt = vcf_combiner.combine_gvcfs([existing_mt, new_mt])
-    out_mt.write(out_mt_path, overwrite=True)
+    return out_mt
 
 
 def combine_gvcfs(

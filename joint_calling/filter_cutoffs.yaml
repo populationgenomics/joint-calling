@@ -2,7 +2,7 @@ hardfiltering:
   min_coverage: 18
   max_n_snps: 8000000
   min_n_snps: 2400000
-  max_n_singletons: 400000
+  max_n_singletons: 800000
   max_r_duplication: 0.3
   max_r_het_hom: 3.3
   max_r_contamination: 0.05

@@ -102,7 +102,7 @@ logger.setLevel('INFO')
     '--n-partitions',
     'n_partitions',
     type=click.INT,
-    help='Desired number of partitions for output Table/MatrixTable.',
+    help='Desired base number of partitions for output tables',
     default=5000,
 )
 @click.option(

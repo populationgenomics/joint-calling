@@ -69,10 +69,11 @@ logger.setLevel(logging.INFO)
     help='Hail billing account ID.',
 )
 @click.option(
-    '--partitions',
-    'partitions',
+    '--n-partitions',
+    'n_partitions',
+    type=click.INT,
     default=5000,
-    help='Number of partitions for Hail distributed computing',
+    help='Desired base number of partitions for the output matrix table',
 )
 def main(
     mt_path: str,
@@ -82,7 +83,7 @@ def main(
     local_tmp_dir: str,
     overwrite: bool,
     hail_billing: str,  # pylint: disable=unused-argument
-    partitions: int,
+    n_partitions: int,
 ):
     """
     Expects hail service to already be initialised
@@ -106,15 +107,17 @@ def main(
                 f'Output file {output_path} exists, use --overwrite to overwrite'
             )
             return
-    export_sites_only_vcf(mt=mt, output_path=output_path, partitions=partitions)
+    export_sites_only_vcf(mt=mt, output_path=output_path, n_partitions=n_partitions)
 
 
-def export_sites_only_vcf(mt: hl.MatrixTable, output_path: str, partitions: int = 5000):
+def export_sites_only_vcf(
+    mt: hl.MatrixTable, output_path: str, n_partitions: int = 5000
+):
     """
     Take initial matrix table, convert to sites-only matrix table, then export to vcf
     """
     logger.info('Converting matrix table to sites-only matrix table')
-    final_mt = mt_to_sites_only_mt(mt, partitions)
+    final_mt = mt_to_sites_only_mt(mt, n_partitions)
 
     # export vcf, and return the path
 
