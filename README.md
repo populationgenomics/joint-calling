@@ -112,7 +112,7 @@ Here we give a brief overview of the sample QC steps:
    1. Filter outlier samples using the following cutoffs. Note that the most up to date cutoffs are speified in the configuration file [filter_cutoffs.yaml](joint_calling/filter_cutoffs.yaml), which can be overridden with `--filter-cutoffs-file`.
    
       * Number of SNVs: < 2.4M or > 8M
-      * Number of singletons: > 400k
+      * Number of singletons: > 800k
       * Hom/het ratio: > 3.3
 
    1. Filter using BAM-level metrics was performed when such metrics were available. We removed samples that were outliers for:
