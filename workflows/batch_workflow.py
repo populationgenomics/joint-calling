@@ -47,7 +47,7 @@ logger.setLevel('INFO')
     '--existing-mt',
     'existing_mt_path',
     callback=utils.get_validation_callback(ext='mt', must_exist=True),
-    help='Path to an existing matrix table to combine with',
+    help='Path to an existing sparse matrix table to combine with the new data',
 )
 @click.option(
     '--ped-file',

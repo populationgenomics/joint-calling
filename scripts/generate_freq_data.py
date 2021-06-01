@@ -153,6 +153,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     )
 
     logger.info('Densify-ing...')
+    # The reason is that sparse matrix table has got NA records representing
+    # the reference blocks, which affects the calculation of frequencies.
+    # That's why we need to convert it to a "dense" representation, effectively
+    # dropping reference blocks.
     mt = hl.experimental.densify(mt)
     mt = mt.filter_rows(hl.len(mt.alleles) > 1)
 
