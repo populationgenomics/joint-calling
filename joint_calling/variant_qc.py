@@ -105,7 +105,7 @@ def add_variant_qc_jobs(
             f'--bucket {work_bucket} '
             f'--use-adj-genotypes '
             f'--out-ht {rf_annotations_ht_path} '
-            + f'--n-partitions {scatter_count * 15}',
+            + f'--n-partitions {scatter_count * 25}',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
