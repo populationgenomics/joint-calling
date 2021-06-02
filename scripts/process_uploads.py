@@ -92,6 +92,7 @@ def run_processor(
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
     batch_path = f'batch{batch_number}'
+    prev_batch = f'batch{int(batch_number)-1}'
     upload_bucket = f'cpg-{project}-upload'
     upload_prefix = ''
     upload_path = join(upload_bucket, upload_prefix)
@@ -106,7 +107,7 @@ def run_processor(
 
     # Determine files to be processed
     samples, csv_path = determine_samples(
-        upload_bucket, upload_prefix, metadata_bucket, batch_path
+        upload_bucket, upload_prefix, metadata_bucket, prev_batch
     )
     main_files, archive_files = generate_file_list(samples)
 
@@ -144,11 +145,7 @@ def run_processor(
     csv_job.command(
         'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
     )
-    for namespace in 'main', 'test':
-        csv_job.command(
-            f'gsutil mv gs://{csv_path} '
-            f'gs://cpg-{project}-{namespace}-metadata/batch{batch_number}/'
-        )
+    csv_job.command(f'gsutil mv gs://{csv_path} gs://{metadata_bucket}/{batch_path}/')
     csv_job.depends_on(*main_jobs)
     csv_job.depends_on(*archive_jobs)
 
