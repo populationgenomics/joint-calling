@@ -92,7 +92,6 @@ def run_processor(
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
     batch_path = f'batch{batch_number}'
-    prev_batch = f'batch{int(batch_number)-1}'
     upload_bucket = f'cpg-{project}-upload'
     upload_prefix = ''
     upload_path = join(upload_bucket, upload_prefix)
