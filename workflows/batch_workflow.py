@@ -440,7 +440,7 @@ def _add_prep_gvcfs_for_combiner_steps(
             output_gvcf_path=output_gvcf_path,
             noalt_regions=noalt_regions,
         )
-        if not utils.file_exists(output_gvcf_path)
+        if not utils.file_exists(output_gvcf_path) or overwrite
         else b.new_job('SubsetToNoalt [reuse]')
         for input_gvcf, output_gvcf_path in [
             (gvcf, join(output_gvcf_bucket, f'{sample}.g.vcf.gz'))
