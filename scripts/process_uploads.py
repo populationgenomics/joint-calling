@@ -43,7 +43,7 @@ def samples_from_csv(bucket_name, prefix):
 
 
 def determine_samples(
-    upload_bucket: str, upload_prefix: str, main_bucket: str, previous_batch_prefix: str
+    upload_bucket: str, upload_prefix: str, metadata_bucket: str, metadata_prefix: str
 ):
     """Determine files that should be moved to main vs archive bucket.
     Determines the difference between the latest CSV file within upload
@@ -54,7 +54,7 @@ def determine_samples(
     previous_samples: List[str] = []
 
     all_samples, csv_path_upload = samples_from_csv(upload_bucket, upload_prefix)
-    previous_samples, _ = samples_from_csv(main_bucket, previous_batch_prefix)
+    previous_samples, _ = samples_from_csv(metadata_bucket, metadata_prefix)
 
     samples = set(all_samples) - set(previous_samples)
 
@@ -99,7 +99,7 @@ def run_processor(
     main_bucket = f'cpg-{project}-main'
     main_prefix = join('gvcf', batch_path)
     main_path = join(main_bucket, main_prefix)
-    prev_prefix = join('gvcf', prev_batch)
+    metadata_bucket = f'cpg-{project}-main-metadata'
     archive_path = join(f'cpg-{project}-archive', 'cram', batch_path)
 
     docker_image = os.environ.get('DRIVER_IMAGE')
@@ -107,7 +107,7 @@ def run_processor(
 
     # Determine files to be processed
     samples, csv_path = determine_samples(
-        upload_bucket, upload_prefix, main_bucket, prev_prefix
+        upload_bucket, upload_prefix, metadata_bucket, prev_batch
     )
     main_files, archive_files = generate_file_list(samples)
 
@@ -138,17 +138,16 @@ def run_processor(
         key,
     )
 
-    # Move the csv file, after main and archive buckets have been processed.
+    # Move the csv file to the metadata bucket, after the gVCFs and CRAMs have been
+    # moved to the main and archive buckets.
     csv_job = batch.new_job(name=f'Move {basename(csv_path)}')
     csv_job.image(docker_image)
     csv_job.command(
         'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
     )
-    all_jobs = main_jobs + archive_jobs
-    csv_job.depends_on(*all_jobs)
-    current_csv_location = join('gs://', csv_path)
-    final_csv_location = join('gs://', main_path, basename(csv_path))
-    csv_job.command(f'gsutil mv {current_csv_location} {final_csv_location}')
+    csv_job.command(f'gsutil mv gs://{csv_path} gs://{metadata_bucket}/{batch_path}/')
+    csv_job.depends_on(*main_jobs)
+    csv_job.depends_on(*archive_jobs)
 
     batch.run()
 
