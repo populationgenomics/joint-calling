@@ -78,6 +78,7 @@ def make_vqsr_jobs(
     vqsr_params_d: Dict,
     scatter_count: int,
     output_vcf_path: str,
+    overwrite: bool,
 ) -> Job:
     """
     Add jobs that perform the allele-specific VQSR variant QC
@@ -183,7 +184,7 @@ def make_vqsr_jobs(
     huge_disk = 100 if is_small_callset else (500 if not is_huge_callset else 2000)
 
     combined_vcf_path = join(vqsr_bucket, 'input.vcf.gz')
-    if not utils.file_exists(combined_vcf_path):
+    if overwrite or not utils.file_exists(combined_vcf_path):
         mt_to_vcf_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/mt_to_vcf.py --overwrite '
