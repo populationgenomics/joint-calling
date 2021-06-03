@@ -31,11 +31,7 @@ TARGET_RECORDS = 25_000
 @click.command()
 @click.version_option(_version.__version__)
 @click.option('--bucket-with-vcfs', 'vcf_buckets', multiple=True)
-@click.option(
-    '--skip-qc',
-    'skip_qc',
-    help='Extract sample names from the GVCF paths, don\'t attempt to find QC CSV files',
-)
+@click.option('--bucket-with-metadata', 'metadata_buckets', multiple=True)
 @click.option(
     '--meta-csv',
     'meta_csv_path',
@@ -90,7 +86,7 @@ TARGET_RECORDS = 25_000
 )
 def main(
     vcf_buckets: List[str],
-    skip_qc: bool,
+    metadata_buckets: List[str],
     meta_csv_path: str,
     out_mt_path: str,
     existing_mt_path: str,
@@ -127,7 +123,7 @@ def main(
         )
         new_samples_df = pd.read_table(local_meta_csv_path)
     else:
-        new_samples_df = utils.find_inputs(vcf_buckets, skip_qc=skip_qc)
+        new_samples_df = utils.find_inputs(vcf_buckets, metadata_buckets)
 
     new_mt_path = os.path.join(work_bucket, 'new.mt')
     combine_gvcfs(

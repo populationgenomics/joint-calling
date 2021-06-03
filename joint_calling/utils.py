@@ -80,12 +80,12 @@ def init_hail(name: str, local_tmp_dir: str = None):
 
 def find_inputs(
     input_buckets: List[str],
-    skip_qc: bool = False,
+    input_metadata_buckets: Optional[List[str]] = None,
 ) -> pd.DataFrame:  # pylint disable=too-many-branches
     """
     Read the inputs assuming a standard CPG storage structure.
-    :param input_buckets: buckets to find GVCFs and CSV metadata files.
-    :param skip_qc: don't attempt to find QC CSV files
+    :param input_buckets: buckets to find GVCFs
+    :param input_metadata_buckets: buckets to find CSV metadata files
     :return: a dataframe with the following structure:
         s (key)
         population
@@ -104,9 +104,10 @@ def find_inputs(
         )
 
     local_tmp_dir = tempfile.mkdtemp()
-    if not skip_qc:
+
+    if input_metadata_buckets:
         qc_csvs: List[str] = []
-        for ib in input_buckets:
+        for ib in input_metadata_buckets:
             cmd = f'gsutil ls \'{ib}/*.csv\''
             qc_csvs.extend(
                 line.strip()

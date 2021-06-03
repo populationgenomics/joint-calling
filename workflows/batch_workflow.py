@@ -155,10 +155,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     )
     scripts_dir = abspath(join(dirname(__file__), '..', 'scripts'))
 
-    analysis_base_bucket = (
-        f'gs://cpg-{callset_name}-{output_bucket_suffix}/joint-calling'
+    plots_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/joint-calling/{callset_version}'
+
+    metadata_base_bucket = (
+        f'gs://cpg-{callset_name}-{output_bucket_suffix}-metadata/joint-calling'
     )
-    analysis_bucket = f'{analysis_base_bucket}/{callset_version}'
+    metadata_bucket = f'{metadata_base_bucket}/{callset_version}'
 
     mt_output_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/mt'
     raw_combined_mt_path = f'{mt_output_bucket}/{callset_version}-raw.mt'
@@ -173,10 +175,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     samples_df, samples_csv_path, pre_combiner_jobs = _add_pre_combiner_jobs(
         b=b,
         input_gvcfs_bucket=f'gs://cpg-{callset_name}-{input_bucket_suffix}/gvcf',
+        input_metadata_bucket=f'gs://cpg-{callset_name}-{input_bucket_suffix}-metadata'
+        if not skip_input_meta
+        else None,
         work_bucket=join(work_bucket, 'pre-combine'),
         output_bucket=combiner_bucket,
         callset_batches=callset_batches,
-        skip_input_meta=skip_input_meta,
         overwrite=overwrite,
     )
 
@@ -225,12 +229,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filters.ht')
     meta_ht_path = join(sample_qc_bucket, 'meta.ht')
-    meta_tsv_path = join(analysis_bucket, 'meta.tsv')
+    meta_tsv_path = join(metadata_bucket, 'meta.tsv')
     if overwrite or any(
         not utils.file_exists(fp)
         for fp in [hard_filtered_samples_ht_path, meta_ht_path]
     ):
-        age_csv = join(analysis_base_bucket, 'age.csv')
+        age_csv = join(metadata_base_bucket, 'age.csv')
         if utils.file_exists(age_csv):
             age_csv_param = f'--age-csv {age_csv} '
         else:
@@ -268,7 +272,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         var_qc_job, var_qc_final_filter_ht = add_variant_qc_jobs(
             b=b,
             work_bucket=join(work_bucket, 'variant_qc'),
-            analysis_bucket=join(analysis_bucket, 'variant_qc'),
+            analysis_bucket=join(plots_bucket, 'variant_qc'),
             raw_combined_mt_path=raw_combined_mt_path,
             info_split_ht_path=info_split_ht_path,
             hard_filter_ht_path=hard_filtered_samples_ht_path,
@@ -308,15 +312,16 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 def _add_pre_combiner_jobs(
     b: hb.Batch,
     input_gvcfs_bucket: str,
+    input_metadata_bucket: Optional[str],
     work_bucket: str,
     output_bucket: str,
     callset_batches: List[str],
-    skip_input_meta: bool,
     overwrite: bool,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
     :param input_gvcfs_bucket: bucket with GVCFs batches as subfolders
+    :param input_metadata_bucket: bucket with metadata batches as subfolders
     :param work_bucket: bucket to write intermediate files to
     :param output_bucket: bucket to write the GVCF combiner inputs to
     :param callset_batches: list of the dataset batches identifiers
@@ -348,10 +353,14 @@ def _add_pre_combiner_jobs(
                 's', drop=False
             )
         else:
-            input_buckets = []
+            input_gvcf_buckets = []
+            input_metadata_buckets = []
             for cb in callset_batches:
-                input_buckets.append(join(input_gvcfs_bucket, cb))
-            samples_df = utils.find_inputs(input_buckets, skip_qc=skip_input_meta)
+                input_gvcf_buckets.append(join(input_gvcfs_bucket, cb))
+                if input_metadata_bucket:
+                    input_metadata_buckets.append(join(input_metadata_bucket, cb))
+            samples_df = utils.find_inputs(input_gvcf_buckets, input_metadata_buckets)
+
         samples_df = samples_df[pd.notnull(samples_df.s)]
         gvcfs = [
             b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
