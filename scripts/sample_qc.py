@@ -319,7 +319,6 @@ def _compute_hail_sample_qc(
             for x in sample_qc_ht.row_value
         }
     )
-    sample_qc_ht = sample_qc_ht.repartition(100)
     sample_qc_ht.write(out_ht_path, overwrite=True)
     return sample_qc_ht
 
