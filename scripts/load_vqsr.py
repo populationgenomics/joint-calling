@@ -69,7 +69,7 @@ def main(  # pylint: disable=missing-function-docstring
     output_ht_path: str,
     split_multiallelic: bool,
     vqsr_vcf_path: str,
-    n_partitions: str,  # pylint: disable=unused-argument
+    n_partitions: str,
     header_path: str,
     work_bucket: str,  # pylint: disable=unused-argument
     local_tmp_dir: str,
@@ -83,7 +83,7 @@ def main(  # pylint: disable=missing-function-docstring
         force_bgz=True,
         reference_genome=utils.DEFAULT_REF,
         header_file=header_path,
-    )
+    ).repartition(n_partitions)
 
     ht = mt.rows()
 

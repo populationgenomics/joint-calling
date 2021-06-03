@@ -94,7 +94,7 @@ def main(
     local_tmp_dir: str,
     overwrite: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
-    n_partitions: int,  # pylint: disable=unused-argument
+    n_partitions: int,
 ):
     """
     Runs the Hail
@@ -145,9 +145,10 @@ def main(
             existing_mt=hl.read_matrix_table(existing_mt_path),
             new_mt_path=new_mt_path,
         )
-        new_plus_existing_mt.write(out_mt_path, overwrite=True)
-    mt = new_plus_existing_mt or new_mt
 
+    mt = new_plus_existing_mt or new_mt
+    mt.repartition(n_partitions)
+    mt.write(out_mt_path, overwrite=True)
     logger.info(
         f'Written {mt.count_cols()} samples to {out_mt_path}, '
         f'n_partitions={mt.n_partitions()}'
