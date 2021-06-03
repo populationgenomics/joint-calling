@@ -92,9 +92,7 @@ def main(  # pylint: disable=missing-function-docstring
             AS_VQSLOD=ht.info.AS_VQSLOD.map(hl.float),
             AS_QUALapprox=ht.info.AS_QUALapprox.split(r'\|')[1:].map(hl.int),
             AS_VarDP=ht.info.AS_VarDP.split(r'\|')[1:].map(hl.int),
-            AS_SB_TABLE=ht.info.AS_SB_TABLE.split(r'\|').map(
-                lambda x: x.split(',').map(hl.int)
-            ),
+            AS_SB_TABLE=ht.info.AS_SB_TABLE.split(r'\|').map(lambda x: x.split(',')),
         )
     )
 
