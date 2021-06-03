@@ -235,7 +235,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         not utils.file_exists(fp)
         for fp in [hard_filtered_samples_ht_path, meta_ht_path]
     ):
-        age_csv = f'gs://cpg-{callset_name}-main-metadata/age.csv'
+        age_csv = f'gs://cpg-{callset_name}-{input_bucket_suffix}-metadata/age.csv'
         if utils.file_exists(age_csv):
             age_csv_param = f'--age-csv {age_csv} '
         else:
