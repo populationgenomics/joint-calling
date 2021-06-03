@@ -445,16 +445,15 @@ def _generate_metadata(
 
         meta_ht = meta_ht.annotate(
             hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
-            sample_filters=add_filters_expr(
+            release_filters=add_filters_expr(
                 filters={'related': meta_ht.related},
                 current_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters),
             ),
         )
 
         meta_ht = meta_ht.annotate(
-            high_quality=(hl.len(meta_ht.hard_filters) == 0)
-            & (hl.len(meta_ht.qc_metrics_filters) == 0),
-            release=hl.len(meta_ht.sample_filters) == 0,
+            high_quality=(hl.len(meta_ht.hard_filters) == 0),
+            release=hl.len(meta_ht.release_filters) == 0,
         )
         meta_ht.write(out_ht_path, overwrite=True)
 
