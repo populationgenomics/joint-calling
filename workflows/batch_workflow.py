@@ -157,10 +157,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     plots_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/joint-calling/{callset_version}'
 
-    metadata_base_bucket = (
-        f'gs://cpg-{callset_name}-{output_bucket_suffix}-metadata/joint-calling'
-    )
-    metadata_bucket = f'{metadata_base_bucket}/{callset_version}'
+    if output_bucket_suffix in ['test', 'main']:
+        output_metadata_suffix = f'{output_bucket_suffix}-metadata'
+    else:
+        output_metadata_suffix = output_bucket_suffix
+    output_metadata_bucket = f'gs://cpg-{callset_name}-{output_metadata_suffix}/joint-calling/{callset_version}'
 
     mt_output_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/mt'
     raw_combined_mt_path = f'{mt_output_bucket}/{callset_version}-raw.mt'
@@ -229,12 +230,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filters.ht')
     meta_ht_path = join(sample_qc_bucket, 'meta.ht')
-    meta_tsv_path = join(metadata_bucket, 'meta.tsv')
+    meta_tsv_path = join(output_metadata_bucket, 'meta.tsv')
     if overwrite or any(
         not utils.file_exists(fp)
         for fp in [hard_filtered_samples_ht_path, meta_ht_path]
     ):
-        age_csv = join(metadata_base_bucket, 'age.csv')
+        age_csv = f'gs://cpg-{callset_name}-main-metadata/age.csv'
         if utils.file_exists(age_csv):
             age_csv_param = f'--age-csv {age_csv} '
         else:
