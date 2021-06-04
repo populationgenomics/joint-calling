@@ -371,7 +371,7 @@ def _infer_sex(
 def _generate_metadata(
     sample_qc_ht: hl.Table,
     sex_ht: hl.Table,
-    input_meta_ht: hl.Talbe,
+    input_meta_ht: hl.Table,
     hard_filtered_samples_ht: hl.Table,
     regressed_metrics_ht: hl.Table,
     pop_ht: hl.Table,
