@@ -22,9 +22,9 @@ def compute_hard_filters(
 ) -> hl.Table:
     """
     Uses the sex imputation results, results of the sample_qc() run on
-    bi-allelic variants, and Picard stats files specificed in `sample_df`,
-    to apply filters to samples in `mt` and create a table with
-    samples that fail at least one sampe.
+    bi-allelic variants, and stats by Picard tools specificed in `sample_df`,
+    to apply filters to samples in `mt`, and create a table with
+    only samples that fail at least one sample.
 
     :param mt: input matrix table
     :param input_meta_ht: QC metrics from Picard tools. Expected fields:

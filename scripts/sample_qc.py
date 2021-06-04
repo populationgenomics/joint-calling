@@ -244,6 +244,7 @@ def main(
     _generate_metadata(
         sample_qc_ht=hail_sample_qc_ht,
         sex_ht=sex_ht,
+        input_meta_ht=input_meta_ht,
         hard_filtered_samples_ht=hard_filtered_samples_ht,
         regressed_metrics_ht=regressed_metrics_ht,
         pop_ht=pop_ht,
@@ -370,6 +371,7 @@ def _infer_sex(
 def _generate_metadata(
     sample_qc_ht: hl.Table,
     sex_ht: hl.Table,
+    input_meta_ht: hl.Talbe,
     hard_filtered_samples_ht: hl.Table,
     regressed_metrics_ht: hl.Table,
     pop_ht: hl.Table,
@@ -386,6 +388,8 @@ def _generate_metadata(
     :param sample_qc_ht: table with a `bi_allelic_sample_qc` row field
     :param sex_ht: table with the follwing row fields:
         `f_stat`, `n_called`, `expected_homs`, `observed_homs`
+    :param input_meta_ht: table with stats from the input metadata
+        (includes Picard-tools stats)
     :param hard_filtered_samples_ht: table with a `hard_filters` field
     :param regressed_metrics_ht: table with global fields
         `lms`, `qc_metrics_stats`;
@@ -432,6 +436,7 @@ def _generate_metadata(
             **hard_filtered_samples_ht[meta_ht.key],
             **regressed_metrics_ht[meta_ht.key],
             **pop_ht[meta_ht.key],
+            **input_meta_ht[meta_ht.key],
             related_before_qc=hl.is_defined(
                 related_samples_to_drop_before_qc_ht[meta_ht.key]
             ),
