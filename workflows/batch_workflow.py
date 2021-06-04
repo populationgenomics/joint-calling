@@ -229,8 +229,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         generate_info_job = b.new_job('Generate info [reuse]')
 
     hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filters.ht')
-    meta_ht_path = join(sample_qc_bucket, 'meta.ht')
+    meta_ht_path = join(output_metadata_bucket, 'meta.ht')
     meta_tsv_path = join(output_metadata_bucket, 'meta.tsv')
+    relatedness_ht_path = join(output_metadata_bucket, 'relatedness.ht')
     if overwrite or any(
         not utils.file_exists(fp)
         for fp in [hard_filtered_samples_ht_path, meta_ht_path]
@@ -259,6 +260,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
             f'--out-meta-ht {meta_ht_path} '
             f'--out-meta-tsv {meta_tsv_path} '
+            f'--out-relatedness-ht {relatedness_ht_path} '
             f'--hail-billing {billing_project} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,

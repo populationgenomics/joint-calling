@@ -89,6 +89,10 @@ logger.setLevel('INFO')
     'out_meta_tsv_path',
 )
 @click.option(
+    '--out-relatedness-ht',
+    'out_relatedness_ht_path',
+)
+@click.option(
     '--bucket',
     'work_bucket',
     required=True,
@@ -130,6 +134,7 @@ def main(
     out_hardfiltered_samples_ht_path: str,
     out_meta_ht_path: str,
     out_meta_tsv_path: str,
+    out_relatedness_ht_path: str,
     work_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,
@@ -185,7 +190,10 @@ def main(
     )
 
     relatedness_ht = pop_strat_qc.compute_relatedness(
-        for_pca_mt, work_bucket, overwrite
+        for_pca_mt=for_pca_mt,
+        work_bucket=work_bucket,
+        out_ht_path=out_relatedness_ht_path,
+        overwrite=overwrite,
     )
 
     # We don't want to include related samples into the
