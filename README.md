@@ -46,7 +46,7 @@ analysis-runner \
 joint-calling/driver_for_analysis_runner.sh workflows/batch_workflow.py\
 --scatter-count 10 \
 --from test \
---to test-tmp \
+--to tmp \
 --callset ${DATASET} \
 --version test-$(VERSION)
 ```
