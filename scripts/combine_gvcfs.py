@@ -142,7 +142,7 @@ def main(
     if existing_mt_path:
         logger.info(f'Combining with the existing matrix table {existing_mt_path}')
         new_plus_existing_mt = _combine_with_the_existing_mt(
-            existing_mt=hl.read_matrix_table(existing_mt_path),
+            existing_mt_path=existing_mt_path,
             new_mt_path=new_mt_path,
         )
 
@@ -158,24 +158,27 @@ def main(
 
 
 def _combine_with_the_existing_mt(
-    existing_mt: hl.MatrixTable,
+    existing_mt_path: str,
     # passing as a path because we are going
     # to re-read it with different intervals
     new_mt_path: str,
 ) -> hl.MatrixTable:
-    existing_mt = existing_mt.drop('gvcf_info')
-    logger.info(
-        f'Combining with the existing MatrixTable '
-        f'({existing_mt.count_cols()} samples, '
-        f'split into {existing_mt.n_partitions()} partitions)'
-    )
+    # Making sure the tables are keyed by locus only, to make the combiner work.
+    existing_mt = hl.read_matrix_table(existing_mt_path).key_rows_by('locus')
     intervals = vcf_combiner.calculate_new_intervals(
-        hl.read_matrix_table(new_mt_path).rows(),
+        existing_mt.rows(),
         n=TARGET_RECORDS,
         reference_genome=DEFAULT_REF,
     )
-    new_mt = hl.read_matrix_table(new_mt_path, _intervals=intervals)
-    new_mt = new_mt.drop('gvcf_info')
+    new_mt = hl.read_matrix_table(new_mt_path, _intervals=intervals).key_rows_by(
+        'locus'
+    )
+    logger.info(
+        f'Combining {new_mt_path} ({new_mt.count_cols()} samples) '
+        f'with an existing MatrixTable {existing_mt_path} '
+        f'({existing_mt.count_cols()} samples), '
+        f'split into {existing_mt.n_partitions()} partitions)'
+    )
     out_mt = vcf_combiner.combine_gvcfs([existing_mt, new_mt])
     return out_mt
 
