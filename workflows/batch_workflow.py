@@ -33,15 +33,15 @@ logger.setLevel('INFO')
 @click.option('--batch', 'callset_batches', type=str, multiple=True)
 @click.option(
     '--from',
-    'input_bucket_suffix',
+    'input_namespace',
     type=click.Choice(['main', 'test']),
-    help='The bucket type to read from',
+    help='The bucket namespace to read the inputs from',
 )
 @click.option(
     '--to',
-    'output_bucket_suffix',
-    type=click.Choice(['main', 'test', 'test-tmp']),
-    help='The bucket type to write matrix tables to',
+    'output_namespace',
+    type=click.Choice(['main', 'test', 'tmp']),
+    help='The bucket namespace to write the results to',
 )
 @click.option(
     '--existing-mt',
@@ -92,8 +92,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     callset_name: str,
     callset_version: str,
     callset_batches: List[str],
-    input_bucket_suffix: str,
-    output_bucket_suffix: str,
+    input_namespace: str,
+    output_namespace: str,
     existing_mt_path: str,
     ped_file: str,
     skip_input_meta: bool,
@@ -117,15 +117,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     billing_project = os.getenv('HAIL_BILLING_PROJECT') or callset_name
 
     if not callset_batches:
-        if input_bucket_suffix == 'test':
-            callset_batches = ['batch1']
-        else:
-            raise click.BadParameter(
-                'Please, specify batch numbers with --batch '
-                '(can put multiple times, e.g. --batch batch1 --batch batch2)'
-            )
+        raise click.BadParameter(
+            'Please, specify batch numbers with --batch '
+            '(can put multiple times, e.g. --batch batch1 --batch batch2)'
+        )
 
-    if output_bucket_suffix.startswith('test'):
+    if output_namespace in ['test', 'tmp']:
         tmp_bucket_suffix = 'test-tmp'
     else:
         tmp_bucket_suffix = 'main-tmp'
@@ -149,21 +146,27 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         f'Joint calling: {callset_name}'
         f', version: {callset_version}'
         f', batches: {", ".join(callset_batches)}'
-        f', from: {input_bucket_suffix}'
-        f', to: {output_bucket_suffix}',
+        f', from: {input_namespace}'
+        f', to: {output_namespace}',
         backend=backend,
     )
     scripts_dir = abspath(join(dirname(__file__), '..', 'scripts'))
 
-    plots_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/joint-calling/{callset_version}'
-
-    if output_bucket_suffix in ['test', 'main']:
-        output_metadata_suffix = f'{output_bucket_suffix}-metadata'
+    if output_namespace in ['test', 'main']:
+        output_suffix = output_namespace
+        output_metadata_suffix = f'{output_namespace}-metadata'
+        web_bucket_suffix = f'{output_namespace}-web'
     else:
-        output_metadata_suffix = output_bucket_suffix
-    output_metadata_bucket = f'gs://cpg-{callset_name}-{output_metadata_suffix}/joint-calling/{callset_version}'
+        output_suffix = 'test-tmp'
+        output_metadata_suffix = 'test-tmp'
+        web_bucket_suffix = 'test-tmp'
 
-    mt_output_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/mt'
+    output_metadata_bucket = f'gs://cpg-{callset_name}-{output_metadata_suffix}/joint-calling/{callset_version}'
+    web_bucket = (
+        f'gs://cpg-{callset_name}-{web_bucket_suffix}/joint-calling/{callset_version}'
+    )
+    mt_output_bucket = f'gs://cpg-{callset_name}-{output_suffix}/mt'
+
     raw_combined_mt_path = f'{mt_output_bucket}/{callset_version}-raw.mt'
     # pylint: disable=unused-variable
     filtered_combined_mt_path = f'{mt_output_bucket}/{callset_version}.mt'
@@ -175,8 +178,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     samples_df, samples_csv_path, pre_combiner_jobs = _add_pre_combiner_jobs(
         b=b,
-        input_gvcfs_bucket=f'gs://cpg-{callset_name}-{input_bucket_suffix}/gvcf',
-        input_metadata_bucket=f'gs://cpg-{callset_name}-{input_bucket_suffix}-metadata'
+        input_gvcfs_bucket=f'gs://cpg-{callset_name}-{input_namespace}/gvcf',
+        input_metadata_bucket=f'gs://cpg-{callset_name}-{input_namespace}-metadata'
         if not skip_input_meta
         else None,
         work_bucket=join(work_bucket, 'pre-combine'),
@@ -236,7 +239,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         not utils.file_exists(fp)
         for fp in [hard_filtered_samples_ht_path, meta_ht_path]
     ):
-        age_csv = f'gs://cpg-{callset_name}-{input_bucket_suffix}-metadata/age.csv'
+        age_csv = f'gs://cpg-{callset_name}-{input_namespace}-metadata/age.csv'
         if utils.file_exists(age_csv):
             age_csv_param = f'--age-csv {age_csv} '
         else:
@@ -275,7 +278,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         var_qc_job, var_qc_final_filter_ht = add_variant_qc_jobs(
             b=b,
             work_bucket=join(work_bucket, 'variant_qc'),
-            analysis_bucket=join(plots_bucket, 'variant_qc'),
+            analysis_bucket=join(web_bucket, 'variant_qc'),
             raw_combined_mt_path=raw_combined_mt_path,
             info_split_ht_path=info_split_ht_path,
             hard_filter_ht_path=hard_filtered_samples_ht_path,
