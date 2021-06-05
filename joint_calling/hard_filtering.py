@@ -22,9 +22,9 @@ def compute_hard_filters(
 ) -> hl.Table:
     """
     Uses the sex imputation results, results of the sample_qc() run on
-    bi-allelic variants, and Picard stats files specificed in `sample_df`,
-    to apply filters to samples in `mt` and create a table with
-    samples that fail at least one sampe.
+    bi-allelic variants, and stats by Picard tools specificed in `sample_df`,
+    to apply filters to samples in `mt`, and create a table with
+    only samples that fail at least one sample.
 
     :param mt: input matrix table
     :param input_meta_ht: QC metrics from Picard tools. Expected fields:
@@ -94,37 +94,31 @@ def compute_hard_filters(
         'bad_biallelic_metrics',
     )
 
-    # Remove samples that fail picard metric thresholds, percents are not divided
-    # by 100, e.g. 5% == 5.00, 5% != 0.05
-
-    ht = ht.annotate(
-        r_contamination=input_meta_ht[ht.key].r_contamination,
-        r_chimera=input_meta_ht[ht.key].r_chimera,
-        r_duplication=input_meta_ht[ht.key].r_duplication,
-        median_insert_size=input_meta_ht[ht.key].median_insert_size,
-    )
-
     ht = add_filter(
         ht,
-        hl.is_missing(ht.r_contamination)
-        | (ht.r_contamination > cutoffs_d['max_r_contamination']),
+        hl.is_missing(input_meta_ht[ht.key].r_contamination)
+        | (input_meta_ht[ht.key].r_contamination > cutoffs_d['max_r_contamination']),
         'contamination',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(ht.r_chimera) | (ht.r_chimera > cutoffs_d['max_r_chimera']),
+        hl.is_missing(input_meta_ht[ht.key].r_chimera)
+        | (input_meta_ht[ht.key].r_chimera > cutoffs_d['max_r_chimera']),
         'chimera',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(ht.r_duplication)
-        | (ht.r_duplication > cutoffs_d['max_r_duplication']),
+        hl.is_missing(input_meta_ht[ht.key].r_duplication)
+        | (input_meta_ht[ht.key].r_duplication > cutoffs_d['max_r_duplication']),
         'dup_rate',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(ht.median_insert_size)
-        | (ht.median_insert_size < cutoffs_d['min_median_insert_size']),
+        hl.is_missing(input_meta_ht[ht.key].median_insert_size)
+        | (
+            input_meta_ht[ht.key].median_insert_size
+            < cutoffs_d['min_median_insert_size']
+        ),
         'insert_size',
     )
     ht = ht.annotate_globals(hard_filter_cutoffs=hl.struct(**cutoffs_d))

@@ -168,6 +168,7 @@ def add_variant_qc_jobs(
                 vqsr_params_d=vqsr_params_d,
                 scatter_count=scatter_count,
                 output_vcf_path=vqsred_vcf_path,
+                overwrite=overwrite,
             )
         else:
             final_gathered_vcf_job = b.new_job('VQSR [reuse]')

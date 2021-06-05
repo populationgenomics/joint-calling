@@ -89,6 +89,10 @@ logger.setLevel('INFO')
     'out_meta_tsv_path',
 )
 @click.option(
+    '--out-relatedness-ht',
+    'out_relatedness_ht_path',
+)
+@click.option(
     '--bucket',
     'work_bucket',
     required=True,
@@ -130,6 +134,7 @@ def main(
     out_hardfiltered_samples_ht_path: str,
     out_meta_ht_path: str,
     out_meta_tsv_path: str,
+    out_relatedness_ht_path: str,
     work_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,
@@ -185,7 +190,10 @@ def main(
     )
 
     relatedness_ht = pop_strat_qc.compute_relatedness(
-        for_pca_mt, work_bucket, overwrite
+        for_pca_mt=for_pca_mt,
+        work_bucket=work_bucket,
+        out_ht_path=out_relatedness_ht_path,
+        overwrite=overwrite,
     )
 
     # We don't want to include related samples into the
@@ -244,6 +252,7 @@ def main(
     _generate_metadata(
         sample_qc_ht=hail_sample_qc_ht,
         sex_ht=sex_ht,
+        input_meta_ht=input_meta_ht,
         hard_filtered_samples_ht=hard_filtered_samples_ht,
         regressed_metrics_ht=regressed_metrics_ht,
         pop_ht=pop_ht,
@@ -370,6 +379,7 @@ def _infer_sex(
 def _generate_metadata(
     sample_qc_ht: hl.Table,
     sex_ht: hl.Table,
+    input_meta_ht: hl.Table,
     hard_filtered_samples_ht: hl.Table,
     regressed_metrics_ht: hl.Table,
     pop_ht: hl.Table,
@@ -386,6 +396,8 @@ def _generate_metadata(
     :param sample_qc_ht: table with a `bi_allelic_sample_qc` row field
     :param sex_ht: table with the follwing row fields:
         `f_stat`, `n_called`, `expected_homs`, `observed_homs`
+    :param input_meta_ht: table with stats from the input metadata
+        (includes Picard-tools stats)
     :param hard_filtered_samples_ht: table with a `hard_filters` field
     :param regressed_metrics_ht: table with global fields
         `lms`, `qc_metrics_stats`;
@@ -432,6 +444,7 @@ def _generate_metadata(
             **hard_filtered_samples_ht[meta_ht.key],
             **regressed_metrics_ht[meta_ht.key],
             **pop_ht[meta_ht.key],
+            **input_meta_ht[meta_ht.key],
             related_before_qc=hl.is_defined(
                 related_samples_to_drop_before_qc_ht[meta_ht.key]
             ),
@@ -445,16 +458,15 @@ def _generate_metadata(
 
         meta_ht = meta_ht.annotate(
             hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
-            sample_filters=add_filters_expr(
+            release_filters=add_filters_expr(
                 filters={'related': meta_ht.related},
                 current_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters),
             ),
         )
 
         meta_ht = meta_ht.annotate(
-            high_quality=(hl.len(meta_ht.hard_filters) == 0)
-            & (hl.len(meta_ht.qc_metrics_filters) == 0),
-            release=hl.len(meta_ht.sample_filters) == 0,
+            high_quality=(hl.len(meta_ht.hard_filters) == 0),
+            release=hl.len(meta_ht.release_filters) == 0,
         )
         meta_ht.write(out_ht_path, overwrite=True)
 

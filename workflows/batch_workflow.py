@@ -33,15 +33,15 @@ logger.setLevel('INFO')
 @click.option('--batch', 'callset_batches', type=str, multiple=True)
 @click.option(
     '--from',
-    'input_bucket_suffix',
+    'input_namespace',
     type=click.Choice(['main', 'test']),
-    help='The bucket type to read from',
+    help='The bucket namespace to read the inputs from',
 )
 @click.option(
     '--to',
-    'output_bucket_suffix',
-    type=click.Choice(['main', 'test', 'test-tmp']),
-    help='The bucket type to write matrix tables to',
+    'output_namespace',
+    type=click.Choice(['main', 'test', 'tmp']),
+    help='The bucket namespace to write the results to',
 )
 @click.option(
     '--existing-mt',
@@ -92,8 +92,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     callset_name: str,
     callset_version: str,
     callset_batches: List[str],
-    input_bucket_suffix: str,
-    output_bucket_suffix: str,
+    input_namespace: str,
+    output_namespace: str,
     existing_mt_path: str,
     ped_file: str,
     skip_input_meta: bool,
@@ -117,15 +117,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     billing_project = os.getenv('HAIL_BILLING_PROJECT') or callset_name
 
     if not callset_batches:
-        if input_bucket_suffix == 'test':
-            callset_batches = ['batch1']
-        else:
-            raise click.BadParameter(
-                'Please, specify batch numbers with --batch '
-                '(can put multiple times, e.g. --batch batch1 --batch batch2)'
-            )
+        raise click.BadParameter(
+            'Please, specify batch numbers with --batch '
+            '(can put multiple times, e.g. --batch batch1 --batch batch2)'
+        )
 
-    if output_bucket_suffix.startswith('test'):
+    if output_namespace in ['test', 'tmp']:
         tmp_bucket_suffix = 'test-tmp'
     else:
         tmp_bucket_suffix = 'main-tmp'
@@ -149,18 +146,27 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         f'Joint calling: {callset_name}'
         f', version: {callset_version}'
         f', batches: {", ".join(callset_batches)}'
-        f', from: {input_bucket_suffix}'
-        f', to: {output_bucket_suffix}',
+        f', from: {input_namespace}'
+        f', to: {output_namespace}',
         backend=backend,
     )
     scripts_dir = abspath(join(dirname(__file__), '..', 'scripts'))
 
-    analysis_base_bucket = (
-        f'gs://cpg-{callset_name}-{output_bucket_suffix}/joint-calling'
-    )
-    analysis_bucket = f'{analysis_base_bucket}/{callset_version}'
+    if output_namespace in ['test', 'main']:
+        output_suffix = output_namespace
+        output_metadata_suffix = f'{output_namespace}-metadata'
+        web_bucket_suffix = f'{output_namespace}-web'
+    else:
+        output_suffix = 'test-tmp'
+        output_metadata_suffix = 'test-tmp'
+        web_bucket_suffix = 'test-tmp'
 
-    mt_output_bucket = f'gs://cpg-{callset_name}-{output_bucket_suffix}/mt'
+    output_metadata_bucket = f'gs://cpg-{callset_name}-{output_metadata_suffix}/joint-calling/{callset_version}'
+    web_bucket = (
+        f'gs://cpg-{callset_name}-{web_bucket_suffix}/joint-calling/{callset_version}'
+    )
+    mt_output_bucket = f'gs://cpg-{callset_name}-{output_suffix}/mt'
+
     raw_combined_mt_path = f'{mt_output_bucket}/{callset_version}-raw.mt'
     # pylint: disable=unused-variable
     filtered_combined_mt_path = f'{mt_output_bucket}/{callset_version}.mt'
@@ -172,11 +178,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     samples_df, samples_csv_path, pre_combiner_jobs = _add_pre_combiner_jobs(
         b=b,
-        input_gvcfs_bucket=f'gs://cpg-{callset_name}-{input_bucket_suffix}/gvcf',
+        input_gvcfs_bucket=f'gs://cpg-{callset_name}-{input_namespace}/gvcf',
+        input_metadata_bucket=f'gs://cpg-{callset_name}-{input_namespace}-metadata'
+        if not skip_input_meta
+        else None,
         work_bucket=join(work_bucket, 'pre-combine'),
         output_bucket=combiner_bucket,
         callset_batches=callset_batches,
-        skip_input_meta=skip_input_meta,
         overwrite=overwrite,
     )
 
@@ -224,13 +232,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         generate_info_job = b.new_job('Generate info [reuse]')
 
     hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filters.ht')
-    meta_ht_path = join(sample_qc_bucket, 'meta.ht')
-    meta_tsv_path = join(analysis_bucket, 'meta.tsv')
+    meta_ht_path = join(output_metadata_bucket, 'meta.ht')
+    meta_tsv_path = join(output_metadata_bucket, 'meta.tsv')
+    relatedness_ht_path = join(output_metadata_bucket, 'relatedness.ht')
     if overwrite or any(
         not utils.file_exists(fp)
         for fp in [hard_filtered_samples_ht_path, meta_ht_path]
     ):
-        age_csv = join(analysis_base_bucket, 'age.csv')
+        age_csv = f'gs://cpg-{callset_name}-{input_namespace}-metadata/age.csv'
         if utils.file_exists(age_csv):
             age_csv_param = f'--age-csv {age_csv} '
         else:
@@ -254,6 +263,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--out-hardfiltered-samples-ht {hard_filtered_samples_ht_path} '
             f'--out-meta-ht {meta_ht_path} '
             f'--out-meta-tsv {meta_tsv_path} '
+            f'--out-relatedness-ht {relatedness_ht_path} '
             f'--hail-billing {billing_project} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
@@ -268,7 +278,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         var_qc_job, var_qc_final_filter_ht = add_variant_qc_jobs(
             b=b,
             work_bucket=join(work_bucket, 'variant_qc'),
-            analysis_bucket=join(analysis_bucket, 'variant_qc'),
+            analysis_bucket=join(web_bucket, 'variant_qc'),
             raw_combined_mt_path=raw_combined_mt_path,
             info_split_ht_path=info_split_ht_path,
             hard_filter_ht_path=hard_filtered_samples_ht_path,
@@ -308,15 +318,16 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 def _add_pre_combiner_jobs(
     b: hb.Batch,
     input_gvcfs_bucket: str,
+    input_metadata_bucket: Optional[str],
     work_bucket: str,
     output_bucket: str,
     callset_batches: List[str],
-    skip_input_meta: bool,
     overwrite: bool,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
     :param input_gvcfs_bucket: bucket with GVCFs batches as subfolders
+    :param input_metadata_bucket: bucket with metadata batches as subfolders
     :param work_bucket: bucket to write intermediate files to
     :param output_bucket: bucket to write the GVCF combiner inputs to
     :param callset_batches: list of the dataset batches identifiers
@@ -348,10 +359,14 @@ def _add_pre_combiner_jobs(
                 's', drop=False
             )
         else:
-            input_buckets = []
+            input_gvcf_buckets = []
+            input_metadata_buckets = []
             for cb in callset_batches:
-                input_buckets.append(join(input_gvcfs_bucket, cb))
-            samples_df = utils.find_inputs(input_buckets, skip_qc=skip_input_meta)
+                input_gvcf_buckets.append(join(input_gvcfs_bucket, cb))
+                if input_metadata_bucket:
+                    input_metadata_buckets.append(join(input_metadata_bucket, cb))
+            samples_df = utils.find_inputs(input_gvcf_buckets, input_metadata_buckets)
+
         samples_df = samples_df[pd.notnull(samples_df.s)]
         gvcfs = [
             b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
@@ -430,7 +445,7 @@ def _add_prep_gvcfs_for_combiner_steps(
             output_gvcf_path=output_gvcf_path,
             noalt_regions=noalt_regions,
         )
-        if not utils.file_exists(output_gvcf_path)
+        if not utils.file_exists(output_gvcf_path) or overwrite
         else b.new_job('SubsetToNoalt [reuse]')
         for input_gvcf, output_gvcf_path in [
             (gvcf, join(output_gvcf_bucket, f'{sample}.g.vcf.gz'))

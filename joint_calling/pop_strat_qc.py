@@ -83,11 +83,13 @@ def make_mt_for_pca(
 def compute_relatedness(
     for_pca_mt: hl.MatrixTable,
     work_bucket: str,
+    out_ht_path: Optional[str] = None,
     overwrite: bool = False,
 ) -> hl.Table:
     """
     :param for_pca_mt: variants selected for PCA analysis
     :param work_bucket: path to write checkpoints
+    :param out_ht_path: path to write relatedness data
     :param overwrite: overwrite checkpoints if they exist
     :return: table with the following structure:
     Row fields:
@@ -101,7 +103,7 @@ def compute_relatedness(
     Key: ['i', 'j']
     """
     logger.info('Running relatedness check')
-    out_ht_path = join(work_bucket, 'relatedness.ht')
+    out_ht_path = out_ht_path or join(work_bucket, 'relatedness.ht')
     if not overwrite and file_exists(out_ht_path):
         return hl.read_table(out_ht_path)
 
