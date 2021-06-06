@@ -1,20 +1,18 @@
 #!/usr/bin/env python
 
 """
-This script takes a path to a matrix table, and then:
- - exports a sites-only VCF using Hail Query,
- - run a pipeline on Cromwell
- - Collect the results
+Convert matrix table to a sites-only VCF.
+Essentially a verbatim copy of: hail-ukbb-200k-callset:mt_to_vcf.py
 """
 
 import logging
 import click
 import hail as hl
-
+from gnomad.utils.vcf import adjust_vcf_incompatible_types
+from gnomad.utils.sparse_mt import default_compute_info
 from joint_calling import _version
 from joint_calling.utils import get_validation_callback, init_hail, file_exists
 from joint_calling import utils
-from joint_calling.mt_to_vcf import mt_to_sites_only_mt
 
 logger = logging.getLogger('vqsr_qc')
 logging.basicConfig(
@@ -117,17 +115,50 @@ def export_sites_only_vcf(
     Take initial matrix table, convert to sites-only matrix table, then export to vcf
     """
     logger.info('Converting matrix table to sites-only matrix table')
-    final_mt = mt_to_sites_only_mt(mt, n_partitions)
-
-    # export vcf, and return the path
-
+    ht = mt_to_sites_only_ht(mt, n_partitions)
     logger.info(
         f"Exporting sites-only VCF to '{output_path}' to run in the VQSR pipeline"
     )
-    hl.export_vcf(final_mt, output_path)
+    hl.export_vcf(ht, output_path)
     logger.info('Successfully exported sites-only VCF')
 
     return output_path
+
+
+def mt_to_sites_only_ht(mt: hl.MatrixTable, n_partitions: int) -> hl.Table:
+    """
+    Convert matrix table (mt) into sites-only VCF-ready table (ht)
+    :param mt: multi-sample matrix table
+    :param n_partitions: number of partitions for the output table
+    :return: hl.Table
+    """
+
+    mt = _filter_rows_and_add_tags(mt)
+    ht = _create_info_ht(mt, n_partitions=n_partitions)
+    ht = adjust_vcf_incompatible_types(ht)
+    return ht
+
+
+def _filter_rows_and_add_tags(mt: hl.MatrixTable) -> hl.MatrixTable:
+    """Filter rows and add tags"""
+    mt = hl.experimental.densify(mt)
+    # Filter to only non-reference sites
+    mt = mt.filter_rows((hl.len(mt.alleles) > 1) & (hl.agg.any(mt.LGT.is_non_ref())))
+
+    # annotate site level DP as site_dp onto the mt rows to avoid name collision
+    mt = mt.annotate_rows(site_dp=hl.agg.sum(mt.DP))
+
+    # Add AN tag as ANS
+    return mt.annotate_rows(ANS=hl.agg.count_where(hl.is_defined(mt.LGT)) * 2)
+
+
+def _create_info_ht(mt: hl.MatrixTable, n_partitions: int) -> hl.Table:
+    """Create info table from vcf matrix table"""
+    info_ht = default_compute_info(mt, site_annotations=True, n_partitions=n_partitions)
+    info_ht = info_ht.annotate(
+        info=info_ht.info.annotate(DP=mt.rows()[info_ht.key].site_dp)
+    )
+    return info_ht
 
 
 if __name__ == '__main__':
