@@ -21,7 +21,7 @@ from gnomad.utils.sparse_mt import (
     split_info_annotation,
     split_lowqual_annotation,
 )
-from gnomad.utils.vcf import ht_to_vcf_mt
+from gnomad.utils.vcf import adjust_vcf_incompatible_types
 
 from joint_calling.utils import file_exists
 from joint_calling import utils, _version
@@ -194,7 +194,7 @@ def compute_info(
         split_info_ht.write(out_split_ht_path, overwrite=True)
 
     if out_vcf_path and (overwrite or not file_exists(out_vcf_path)):
-        hl.export_vcf(ht_to_vcf_mt(info_ht), out_vcf_path)
+        hl.export_vcf(adjust_vcf_incompatible_types(info_ht), out_vcf_path)
 
     return info_ht
 
