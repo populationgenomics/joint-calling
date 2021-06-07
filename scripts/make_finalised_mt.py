@@ -8,7 +8,7 @@ import logging
 import click
 import hail as hl
 
-from joint_calling.utils import get_validation_callback, get_mt
+from joint_calling.utils import get_validation_callback, get_mt, file_exists
 from joint_calling import utils, _version
 
 logger = logging.getLogger('joint-calling')
@@ -74,6 +74,15 @@ def main(
     """
     utils.init_hail('make_finalised_mt', local_tmp_dir)
 
+    if file_exists(out_mt_path):
+        if overwrite:
+            logger.info(f'Output {out_mt_path} exists and will be overwritten')
+        else:
+            logger.info(
+                f'Output file {out_mt_path} exists, use --overwrite to overwrite'
+            )
+            return
+
     mt = get_mt(
         mt_path,
         split=True,
@@ -84,7 +93,7 @@ def main(
     var_qc_ht = hl.read_table(var_qc_final_filter_ht_path)
     mt = mt.annotate_rows(**var_qc_ht[mt.row_key])
     mt = mt.annotate_globals(**var_qc_ht.index_globals())
-    mt.write(out_mt_path)
+    mt.write(out_mt_path, overwrite=True)
 
 
 if __name__ == '__main__':
