@@ -78,7 +78,7 @@ def main(
         if overwrite:
             logger.info(f'Output {out_mt_path} exists and will be overwritten')
         else:
-            logger.info(
+            logger.error(
                 f'Output file {out_mt_path} exists, use --overwrite to overwrite'
             )
             return
