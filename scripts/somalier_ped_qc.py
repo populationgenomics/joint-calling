@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 
 import os
 import hailtop.batch as hb
@@ -94,7 +94,7 @@ def main(
     batch: hb.Batch = None,
     # checkpointing
     somalier_files=None,
-):
+) -> Tuple[hb.Batch, hb.Job]:
     if batch is None:
         batch = hb.Batch('somalier-pedigree-checks')
 
@@ -146,7 +146,9 @@ cp somalier.pairs.tsv {pairs_report}
     batch.write_output(samples_report, os.path.join(output_dir, 'somalier.samples.tsv'))
     batch.write_output(pairs_report, os.path.join(output_dir, 'somalier.pairs.tsv'))
 
-    return batch
+    last_job = report_job
+
+    return batch, last_job
 
 
 def na12878_test():
