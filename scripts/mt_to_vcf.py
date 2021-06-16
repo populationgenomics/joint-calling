@@ -140,9 +140,16 @@ def mt_to_sites_only_ht(mt: hl.MatrixTable, n_partitions: int) -> hl.Table:
 
 
 def _filter_rows_and_add_tags(mt: hl.MatrixTable) -> hl.MatrixTable:
-    """Filter rows and add tags"""
     mt = hl.experimental.densify(mt)
-    # Filter to only non-reference sites
+
+    # Filter to only non-reference sites.
+    # An examle of a variant with hl.len(mt.alleles) > 1 BUT NOT
+    # hl.agg.any(mt.LGT.is_non_ref()) is a variant that spans a deletion,
+    # which was however filtered out, so the LGT was set to NA, however the site
+    # was preserved to account for the presence of that spanning deletion.
+    # locus   alleles    LGT
+    # chr1:1 ["GCT","G"] 0/1
+    # chr1:3 ["T","*"]   NA
     mt = mt.filter_rows((hl.len(mt.alleles) > 1) & (hl.agg.any(mt.LGT.is_non_ref())))
 
     # annotate site level DP as site_dp onto the mt rows to avoid name collision
