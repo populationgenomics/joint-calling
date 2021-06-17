@@ -396,8 +396,6 @@ def _add_prep_gvcfs_for_combiner_steps(
     samples_df: pd.DataFrame,
     output_gvcf_bucket: str,
     overwrite: bool,
-    reuse_scratch_run_id: Optional[str] = None,
-    hail_bucket: Optional[str] = None,
 ) -> List[Job]:
     """
     Add steps required to prepare GVCFs from combining
@@ -406,36 +404,8 @@ def _add_prep_gvcfs_for_combiner_steps(
     :param samples_df: pandas dataframe with metadata and raw GVCF paths
     :param output_gvcf_bucket: bucket to write the combiner-ready GVCFs to
     :param overwrite: overwrite existing intemridate files
-    :param reuse_scratch_run_id: ID of a Batch run to reuse the intermediate files
-    :param hail_bucket: bucket to find the previous Batch run intermediate files
     :return: list of Batch jobs
     """
-
-    # If we want to re-use the intermediate files from a previous run,
-    # find them using the Batch run ID of a previous run with --keep-scratch enabled.
-    found_reblocked_gvcf_paths = [
-        join(
-            str(hail_bucket),
-            'batch',
-            reuse_scratch_run_id,
-            str(job_num),
-            'output_gvcf.g.vcf.gz',
-        )
-        if reuse_scratch_run_id
-        else None
-        for job_num in range(1, 1 + len(gvcfs))
-    ]
-    reblocked_gvcfs = [
-        b.read_input_group(
-            **{
-                'vcf.gz': found_gvcf_path,
-                'vcf.gz.tbi': found_gvcf_path + '.tbi',
-            }
-        )
-        if (not overwrite and found_gvcf_path and utils.file_exists(found_gvcf_path))
-        else _add_reblock_gvcfs_step(b, input_gvcf).output_gvcf
-        for found_gvcf_path, input_gvcf in zip(found_reblocked_gvcf_paths, gvcfs)
-    ]
 
     noalt_regions = b.read_input('gs://cpg-reference/hg38/v0/noalt.bed')
     subset_gvcf_jobs = [
@@ -449,45 +419,12 @@ def _add_prep_gvcfs_for_combiner_steps(
         else b.new_job('SubsetToNoalt [reuse]')
         for input_gvcf, output_gvcf_path in [
             (gvcf, join(output_gvcf_bucket, f'{sample}.g.vcf.gz'))
-            for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)
+            for sample, gvcf in zip(list(samples_df.s), gvcfs)
         ]
     ]
     for sn in samples_df.s:
         samples_df.loc[sn, ['gvcf']] = join(output_gvcf_bucket, sn + '.g.vcf.gz')
     return subset_gvcf_jobs
-
-
-def _add_reblock_gvcfs_step(
-    b: hb.Batch,
-    input_gvcf: hb.ResourceGroup,
-) -> Job:
-    """
-    Runs ReblockGVCF to annotate with allele-specific VCF INFO fields
-    required for recalibration
-    """
-    j = b.new_job('ReblockGVCF')
-    j.image(utils.GATK_DOCKER)
-    mem_gb = 8
-    j.memory(f'{mem_gb}G')
-    j.storage(f'30G')
-    j.declare_resource_group(
-        output_gvcf={
-            'g.vcf.gz': '{root}.g.vcf.gz',
-            'g.vcf.gz.tbi': '{root}.g.vcf.gz.tbi',
-        }
-    )
-
-    j.command(
-        f"""
-    gatk --java-options "-Xms{mem_gb - 1}g" \\
-        ReblockGVCF \\
-        -V {input_gvcf['g.vcf.gz']} \\
-        --drop-low-quals \\
-        -do-qual-approx \\
-        -O {j.output_gvcf['g.vcf.gz']} \\
-        --create-output-variant-index true"""
-    )
-    return j
 
 
 def _add_subset_noalt_step(
