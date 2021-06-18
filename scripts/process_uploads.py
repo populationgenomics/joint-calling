@@ -65,11 +65,13 @@ def determine_samples(
 
 def generate_file_list(samples: List[str]):
     """ Generate list of expected files, given a list of sampleIDs """
-    main_files: List[str] = []
-    archive_files: List[str] = []
+    main_files = []
+    archive_files = []
     for s in samples:
-        main_files.extend([f'{s}.g.vcf.gz', f'{s}.g.vcf.gz.tbi', f'{s}.g.vcf.gz.md5'])
-        archive_files.extend([f'{s}.cram', f'{s}.cram.crai', f'{s}.cram.md5'])
+        sample_group_main = [f'{s}.g.vcf.gz', f'{s}.g.vcf.gz.tbi', f'{s}.g.vcf.gz.md5']
+        main_files.append(sample_group_main)
+        sample_group_archive = [f'{s}.cram', f'{s}.cram.crai', f'{s}.cram.md5']
+        archive_files.append(sample_group_archive)
 
     return main_files, archive_files
 
@@ -118,25 +120,40 @@ def run_processor(
 
     batch = hb.Batch(name='Process files', backend=service_backend)
 
-    # Moving the files to the main bucket
-    main_jobs = batch_move_files(
-        batch,
-        main_files,
-        upload_path,
-        main_path,
-        docker_image,
-        key,
-    )
+    main_jobs = []
+    for sample_group in main_files:
 
-    # Moving the files to the archive bucket
-    archive_jobs = batch_move_files(
-        batch,
-        archive_files,
-        upload_path,
-        archive_path,
-        docker_image,
-        key,
-    )
+        # Moving the files to the main bucket
+        sample_group_main_jobs = batch_move_files(
+            batch,
+            sample_group,
+            upload_path,
+            main_path,
+            docker_image,
+            key,
+        )
+
+        validate_md5 = batch.new_job(name=f'Validate MD5')
+        validate_md5.image(docker_image)
+        validate_md5.depends_on(*sample_group_main_jobs)
+        main_jobs.append(validate_md5)
+
+    archive_jobs = []
+    for sample_group in archive_files:
+        # Moving the files to the archive bucket
+        sample_group_archive_jobs = batch_move_files(
+            batch,
+            sample_group,
+            upload_path,
+            archive_path,
+            docker_image,
+            key,
+        )
+
+        validate_md5 = batch.new_job(name=f'Validate MD5')
+        validate_md5.image(docker_image)
+        validate_md5.depends_on(*sample_group_archive_jobs)
+        archive_jobs.append(validate_md5)
 
     # Move the csv file to the metadata bucket, after the gVCFs and CRAMs have been
     # moved to the main and archive buckets.
