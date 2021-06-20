@@ -96,14 +96,14 @@ def validate_md5(job: hb.batch.job, sample_group: List[str], upload_path: str):
     and comparing this with the uploaded .md5."""
 
     # Generate paths to files that are being validated
-    sample_gvcf = sample_group[0]
+    sample_data = sample_group[0]
     md5_file = sample_group[2]
-    path_to_gvcf = join('gs://', upload_path, sample_gvcf)
+    path_to_data = join('gs://', upload_path, sample_data)
     path_to_md5 = join('gs://', upload_path, md5_file)
 
     # Calculate md5 checksum.
     job.command(
-        f'gsutil cat {path_to_gvcf} | md5sum | sed "s/-/{sample_gvcf}/" > {job.ofile}'
+        f'gsutil cat {path_to_data} | md5sum | sed "s/-/{sample_data}/" > {job.ofile}'
     )
     job.command(f'diff <( cat {job.ofile} ) <(gsutil cat {path_to_md5})')
 
