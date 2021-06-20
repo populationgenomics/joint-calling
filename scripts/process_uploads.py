@@ -82,10 +82,7 @@ def setup_job(batch: hb.batch, name: str, docker_image: Optional[str]):
     new_j = batch.new_job(name=name)
     if docker_image is not None:
         new_j.image(docker_image)
-    # Uncomment for local testing.
-    # key = os.environ.get('GSA_KEY')
-    # new_j.command(f"echo '{key}' > /tmp/key.json")
-    # new_j.command(f'gcloud -q auth activate-service-account --key-file=/tmp/key.json')
+
     new_j.command(
         'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
     )
