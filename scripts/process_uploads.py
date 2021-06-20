@@ -11,7 +11,7 @@ import os
 import io
 import csv
 from os.path import join, basename
-from typing import List
+from typing import List, Optional
 import click
 import hailtop.batch as hb
 from google.cloud import storage
@@ -76,6 +76,42 @@ def generate_file_list(samples: List[str]):
     return main_files, archive_files
 
 
+def setup_job(batch: hb.batch, name: str, docker_image: Optional[str]):
+    """ Define a new hail batch job """
+
+    new_j = batch.new_job(name=name)
+    new_j.image(docker_image)
+    # Uncomment for local testing.
+    # key = os.environ.get('GSA_KEY')
+    # new_j.command(f"echo '{key}' > /tmp/key.json")
+    # new_j.command(f'gcloud -q auth activate-service-account --key-file=/tmp/key.json')
+    new_j.command(
+        'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
+    )
+
+    return new_j
+
+
+def validate_md5(job: hb.batch.job, sample_group: List[str], upload_path: str):
+    """Each gvcf and cram file is uploaded with a corresponding md5 checksum.
+    This function validates each .md5 file, by recalculating the md5 checksum
+    and comparing this with the uploaded .md5."""
+
+    # Generate paths to files that are being validated
+    sample_gvcf = sample_group[0]
+    md5_file = sample_group[2]
+    path_to_gvcf = join('gs://', upload_path, sample_gvcf)
+    path_to_md5 = join('gs://', upload_path, md5_file)
+
+    # Calculate md5 checksum.
+    job.command(
+        f'gsutil cat {path_to_gvcf} | md5sum | sed "s/-/{sample_gvcf}/" > {job.ofile}'
+    )
+    job.command(f'diff <( cat {job.ofile} ) <(gsutil cat {path_to_md5})')
+
+    return job
+
+
 @click.command()
 @click.option('--batch_number')
 def run_processor(
@@ -133,10 +169,10 @@ def run_processor(
             key,
         )
 
-        validate_md5 = batch.new_job(name=f'Validate MD5')
-        validate_md5.image(docker_image)
-        validate_md5.depends_on(*sample_group_main_jobs)
-        main_jobs.append(validate_md5)
+        validate_job = setup_job(batch, 'Validate MD5', docker_image)
+        validate_job = validate_md5(validate_job, sample_group, main_path)
+        validate_job.depends_on(*sample_group_main_jobs)
+        main_jobs.append(validate_job)
 
     archive_jobs = []
     for sample_group in archive_files:
@@ -149,19 +185,14 @@ def run_processor(
             docker_image,
             key,
         )
-
-        validate_md5 = batch.new_job(name=f'Validate MD5')
-        validate_md5.image(docker_image)
-        validate_md5.depends_on(*sample_group_archive_jobs)
-        archive_jobs.append(validate_md5)
+        validate_job = setup_job(batch, 'Validate MD5', docker_image)
+        validate_job = validate_md5(validate_job, sample_group, main_path)
+        validate_job.depends_on(*sample_group_archive_jobs)
+        archive_jobs.append(validate_job)
 
     # Move the csv file to the metadata bucket, after the gVCFs and CRAMs have been
     # moved to the main and archive buckets.
-    csv_job = batch.new_job(name=f'Move {basename(csv_path)}')
-    csv_job.image(docker_image)
-    csv_job.command(
-        'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
-    )
+    csv_job = setup_job(batch, f'Move {basename(csv_path)}', docker_image)
     csv_job.command(f'gsutil mv gs://{csv_path} gs://{metadata_bucket}/{batch_path}/')
     csv_job.depends_on(*main_jobs)
     csv_job.depends_on(*archive_jobs)
