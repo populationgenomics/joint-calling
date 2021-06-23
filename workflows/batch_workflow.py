@@ -482,7 +482,6 @@ def _add_reblock_gvcfs_step(
     gatk --java-options "-Xms{mem_gb - 1}g" \\
         ReblockGVCF \\
         -V {input_gvcf['g.vcf.gz']} \\
-        --drop-low-quals \\
         -do-qual-approx \\
         -O {j.output_gvcf['g.vcf.gz']} \\
         --create-output-variant-index true"""
