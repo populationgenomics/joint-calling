@@ -13,13 +13,21 @@
     - User must be authenticated with appropriate permissions """
 
 import os
-from typing import List, Optional
+from typing import List, Optional, NamedTuple
 import hailtop.batch as hb
+
+
+class SampleGroup(NamedTuple):
+    """ Defines a group of files associated with each sample"""
+
+    data_file: str
+    tbi: str
+    md5: str
 
 
 def batch_move_files(
     batch: hb.batch,
-    files: List[str],
+    files: SampleGroup,
     source_prefix: str,
     destination_prefix: str,
     docker_image: Optional[str] = None,
@@ -32,9 +40,9 @@ def batch_move_files(
     ==========
     batch: hb.Batch
         An object representing the DAG of jobs to run.
-    files: List[str]
-        A list of the file names to be moved.
-        For example ["TOB1543.g.vcf.gz","TOB2314.g.vcf.gz","TOB3423.g.vcf.gz"]
+    files: SampleGroup
+        A NamedTuple containing 3 files to be moved.
+        For example ["TOB1543.g.vcf.gz","TOB1543.g.vcf.tbi","TOB1543.g.vcf.md5"]
     source_prefix: str
         The path to the sub-directory where the files are initially located.
         For example "cpg-tob-wgs-upload" or "cpg-tob-wgs-upload/v1"

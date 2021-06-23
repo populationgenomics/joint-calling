@@ -10,15 +10,15 @@ most recently updated CSV and the CSV uploaded in a previous batch run.
 import os
 import io
 import csv
-from os.path import join, basename
-from typing import List, Optional
+from os.path import basename, join
+from typing import List, Optional, Set, Tuple
 import click
 import hailtop.batch as hb
 from google.cloud import storage
-from joint_calling.upload_processor import batch_move_files
+from joint_calling.upload_processor import batch_move_files, SampleGroup
 
 
-def samples_from_csv(bucket_name, prefix):
+def samples_from_csv(bucket_name, prefix) -> Tuple[List[str], str]:
     """Determines list of samples from a csv file within a specified bucket
 
     Assumptions
@@ -44,7 +44,7 @@ def samples_from_csv(bucket_name, prefix):
 
 def determine_samples(
     upload_bucket: str, upload_prefix: str, metadata_bucket: str, metadata_prefix: str
-):
+) -> Tuple[Set[str], str]:
     """Determine files that should be moved to main vs archive bucket.
     Determines the difference between the latest CSV file within upload
     and the CSV file from the most recent batch as the list of samples to
@@ -63,49 +63,52 @@ def determine_samples(
     return samples, curr_csv_file_path
 
 
-def generate_file_list(samples: List[str]):
-    """ Generate list of expected files, given a list of sampleIDs """
+def generate_file_list(
+    samples: Set[str],
+) -> Tuple[List[SampleGroup], List[SampleGroup]]:
+    """ Generate list of expected files, given a list of samples """
     main_files = []
     archive_files = []
     for s in samples:
-        sample_group_main = [f'{s}.g.vcf.gz', f'{s}.g.vcf.gz.tbi', f'{s}.g.vcf.gz.md5']
+        sample_group_main = SampleGroup(
+            f'{s}.g.vcf.gz', f'{s}.g.vcf.gz.tbi', f'{s}.g.vcf.gz.md5'
+        )
         main_files.append(sample_group_main)
-        sample_group_archive = [f'{s}.cram', f'{s}.cram.crai', f'{s}.cram.md5']
+        sample_group_archive = SampleGroup(
+            f'{s}.cram', f'{s}.cram.crai', f'{s}.cram.md5'
+        )
         archive_files.append(sample_group_archive)
 
     return main_files, archive_files
 
 
-def setup_job(batch: hb.batch, name: str, docker_image: Optional[str]):
-    """ Define a new hail batch job """
+def setup_job(batch: hb.batch, name: str, docker_image: Optional[str]) -> hb.batch.job:
+    """ Returns a new Hail Batch job that activates the Google service account. """
 
-    new_j = batch.new_job(name=name)
+    job = batch.new_job(name=name)
     if docker_image is not None:
-        new_j.image(docker_image)
+        job.image(docker_image)
 
-    new_j.command(
-        'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
-    )
+    job.command('gcloud -q auth activate-service-account --key-file=/gsa-key/key.json')
 
-    return new_j
+    return job
 
 
-def validate_md5(job: hb.batch.job, sample_group: List[str], upload_path: str):
+def validate_md5(
+    job: hb.batch.job, sample_group: SampleGroup, upload_path: str
+) -> hb.batch.job:
     """Each gvcf and cram file is uploaded with a corresponding md5 checksum.
-    This function validates each .md5 file, by recalculating the md5 checksum
-    and comparing this with the uploaded .md5."""
+    This function appends commands to the job that moves these files, to validate each .md5 file."""
 
     # Generate paths to files that are being validated
-    sample_data = sample_group[0]
-    md5_file = sample_group[2]
-    path_to_data = join('gs://', upload_path, sample_data)
-    path_to_md5 = join('gs://', upload_path, md5_file)
+    path_to_data = join('gs://', upload_path, sample_group.data_file)
+    path_to_md5 = join('gs://', upload_path, sample_group.md5)
 
     # Calculate md5 checksum.
     job.command(
-        f'gsutil cat {path_to_data} | md5sum | sed "s/-/{sample_data}/" > {job.ofile}'
+        f'gsutil cat {path_to_data} | md5sum | sed "s/-/{sample_group.data_file}/" > /tmp/{sample_group.md5}'
     )
-    job.command(f'diff <( cat {job.ofile} ) <(gsutil cat {path_to_md5})')
+    job.command(f'diff /tmp/{sample_group.md5} <(gsutil cat {path_to_md5})')
 
     return job
 
@@ -156,7 +159,6 @@ def run_processor(
 
     main_jobs = []
     for sample_group in main_files:
-
         # Moving the files to the main bucket
         sample_group_main_jobs = batch_move_files(
             batch,
@@ -184,7 +186,7 @@ def run_processor(
             key,
         )
         validate_job = setup_job(batch, 'Validate MD5', docker_image)
-        validate_job = validate_md5(validate_job, sample_group, main_path)
+        validate_job = validate_md5(validate_job, sample_group, archive_path)
         validate_job.depends_on(*sample_group_archive_jobs)
         archive_jobs.append(validate_job)
 
