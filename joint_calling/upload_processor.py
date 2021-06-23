@@ -21,7 +21,7 @@ class SampleGroup(NamedTuple):
     """ Defines a group of files associated with each sample"""
 
     data_file: str
-    tbi: str
+    index: str
     md5: str
 
 
