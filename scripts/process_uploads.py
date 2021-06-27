@@ -3,95 +3,84 @@
 Processes a new batch of samples from the UPLOAD bucket,
 into the MAIN and ARCHIVE buckets using the batch_move_files function. 
 
-Determines the files to be moved through a comparison of the 
-most recently updated CSV and the CSV uploaded in a previous batch run. 
+Assumes that the csv file has been processed in a previous step. 
 """
 
 import os
-import io
-import csv
-from os.path import basename, join
-from typing import List, Optional, Set, Tuple
+from os.path import join
+from typing import List, Optional, Tuple
 import click
 import hailtop.batch as hb
-from google.cloud import storage
+
+# Import SampleAPI
+from sample_metadata.api.sample_api import SampleApi
 from joint_calling.upload_processor import batch_move_files, SampleGroup
 
 
-def samples_from_csv(bucket_name, prefix) -> Tuple[List[str], str]:
-    """Determines list of samples from a csv file within a specified bucket
+# Reading CSV pulled out into separate function.
 
-    Assumptions
-    ==========
-    Only one .csv file exists in the upload bucket and previous batch directory.
-    """
 
-    client = storage.Client()
-    bucket = client.get_bucket(bucket_name)
+def get_samples_from_db() -> List[str]:
+    """ Pulls list of samples to be moved from SampleMetadata DB """
 
-    all_blobs = list(client.list_blobs(bucket_name, prefix=prefix))
-    csv_path = next(filter(lambda blob: blob.name.endswith('.csv'), all_blobs)).name
-
-    blob = bucket.get_blob(csv_path).download_as_text()
-    csv_reader = csv.DictReader(io.StringIO(blob))
-
+    sapi = SampleApi()
     samples: List[str] = []
-    for row in csv_reader:
-        samples.append(row['sample.sample_name'])
 
-    return samples, csv_path
+    # Returns a list of all samples with status == uploaded
+    # Alternatively, could return all samples that were not included in the latest .mt analysis.
+    samples = sapi.get_latest_uploads()  # TO IMPLEMENT: API CALL
 
-
-def determine_samples(
-    upload_bucket: str, upload_prefix: str, metadata_bucket: str, metadata_prefix: str
-) -> Tuple[Set[str], str]:
-    """Determine files that should be moved to main vs archive bucket.
-    Determines the difference between the latest CSV file within upload
-    and the CSV file from the most recent batch as the list of samples to
-    be moved.
-    """
-    all_samples: List[str] = []
-    previous_samples: List[str] = []
-
-    all_samples, csv_path_upload = samples_from_csv(upload_bucket, upload_prefix)
-    previous_samples, _ = samples_from_csv(metadata_bucket, metadata_prefix)
-
-    samples = set(all_samples) - set(previous_samples)
-
-    curr_csv_file_path = join(upload_bucket, csv_path_upload)
-
-    return samples, curr_csv_file_path
+    # The upload of these filse is to be handled in a separate function.
+    return samples
 
 
 def generate_file_list(
-    samples: Set[str],
+    samples: List[str],
 ) -> Tuple[List[SampleGroup], List[SampleGroup]]:
     """ Generate list of expected files, given a list of samples """
     main_files = []
     archive_files = []
     for s in samples:
         sample_group_main = SampleGroup(
-            f'{s}.g.vcf.gz', f'{s}.g.vcf.gz.tbi', f'{s}.g.vcf.gz.md5'
+            s, f'{s}.g.vcf.gz', f'{s}.g.vcf.gz.tbi', f'{s}.g.vcf.gz.md5'
         )
         main_files.append(sample_group_main)
         sample_group_archive = SampleGroup(
-            f'{s}.cram', f'{s}.cram.crai', f'{s}.cram.md5'
+            s, f'{s}.cram', f'{s}.cram.crai', f'{s}.cram.md5'
         )
         archive_files.append(sample_group_archive)
 
     return main_files, archive_files
 
 
-def setup_job(batch: hb.batch, name: str, docker_image: Optional[str]) -> hb.batch.job:
+def setup_job(
+    batch: hb.batch, name: str, docker_image: Optional[str], job_type: str
+) -> hb.batch.job:
     """ Returns a new Hail Batch job that activates the Google service account. """
 
-    job = batch.new_job(name=name)
+    # Fix this.
+    if job_type == 'python':
+        job = batch.new_python_job(name=name)
+    else:
+        job = batch.new_job(name=name)
+
     if docker_image is not None:
         job.image(docker_image)
 
     job.command('gcloud -q auth activate-service-account --key-file=/gsa-key/key.json')
 
     return job
+
+
+# Optional.
+def update_status(sample_group: SampleGroup):
+    """ Updates the status of a given sample """
+    # Update the status of the sample group that you just uploaded.
+    sapi = SampleApi()
+    # Depending on preferred implementation, this could be something like "Processed" or "Ready"
+    sapi.update_sample_status(
+        sample_group.sample_id, 'Active'
+    )  # TO IMPLEMENT: API CALL
 
 
 def validate_md5(
@@ -131,23 +120,18 @@ def run_processor(
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
     batch_path = f'batch{batch_number}'
-    prev_batch = f'batch{int(batch_number)-1}'
     upload_bucket = f'cpg-{project}-upload'
     upload_prefix = ''
     upload_path = join(upload_bucket, upload_prefix)
     main_bucket = f'cpg-{project}-main'
     main_prefix = join('gvcf', batch_path)
     main_path = join(main_bucket, main_prefix)
-    metadata_bucket = f'cpg-{project}-main-metadata'
     archive_path = join(f'cpg-{project}-archive', 'cram', batch_path)
 
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
 
-    # Determine files to be processed
-    samples, csv_path = determine_samples(
-        upload_bucket, upload_prefix, metadata_bucket, prev_batch
-    )
+    samples = get_samples_from_db()
     main_files, archive_files = generate_file_list(samples)
 
     service_backend = hb.ServiceBackend(
@@ -157,7 +141,6 @@ def run_processor(
 
     batch = hb.Batch(name='Process files', backend=service_backend)
 
-    main_jobs = []
     for sample_group in main_files:
         # Moving the files to the main bucket
         sample_group_main_jobs = batch_move_files(
@@ -169,12 +152,19 @@ def run_processor(
             key,
         )
 
-        validate_job = setup_job(batch, 'Validate MD5', docker_image)
+        validate_job = setup_job(
+            batch, f'Validate MD5 {sample_group.sample_id}', docker_image, 'bash'
+        )
         validate_job = validate_md5(validate_job, sample_group, main_path)
         validate_job.depends_on(*sample_group_main_jobs)
-        main_jobs.append(validate_job)
 
-    archive_jobs = []
+        # After each sample is moved, update the status in the SampleMetadata DB to reflect the change in status
+        status_job = setup_job(
+            batch, f'Update Status {sample_group.sample_id}', docker_image, 'python'
+        )
+        status_job.call(update_status, sample_group)
+        status_job.depends_on(validate_job)
+
     for sample_group in archive_files:
         # Moving the files to the archive bucket
         sample_group_archive_jobs = batch_move_files(
@@ -185,17 +175,17 @@ def run_processor(
             docker_image,
             key,
         )
-        validate_job = setup_job(batch, 'Validate MD5', docker_image)
+        validate_job = setup_job(
+            batch, f'Validate MD5 {sample_group.sample_id}', docker_image, 'bash'
+        )
         validate_job = validate_md5(validate_job, sample_group, archive_path)
         validate_job.depends_on(*sample_group_archive_jobs)
-        archive_jobs.append(validate_job)
 
-    # Move the csv file to the metadata bucket, after the gVCFs and CRAMs have been
-    # moved to the main and archive buckets.
-    csv_job = setup_job(batch, f'Move {basename(csv_path)}', docker_image)
-    csv_job.command(f'gsutil mv gs://{csv_path} gs://{metadata_bucket}/{batch_path}/')
-    csv_job.depends_on(*main_jobs)
-    csv_job.depends_on(*archive_jobs)
+        status_job = setup_job(
+            batch, f'Update Status {sample_group.sample_id}', docker_image, 'python'
+        )
+        status_job.call(update_status, sample_group)
+        status_job.depends_on(validate_job)
 
     batch.run()
 

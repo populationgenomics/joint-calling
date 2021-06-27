@@ -16,10 +16,14 @@ import os
 from typing import List, Optional, NamedTuple
 import hailtop.batch as hb
 
+# Import SampleAPI
+from sample_metadata.api.sample_api import SampleApi
+
 
 class SampleGroup(NamedTuple):
     """ Defines a group of files associated with each sample"""
 
+    sample_id: str
     data_file: str
     index_file: str
     md5: str
@@ -69,9 +73,14 @@ def batch_move_files(
     jobs = []
     for sample in files:
         previous_location = os.path.join('gs://', source_prefix, sample)
-        new_location = os.path.join('gs://', destination_prefix, sample)
 
-        j = batch.new_job(name=f'move {sample}')
+        # Get internal sample ID
+        sapi = SampleApi()
+        internal_id = sapi.get_internal_id(sample)  # TO IMPLEMENT: API CALL
+
+        new_location = os.path.join('gs://', destination_prefix, internal_id)
+
+        j = batch.new_job(name=f'move {sample} -> {internal_id}')
 
         if docker_image is not None:
             j.image(docker_image)
