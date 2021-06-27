@@ -54,15 +54,11 @@ def generate_file_list(
 
 
 def setup_job(
-    batch: hb.batch, name: str, docker_image: Optional[str], job_type: str
+    batch: hb.batch, name: str, docker_image: Optional[str], python_job: bool = False
 ) -> hb.batch.job:
     """ Returns a new Hail Batch job that activates the Google service account. """
 
-    # Fix this.
-    if job_type == 'python':
-        job = batch.new_python_job(name=name)
-    else:
-        job = batch.new_job(name=name)
+    job = batch.new_python_job(name=name) if python_job else batch.new_job(name=name)
 
     if docker_image is not None:
         job.image(docker_image)
@@ -153,14 +149,14 @@ def run_processor(
         )
 
         validate_job = setup_job(
-            batch, f'Validate MD5 {sample_group.sample_id}', docker_image, 'bash'
+            batch, f'Validate MD5 {sample_group.sample_id}', docker_image
         )
         validate_job = validate_md5(validate_job, sample_group, main_path)
         validate_job.depends_on(*sample_group_main_jobs)
 
         # After each sample is moved, update the status in the SampleMetadata DB to reflect the change in status
         status_job = setup_job(
-            batch, f'Update Status {sample_group.sample_id}', docker_image, 'python'
+            batch, f'Update Status {sample_group.sample_id}', docker_image, True
         )
         status_job.call(update_status, sample_group)
         status_job.depends_on(validate_job)
@@ -176,13 +172,13 @@ def run_processor(
             key,
         )
         validate_job = setup_job(
-            batch, f'Validate MD5 {sample_group.sample_id}', docker_image, 'bash'
+            batch, f'Validate MD5 {sample_group.sample_id}', docker_image
         )
         validate_job = validate_md5(validate_job, sample_group, archive_path)
         validate_job.depends_on(*sample_group_archive_jobs)
 
         status_job = setup_job(
-            batch, f'Update Status {sample_group.sample_id}', docker_image, 'python'
+            batch, f'Update Status {sample_group.sample_id}', docker_image, True
         )
         status_job.call(update_status, sample_group)
         status_job.depends_on(validate_job)
