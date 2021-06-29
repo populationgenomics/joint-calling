@@ -1,8 +1,24 @@
 #!/usr/bin/env python
 
 """
-Run Random Forest variant QC
+Creates a Table with all necessary annotations for the random forest model.
+Annotations that are included:
+    Features for RF:
+        - InbreedingCoeff
+        - variant_type
+        - allele_type
+        - n_alt_alleles
+        - has_star
+        - AS_QD
+        - AS_pab_max
+        - AS_MQRankSum
+        - AS_SOR
+        - AS_ReadPosRankSum
+    Training sites (bool):
+        - transmitted_singleton
+        - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
 """
+
 from os.path import join
 import logging
 import click
@@ -142,26 +158,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     n_partitions: int,
     use_adj_genotypes: bool,
     overwrite: bool,  # pylint: disable=unused-argument
-):
-    """
-    Creates a Table with all necessary annotations for the random forest model.
-    Annotations that are included:
-        Features for RF:
-            - InbreedingCoeff
-            - variant_type
-            - allele_type
-            - n_alt_alleles
-            - has_star
-            - AS_QD
-            - AS_pab_max
-            - AS_MQRankSum
-            - AS_SOR
-            - AS_ReadPosRankSum
-        Training sites (bool):
-            - transmitted_singleton
-            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
-    """
-
+):  # pylint: disable=missing-function-docstring
     local_tmp_dir = utils.init_hail('variant_qc_random_forest', local_tmp_dir)
 
     group = 'adj' if use_adj_genotypes else 'raw'

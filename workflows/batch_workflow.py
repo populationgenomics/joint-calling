@@ -209,18 +209,15 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     info_ht_path = join(sample_qc_bucket, 'info.ht')
     info_split_ht_path = join(sample_qc_bucket, 'info-split.ht')
-    info_vcf_path = join(sample_qc_bucket, 'info.vcf')
     if overwrite or any(
-        not utils.file_exists(fp)
-        for fp in [info_ht_path, info_split_ht_path, info_vcf_path]
+        not utils.file_exists(fp) for fp in [info_ht_path, info_split_ht_path]
     ):
         generate_info_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/generate_info_ht.py --overwrite '
             f'--mt {raw_combined_mt_path} '
             f'--out-info-ht {info_ht_path} '
-            f'--out-split-info-ht {info_split_ht_path} '
-            f'--out-info-vcf {info_vcf_path}',
+            f'--out-split-info-ht {info_split_ht_path}',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             # Adding more workers as this is a much longer step

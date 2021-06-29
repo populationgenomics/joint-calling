@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Combine a set of gVCFs and output a MatrixTable and a HailTable with QC metadata
+Combine a set of GVCFs into a MatrixTable
 """
 
 import os
@@ -95,26 +95,10 @@ def main(
     overwrite: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
     n_partitions: int,
-):
-    """
-    Runs the Hail
-    [vcf_combiner](https://hail.is/docs/0.2/experimental/vcf_combiner.html)
-    using the GVCF files specified in a `gvcf` column in the `sample_map_csv`
-    CSV file as input, and generates a multi-sample MatrixTable in a sparse
-    format, saved as `out_mt_path`. It also generates an accompanying table
-    in an HT format with a `.qc.ht` suffix, with the contents of the
-    sample map, which can be used for incremental adding of new samples,
-    as well as for running the QC.
-
-    If `existing_mt_path` is provided, uses that MatrixTable as a base to
-    extend with new samples. However, it will not overwrite `existing_mt_path`,
-    and instead write the new table to `out_mt_path`. It would also combine
-    the accompanying QC metadata HT tables and write the result with a
-    `.qc.ht` suffix.
-    """
+):  # pylint: disable=missing-function-docstring
     local_tmp_dir = utils.init_hail('combine_gvcfs', local_tmp_dir)
 
-    logger.info(f'Combining new samples')
+    logger.info(f'Combining GVCFs')
 
     if meta_csv_path:
         local_meta_csv_path = join(local_tmp_dir, basename(meta_csv_path))

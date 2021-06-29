@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Generates info.ht, info-split.ht, info.vcf, needed for 
+Generates info.ht, info-split.ht, needed for 
 sample qc and for random forest
 """
 
@@ -21,7 +21,6 @@ from gnomad.utils.sparse_mt import (
     split_info_annotation,
     split_lowqual_annotation,
 )
-from gnomad.utils.vcf import adjust_vcf_incompatible_types
 
 from joint_calling.utils import file_exists
 from joint_calling import utils, _version
@@ -36,10 +35,6 @@ logger.setLevel(logging.INFO)
     '--out-info-ht',
     'out_info_ht_path',
     required=True,
-)
-@click.option(
-    '--out-info-vcf',
-    'out_info_vcf_path',
 )
 @click.option(
     '--out-split-info-ht',
@@ -67,7 +62,6 @@ logger.setLevel(logging.INFO)
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements,missing-function-docstring
     out_info_ht_path: str,
-    out_info_vcf_path: str,
     out_split_info_ht_path: str,
     mt_path: str,
     local_tmp_dir: str,
@@ -80,7 +74,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     compute_info(
         mt=all_samples_mt,
         out_ht_path=out_info_ht_path,
-        out_vcf_path=out_info_vcf_path,
         out_split_ht_path=out_split_info_ht_path,
         overwrite=overwrite,
     )
@@ -89,7 +82,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 def compute_info(
     mt: hl.MatrixTable,
     out_ht_path: str,
-    out_vcf_path: str,
     out_split_ht_path: str,
     overwrite: bool = False,
 ) -> hl.Table:
@@ -99,7 +91,6 @@ def compute_info(
     Note that this table doesn't split multi-allelic sites.
     :param mt: full matrix table
     :param out_ht_path: where to write the info Table
-    :param out_vcf_path: if provided, the info Table will be converted to VCF
     :param out_split_ht_path: if provided, in the info Table multiallelics will be split
     and the Table will be written to this file
     :param overwrite: overwrite checkpoints if they exist
@@ -192,9 +183,6 @@ def compute_info(
     if out_split_ht_path and (overwrite or not file_exists(out_split_ht_path)):
         split_info_ht = split_multiallelic_in_info_table(info_ht)
         split_info_ht.write(out_split_ht_path, overwrite=True)
-
-    if out_vcf_path and (overwrite or not file_exists(out_vcf_path)):
-        hl.export_vcf(adjust_vcf_incompatible_types(info_ht), out_vcf_path)
 
     return info_ht
 

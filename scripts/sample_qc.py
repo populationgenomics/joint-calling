@@ -125,7 +125,7 @@ logger.setLevel('INFO')
     required=True,
     help='Hail billing account ID.',
 )
-def main(
+def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_path: str,
     meta_csv_path: str,
     age_csv: str,
@@ -142,10 +142,6 @@ def main(
     target_bed: str,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
-    """
-    Run sample QC on a MatrixTable, hard filter samples and add soft filter labels,
-    output a sample-level Hail Table
-    """
     local_tmp_dir = utils.init_hail('sample_qc', local_tmp_dir)
 
     mt = get_mt(mt_path)
