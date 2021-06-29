@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
 """
-Run Random Forest variant QC
+Evaluate random forest and VQSR results against the truth data
 """
+
 from os.path import join
 from typing import Optional
 import logging
@@ -139,10 +140,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     work_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,
-):
-    """
-    Evaluate random forest and VQSR results against the truth data
-    """
+):  # pylint: disable=missing-function-docstring
     local_tmp_dir = utils.init_hail('variant_qc_evaluate', local_tmp_dir)
 
     if overwrite or not utils.file_exists(out_bin_ht):

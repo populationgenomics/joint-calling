@@ -82,10 +82,7 @@ def main(
     overwrite: bool,
     hail_billing: str,  # pylint: disable=unused-argument
     n_partitions: int,
-):
-    """
-    Expects hail service to already be initialised
-    """
+):  # pylint: disable=missing-function-docstring
     init_hail('variant_qc', local_tmp_dir)
 
     logger.info(f'Loading matrix table from "{mt_path}"')

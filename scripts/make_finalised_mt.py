@@ -68,10 +68,7 @@ def main(
     local_tmp_dir: str,
     overwrite: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
-):
-    """
-    Generate final annotated, soft-filtered Matrix Table
-    """
+):  # pylint: disable=missing-function-docstring
     utils.init_hail('make_finalised_mt', local_tmp_dir)
 
     if file_exists(out_mt_path):

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 Apply RF-based filters to a matrix table. Must be run after evaluation.py
 """
@@ -146,10 +148,7 @@ def main(
     work_bucket: str,  # pylint: disable=unused-argument
     local_tmp_dir: str,
     overwrite,
-):
-    """
-    Apply RF-based filters to a matrix table
-    """
+):  # pylint: disable=missing-function-docstring
     local_tmp_dir = utils.init_hail('variant_qc_finalize', local_tmp_dir)
 
     if not overwrite and utils.file_exists(out_final_filter_ht_path):
