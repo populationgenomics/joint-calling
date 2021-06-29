@@ -27,8 +27,7 @@ logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
 
 
-def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
-):
+def main():  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     """
     Drive a Hail Batch workflow that creates and submits jobs. A job usually runs
     either a Hail Query script from the scripts folder in this repo using a Dataproc
@@ -55,8 +54,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     mt_path = 'gs://cpg-tob-wgs-test/mt/v2-raw.mt'
     meat_ht_path = 'gs://cpg-tob-wgs-main-metadata/joint-calling/v2/meta.ht/'
-    hard_filter_ht_path = 'gs://cpg-tob-wgs-test-tmp/joint-calling/v3/sample_qc/hard_filters.ht/'
-    combined_vcf_path = 'gs://cpg-tob-wgs-test-tmp/joint-calling/v2/variant_qc/vqsr/input-test.vcf.gz'
+    hard_filter_ht_path = (
+        'gs://cpg-tob-wgs-test-tmp/joint-calling/v3/sample_qc/hard_filters.ht/'
+    )
+    combined_vcf_path = (
+        'gs://cpg-tob-wgs-test-tmp/joint-calling/v2/variant_qc/vqsr/input-test.vcf.gz'
+    )
     mt_to_vcf_job = dataproc.hail_dataproc_job(
         b,
         f'{scripts_dir}/mt_to_vcf.py --overwrite '
