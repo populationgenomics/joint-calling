@@ -46,7 +46,7 @@ def main():  # pylint: disable=too-many-arguments,too-many-locals,too-many-state
     scripts_dir = abspath(join(dirname(__file__), '..', 'scripts'))
 
     mt_path = 'gs://cpg-tob-wgs-test/mt/v2-raw.mt'
-    meta_ht_path = 'gs://cpg-tob-wgs-main-metadata/joint-calling/v2/meta.ht/'
+    meta_ht_path = 'gs://cpg-tob-wgs-test-metadata/joint-calling/v3/meta.ht/'
     hard_filter_ht_path = (
         'gs://cpg-tob-wgs-test-tmp/joint-calling/v3/sample_qc/hard_filters.ht/'
     )
