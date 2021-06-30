@@ -63,7 +63,7 @@ def main():  # pylint: disable=too-many-arguments,too-many-locals,too-many-state
         max_age='8h',
         packages=utils.DATAPROC_PACKAGES,
         num_secondary_workers=50,
-        secondary_worker_boot_disk_size=10,
+        secondary_worker_boot_disk_size=15,
         job_name='MT to VCF',
     )
 
