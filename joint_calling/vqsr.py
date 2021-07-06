@@ -196,6 +196,10 @@ def make_vqsr_jobs(
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
             depends_on=depends_on,
+            # hl.export_vcf() uses non-preemptible workers' disk to merge VCF files.
+            # 10 samples take 2.3G, 400 samples take 60G, which roughly matches
+            # `huge_disk` (also used in the AS-VQSR VCF-gather job)
+            worker_boot_disk_size=huge_disk,
             job_name='MT to VCF',
         )
     else:
