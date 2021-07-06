@@ -167,23 +167,21 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         f'gs://cpg-{callset_name}-{web_bucket_suffix}/joint-calling/{callset_version}'
     )
     mt_output_bucket = f'gs://cpg-{callset_name}-{output_suffix}/mt'
+    combiner_bucket = f'{work_bucket}/combiner'
+    sample_qc_bucket = f'{work_bucket}/sample_qc'
 
-    raw_combined_mt_path = f'{mt_output_bucket}/{callset_version}-raw.mt'
-    # pylint: disable=unused-variable
+    raw_combined_mt_path = f'{combiner_bucket}/{callset_version}-raw.mt'
     filtered_combined_mt_path = f'{mt_output_bucket}/{callset_version}.mt'
     filtered_combined_nonref_mt_path = f'{mt_output_bucket}/{callset_version}-nonref.mt'
     readme_fpath = f'{mt_output_bucket}/README.txt'
     with hadoop_open(readme_fpath, 'w') as f:
-        f.write(f'Unfiltered:\n{basename(raw_combined_mt_path)}')
+        f.write(f'Unfiltered:\n{raw_combined_mt_path}')
         f.write(
             f'AS-VQSR soft-filtered\n(use `mt.filter_rows(hl.is_missing(mt.filters)` to hard-filter):\n {basename(filtered_combined_mt_path)}'
         )
         f.write(
             f'AS-VQSR soft-filtered, without reference blocks:\n{basename(filtered_combined_nonref_mt_path)}'
         )
-
-    combiner_bucket = f'{work_bucket}/combiner'
-    sample_qc_bucket = f'{work_bucket}/sample_qc'
 
     filter_cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
 
@@ -301,7 +299,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             scatter_count=scatter_count,
         )
         if overwrite or not utils.file_exists(filtered_combined_mt_path):
-            finalised_mt_job = dataproc.hail_dataproc_job(
+            dataproc.hail_dataproc_job(
                 b,
                 f'{scripts_dir}/make_finalised_mt.py --overwrite '
                 f'--mt {raw_combined_mt_path} '
@@ -316,10 +314,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
                 job_name='Making final MT',
             )
         else:
-            finalised_mt_job = b.new_job('Making final MT [reuse]')
+            b.new_job('Making final MT [reuse]')
 
     else:
-        var_qc_job = b.new_job('Var QC [skip]')
+        b.new_job('Var QC [skip]')
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
 
