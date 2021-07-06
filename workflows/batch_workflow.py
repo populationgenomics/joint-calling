@@ -310,7 +310,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
                 max_age='8h',
                 packages=utils.DATAPROC_PACKAGES,
                 num_secondary_workers=scatter_count,
-                depends_on=[var_qc_job],
+                depends_on=[var_qc_job, combiner_job],
                 job_name='Making final MT',
             )
         else:
