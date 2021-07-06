@@ -28,16 +28,19 @@ def get_csv(bucket_name, prefix) -> Tuple[csv.DictReader, str]:
     return csv_reader, csv_path
 
 
-def update_samples(csv_dict_reader):
+def update_samples(csv_dict_reader, proj):
     """Update the sample status
     When the initial sample list is uploaded (before all sequencing has been uploaded) the status for
     each sample should reflect this i.e. 'New' or 'Registered' or 'Waiting' or something.
     Then, when the sample is uploaded this sample status should change to 'Active'.
     This function will decide what samples should have this status change to upload."""
 
-    # Pull a list containing the sample ID's from the latest .mt.
+    # Pull a list containing the sample ID's that don't have gvcfs
     sapi = SampleApi()
-    mt_samples = sapi.get_samples_from_latest_analysis('mt')  # TODO: Implement.
+    previous_samples_internal = sapi.get_samples_with_gvcfs(proj)  # TODO: Implement
+    previous_samples_external = sapi.get_external_ids(
+        previous_samples_internal, proj
+    )  # TODO: Implement
 
     # The samples list from the csv file is cumulative.
 
@@ -50,18 +53,13 @@ def update_samples(csv_dict_reader):
         samples.append(sample_dict['sample.sample_name'])
         sample_metadata.append(sample_dict)
 
-    # deleted_samples = mt_samples - samples
-
     # Determine the samples in the latest upload.
-    latest_upload = samples - mt_samples
+    latest_upload = samples - previous_samples_external
 
+    sample_meta_map = {d['sample.sample_name']: d for d in sample_metadata}
     for sample in latest_upload:
-        # pylint: disable=W0640
-        current_metadata = filter(
-            lambda sample_dict: (sample_dict['sample.sample_name'] == sample),
-            sample_metadata,
-        )
-        metadata_json = json.dumps(list(current_metadata)[0], indent=2)
+        metadata = sample_meta_map[sample]
+        metadata_json = json.dumps(list(metadata)[0], indent=2)
         sapi.update_metadata(sample, metadata_json)  # TODO: IMPLEMENT.
 
         sapi.update_status(sample, 'Uploaded')  # TODO: IMPLEMENT.
@@ -82,7 +80,7 @@ def upload_samples(batch_number: int):
     csv_reader, csv_path = get_csv(bucket, batch_path)
 
     # Update the status in the DB for the newly uploaded samples.
-    update_samples(csv_reader)
+    update_samples(csv_reader, project)
 
     # Move the csv when its all done.
     subprocess.run(
