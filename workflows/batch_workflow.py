@@ -174,10 +174,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     filtered_combined_nonref_mt_path = f'{mt_output_bucket}/{callset_version}-nonref.mt'
     readme_fpath = f'{mt_output_bucket}/README.txt'
     with hadoop_open(readme_fpath, 'w') as f:
-        f.write(f'Unfiltered: {basename(raw_combined_mt_path)}')
-        f.write(f'AS-VQSR soft-filtered: {basename(filtered_combined_mt_path)}')
+        f.write(f'Unfiltered:\n{basename(raw_combined_mt_path)}')
         f.write(
-            f'AS-VQSR soft-filtered, without reference blocks: {basename(filtered_combined_nonref_mt_path)}'
+            f'AS-VQSR soft-filtered\n(use `mt.filter_rows(hl.is_missing(mt.filters)` to hard-filter):\n {basename(filtered_combined_mt_path)}'
+        )
+        f.write(
+            f'AS-VQSR soft-filtered, without reference blocks:\n{basename(filtered_combined_nonref_mt_path)}'
         )
 
     combiner_bucket = f'{work_bucket}/combiner'
