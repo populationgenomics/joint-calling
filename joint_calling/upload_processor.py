@@ -31,7 +31,7 @@ class SampleGroup(NamedTuple):
 
 def batch_move_files(
     batch: hb.batch,
-    files: SampleGroup,
+    sample_group: SampleGroup,
     source_prefix: str,
     destination_prefix: str,
     docker_image: Optional[str] = None,
@@ -71,16 +71,24 @@ def batch_move_files(
         " """
 
     jobs = []
-    for sample in files:
-        previous_location = os.path.join('gs://', source_prefix, sample)
 
-        # Get internal sample ID
-        sapi = SampleApi()
-        internal_id = sapi.get_internal_id(sample)  # TO IMPLEMENT: API CALL
+    # Get internal sample ID
+    external_id = sample_group.sample_id
+    sapi = SampleApi()
+    internal_id_map = sapi.get_internal_id_from_external_id(
+        external_id
+    )  # TO IMPLEMENT: API CALL
 
-        new_location = os.path.join('gs://', destination_prefix, internal_id)
+    for tuple_key in sample_group:
+        if tuple_key == 'sample_id':
+            continue
 
-        j = batch.new_job(name=f'move {sample} -> {internal_id}')
+        file_name = getattr(sample_group, tuple_key)
+        previous_location = os.path.join('gs://', source_prefix, file_name)
+
+        new_location = os.path.join('gs://', destination_prefix, internal_id_map)
+
+        j = batch.new_job(name=f'move {file_name} -> {internal_id_map}')
 
         if docker_image is not None:
             j.image(docker_image)
