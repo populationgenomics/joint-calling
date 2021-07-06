@@ -23,7 +23,7 @@ from sample_metadata.api.sample_api import SampleApi
 class SampleGroup(NamedTuple):
     """ Defines a group of files associated with each sample"""
 
-    sample_id: str
+    sample_id_external: str
     data_file: str
     index_file: str
     md5: str
@@ -73,14 +73,14 @@ def batch_move_files(
     jobs = []
 
     # Get internal sample ID
-    external_id = sample_group.sample_id
+    external_id = sample_group.sample_id_external
     sapi = SampleApi()
     internal_id_map = sapi.get_internal_id_from_external_id(
         external_id
     )  # TO IMPLEMENT: API CALL
 
     for tuple_key in sample_group:
-        if tuple_key == 'sample_id':
+        if tuple_key == 'sample_id_external':
             continue
 
         file_name = getattr(sample_group, tuple_key)

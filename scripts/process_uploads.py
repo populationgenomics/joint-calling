@@ -27,11 +27,12 @@ def get_samples_from_db(proj) -> List[str]:
     samples: List[str] = []
 
     samples = sapi.get_analysis_with_status(proj, 'gvcf', 'Ready')  # TODO: Implement
+    samples_external_ids = sapi.get_external_ids(samples, proj)
 
     # get_samples_which_have_gvcfs_but_also_don't_have_matrix_tables.
 
     # The upload of these filse is to be handled in a separate function.
-    return samples
+    return samples_external_ids
 
 
 def generate_file_list(
@@ -76,7 +77,7 @@ def update_status(sample_group: SampleGroup):
     sapi = SampleApi()
 
     sapi.update_sequencing_status(
-        sample_group.sample_id, 'Uploaded'
+        sample_group.sample_id_external, 'Uploaded'
     )  # TO IMPLEMENT: API CALL
 
 
@@ -150,14 +151,17 @@ def run_processor(
         )
 
         validate_job = setup_job(
-            batch, f'Validate MD5 {sample_group.sample_id}', docker_image
+            batch, f'Validate MD5 {sample_group.sample_id_external}', docker_image
         )
         validate_job = validate_md5(validate_job, sample_group, main_path)
         validate_job.depends_on(*sample_group_main_jobs)
 
         # After each sample is moved, update the status in the SampleMetadata DB to reflect the change in status
         status_job = setup_job(
-            batch, f'Update Status {sample_group.sample_id}', docker_image, True
+            batch,
+            f'Update Status {sample_group.sample_id_external}',
+            docker_image,
+            True,
         )
         status_job.call(update_status, sample_group)
         status_job.depends_on(validate_job)
@@ -173,13 +177,16 @@ def run_processor(
             key,
         )
         validate_job = setup_job(
-            batch, f'Validate MD5 {sample_group.sample_id}', docker_image
+            batch, f'Validate MD5 {sample_group.sample_id_external}', docker_image
         )
         validate_job = validate_md5(validate_job, sample_group, archive_path)
         validate_job.depends_on(*sample_group_archive_jobs)
 
         status_job = setup_job(
-            batch, f'Update Status {sample_group.sample_id}', docker_image, True
+            batch,
+            f'Update Status {sample_group.sample_id_external}',
+            docker_image,
+            True,
         )
         status_job.call(update_status, sample_group)
         status_job.depends_on(validate_job)
