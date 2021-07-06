@@ -29,9 +29,6 @@ def get_samples_from_db(proj) -> List[str]:
     samples = sapi.get_analysis_with_status(proj, 'gvcf', 'Ready')  # TODO: Implement
     samples_external_ids = sapi.get_external_ids(samples, proj)
 
-    # get_samples_which_have_gvcfs_but_also_don't_have_matrix_tables.
-
-    # The upload of these filse is to be handled in a separate function.
     return samples_external_ids
 
 
