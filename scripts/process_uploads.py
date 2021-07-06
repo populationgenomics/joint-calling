@@ -20,15 +20,15 @@ from joint_calling.upload_processor import batch_move_files, SampleGroup
 # Reading CSV pulled out into separate function.
 
 
-def get_samples_from_db() -> List[str]:
+def get_samples_from_db(proj) -> List[str]:
     """ Pulls list of samples to be moved from SampleMetadata DB """
 
     sapi = SampleApi()
     samples: List[str] = []
 
-    # Returns a list of all samples with status == uploaded
-    # Alternatively, could return all samples that were not included in the latest .mt analysis.
-    samples = sapi.get_latest_uploads()  # TO IMPLEMENT: API CALL
+    samples = sapi.get_analysis_with_status(proj, 'gvcf', 'Ready')  # TODO: Implement
+
+    # get_samples_which_have_gvcfs_but_also_don't_have_matrix_tables.
 
     # The upload of these filse is to be handled in a separate function.
     return samples
@@ -72,10 +72,11 @@ def setup_job(
 def update_status(sample_group: SampleGroup):
     """ Updates the status of a given sample """
     # Update the status of the sample group that you just uploaded.
+    # Condition here depending on the file type.
     sapi = SampleApi()
-    # Depending on preferred implementation, this could be something like "Processed" or "Ready"
-    sapi.update_sample_status(
-        sample_group.sample_id, 'Active'
+
+    sapi.update_sequencing_status(
+        sample_group.sample_id, 'Uploaded'
     )  # TO IMPLEMENT: API CALL
 
 
@@ -127,7 +128,7 @@ def run_processor(
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
 
-    samples = get_samples_from_db()
+    samples = get_samples_from_db(project)
     main_files, archive_files = generate_file_list(samples)
 
     service_backend = hb.ServiceBackend(

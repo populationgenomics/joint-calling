@@ -28,7 +28,7 @@ def get_csv(bucket_name, prefix) -> Tuple[csv.DictReader, str]:
     return csv_reader, csv_path
 
 
-def update_samples(csv_dict_reader, proj):
+def create_analysis(csv_dict_reader, proj):
     """Update the sample status
     When the initial sample list is uploaded (before all sequencing has been uploaded) the status for
     each sample should reflect this i.e. 'New' or 'Registered' or 'Waiting' or something.
@@ -60,9 +60,14 @@ def update_samples(csv_dict_reader, proj):
     for sample in latest_upload:
         metadata = sample_meta_map[sample]
         metadata_json = json.dumps(list(metadata)[0], indent=2)
+
+        sapi.create_analysis_object(sample, 'gvcf')
+        sapi.create_analysis_object(sample, 'cram')
+
         sapi.update_metadata(sample, metadata_json)  # TODO: IMPLEMENT.
 
-        sapi.update_status(sample, 'Uploaded')  # TODO: IMPLEMENT.
+        sapi.update_sequencing_status(sample, 'gvcf', 'Ready')  # TODO: IMPLEMENT.
+        sapi.update_sequencing_status(sample, 'cram', 'Ready')
 
 
 @click.command()
@@ -79,8 +84,8 @@ def upload_samples(batch_number: int):
     #  Get the CSV file.
     csv_reader, csv_path = get_csv(bucket, batch_path)
 
-    # Update the status in the DB for the newly uploaded samples.
-    update_samples(csv_reader, project)
+    # Create new analysis objects for each sequencing result
+    create_analysis(csv_reader, project)
 
     # Move the csv when its all done.
     subprocess.run(
