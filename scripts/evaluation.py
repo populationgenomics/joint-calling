@@ -241,10 +241,10 @@ def _truth_concordance(
     logger.info(f'Saving checkpoint to {checkpoint_mt_path}')
     mt = mt.checkpoint(checkpoint_mt_path, overwrite=overwrite)
 
-    for truth_sample in truth_dict:
+    for truth_sample, truth_data in truth_dict.items():
         truth_samples_mt_path = join(work_bucket, 'truth_samples', f'{truth_sample}.mt')
         if not overwrite and utils.file_exists(truth_samples_mt_path):
-            truth_dict[truth_sample]['mt'] = hl.read_matrix_table(truth_samples_mt_path)
+            truth_data['mt'] = hl.read_matrix_table(truth_samples_mt_path)
         else:
             called_truth_mt = mt.filter_cols(mt.s == truth_dict[truth_sample]['s'])
             # Filter to variants in truth data
@@ -257,14 +257,14 @@ def _truth_concordance(
             )
             called_truth_mt = called_truth_mt.naive_coalesce(n_partitions)
             called_truth_mt.write(truth_samples_mt_path, overwrite=True)
-            truth_dict[truth_sample]['mt'] = called_truth_mt
+            truth_data['mt'] = called_truth_mt
 
-    for truth_sample in truth_dict:
+    for truth_sample, truth_data in truth_dict.items():
         # Merging with truth data. Computes a table for each truth sample comparing
         # the truth sample in the callset vs the truth.
         truth_ht_path = join(work_bucket, 'truth_samples', f'{truth_sample}.ht')
         if not overwrite and utils.file_exists(truth_ht_path):
-            truth_dict[truth_sample]['ht'] = hl.read_table(truth_ht_path)
+            truth_data['ht'] = hl.read_table(truth_ht_path)
         else:
             logger.info(
                 f'Creating a merged table with callset truth sample and truth data '
@@ -272,10 +272,10 @@ def _truth_concordance(
             )
 
             # Load truth data
-            mt = truth_dict[truth_sample]['mt']
-            truth_hc_intervals = truth_dict[truth_sample]['hc_intervals']
-            truth_mt = truth_dict[truth_sample]['truth_mt']
-            truth_mt = truth_mt.key_cols_by(s=hl.str(truth_dict[truth_sample]['s']))
+            mt = truth_data['mt']
+            truth_hc_intervals = truth_data['hc_intervals']
+            truth_mt = truth_data['truth_mt']
+            truth_mt = truth_mt.key_cols_by(s=hl.str(truth_data['s']))
 
             # Remove low quality sites
             info_ht = hl.read_table(info_split_ht_path)
@@ -283,7 +283,7 @@ def _truth_concordance(
 
             ht = create_truth_sample_ht(mt, truth_mt, truth_hc_intervals)
             ht.write(truth_ht_path, overwrite=True)
-            truth_dict[truth_sample]['ht'] = ht
+            truth_data['ht'] = ht
 
         # Bin truth sample concordance. Merges concordance results (callset vs.
         # truth) for a given truth sample with bins from specified model
