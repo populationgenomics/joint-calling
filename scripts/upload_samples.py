@@ -29,11 +29,12 @@ def get_csv(bucket_name, prefix) -> Tuple[csv.DictReader, str]:
 
 
 def create_analysis(csv_dict_reader, proj):
-    """Update the sample status
-    When the initial sample list is uploaded (before all sequencing has been uploaded) the status for
-    each sample should reflect this i.e. 'New' or 'Registered' or 'Waiting' or something.
-    Then, when the sample is uploaded this sample status should change to 'Active'.
-    This function will decide what samples should have this status change to upload."""
+    """New analysis objects created for the gvcf and cram for each sample
+    Assumptions:
+    SampleSequence object created previously.
+    We are exclusively processing crams and gvcfs.
+    Samples with gvcfs have crams, and samples without gvcfs don't.
+    """
 
     # Pull a list containing the sample ID's that don't have gvcfs
     sapi = SampleApi()
@@ -41,10 +42,6 @@ def create_analysis(csv_dict_reader, proj):
     previous_samples_external = sapi.get_external_ids(
         previous_samples_internal, proj
     )  # TODO: Implement
-
-    # The samples list from the csv file is cumulative.
-
-    # Pull the data from the CSV iterable.
 
     samples: List[str] = []
     sample_metadata = []
@@ -66,8 +63,7 @@ def create_analysis(csv_dict_reader, proj):
 
         sapi.update_metadata(sample, metadata_json)  # TODO: IMPLEMENT.
 
-        sapi.update_sequencing_status(sample, 'gvcf', 'Ready')  # TODO: IMPLEMENT.
-        sapi.update_sequencing_status(sample, 'cram', 'Ready')
+        sapi.update_sequencing_status(sample, 'Ready')  # TODO: IMPLEMENT.
 
 
 @click.command()

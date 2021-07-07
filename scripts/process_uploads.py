@@ -24,27 +24,35 @@ def get_samples_from_db(proj) -> List[str]:
     """ Pulls list of samples to be moved from SampleMetadata DB """
 
     sapi = SampleApi()
-    samples: List[str] = []
 
-    samples = sapi.get_analysis_with_status(proj, 'gvcf', 'Ready')  # TODO: Implement
-    samples_external_ids = sapi.get_external_ids(samples, proj)
+    samples_internal_ids = sapi.get_analysis_with_status(
+        proj, 'gvcf', 'Ready'
+    )  # TODO: Implement
+    samples_external_ids = sapi.get_external_ids(samples_internal_ids, proj)
 
     return samples_external_ids
 
 
 def generate_file_list(
-    samples: List[str],
+    external_sample_ids: List[str],
 ) -> Tuple[List[SampleGroup], List[SampleGroup]]:
-    """ Generate list of expected files, given a list of samples """
-    main_files = []
-    archive_files = []
-    for s in samples:
+    """ Generate list of expected files, given a list of external sample ids"""
+    main_files: List[SampleGroup] = []
+    archive_files: List[SampleGroup] = []
+
+    for external_id in external_sample_ids:
         sample_group_main = SampleGroup(
-            s, f'{s}.g.vcf.gz', f'{s}.g.vcf.gz.tbi', f'{s}.g.vcf.gz.md5'
+            external_id,
+            f'{external_id}.g.vcf.gz',
+            f'{external_id}.g.vcf.gz.tbi',
+            f'{external_id}.g.vcf.gz.md5',
         )
         main_files.append(sample_group_main)
         sample_group_archive = SampleGroup(
-            s, f'{s}.cram', f'{s}.cram.crai', f'{s}.cram.md5'
+            external_id,
+            f'{external_id}.cram',
+            f'{external_id}.cram.crai',
+            f'{external_id}.cram.md5',
         )
         archive_files.append(sample_group_archive)
 
@@ -66,13 +74,9 @@ def setup_job(
     return job
 
 
-# Optional.
 def update_status(sample_group: SampleGroup):
-    """ Updates the status of a given sample """
-    # Update the status of the sample group that you just uploaded.
-    # Condition here depending on the file type.
+    """ Updates the status of a SampleSequence """
     sapi = SampleApi()
-
     sapi.update_sequencing_status(
         sample_group.sample_id_external, 'Uploaded'
     )  # TO IMPLEMENT: API CALL
@@ -125,6 +129,11 @@ def run_processor(
 
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
+
+    # Determine the analysis results (i.e. list of gvcfs and crams) to be moved
+    samples: List[str] = []  # List of external sample IDs
+    main_files: List[SampleGroup] = []
+    archive_files: List[SampleGroup] = []
 
     samples = get_samples_from_db(project)
     main_files, archive_files = generate_file_list(samples)
