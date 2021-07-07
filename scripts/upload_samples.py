@@ -51,10 +51,11 @@ def create_analysis(csv_dict_reader, proj):
         sample_metadata.append(sample_dict)
 
     # Determine the samples in the latest upload.
-    latest_upload = samples - previous_samples_external
+    latest_upload_external = samples - previous_samples_external
+    latest_upload_internal = sapi.get_internal_ids(latest_upload_external, proj)
 
     sample_meta_map = {d['sample.sample_name']: d for d in sample_metadata}
-    for sample in latest_upload:
+    for sample in latest_upload_internal:
         metadata = sample_meta_map[sample]
         metadata_json = json.dumps(list(metadata)[0], indent=2)
 
