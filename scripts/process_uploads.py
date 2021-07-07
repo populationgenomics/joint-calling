@@ -25,7 +25,7 @@ def get_samples_from_db(proj) -> List[str]:
 
     sapi = SampleApi()
 
-    samples_internal_ids = sapi.get_analysis_with_status(
+    samples_internal_ids = sapi.get_samplesequencing_with_status(
         proj, 'gvcf', 'Ready'
     )  # TODO: Implement
     samples_external_ids = sapi.get_external_ids(samples_internal_ids, proj)
