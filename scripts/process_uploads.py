@@ -105,10 +105,10 @@ def validate_md5(
     path_to_md5 = join('gs://', upload_path, sample_group.md5)
 
     # Calculate md5 checksum.
+    job.command(f'gsutil cat {path_to_data} | md5sum > /tmp/{sample_group.md5}')
     job.command(
-        f'gsutil cat {path_to_data} | md5sum | sed "s/-/{sample_group.data_file}/" > /tmp/{sample_group.md5}'
+        f'diff <(cat /tmp/{sample_group.md5} | cut -d " " -f1 ) <(gsutil cat {path_to_md5} | cut -d " " -f1 )'
     )
-    job.command(f'diff /tmp/{sample_group.md5} <(gsutil cat {path_to_md5})')
 
     return job
 
