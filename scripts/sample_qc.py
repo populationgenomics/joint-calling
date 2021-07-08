@@ -35,6 +35,10 @@ from joint_calling import (
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
 
+GNOMAD_HT = (
+    'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'
+)
+
 
 @click.command()
 @click.version_option(_version.__version__)
@@ -159,6 +163,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     # `hail_sample_qc_ht` row fields: sample_qc, bi_allelic_sample_qc
     hail_sample_qc_ht = _compute_hail_sample_qc(mt_split, work_bucket, overwrite)
 
+    # Calculate separately the number of non-gnomAD SNPs
+    nongnomad_snps_ht = _snps_not_in_gnomad(mt)
+
     # `sex_ht` row fields: is_female, chr20_mean_dp, sex_karyotype
     sex_ht = _infer_sex(
         mt,
@@ -247,6 +254,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     # Combine all intermediate tables together
     _generate_metadata(
         sample_qc_ht=hail_sample_qc_ht,
+        nongnomad_snps_ht=nongnomad_snps_ht,
         sex_ht=sex_ht,
         input_meta_ht=input_meta_ht,
         hard_filtered_samples_ht=hard_filtered_samples_ht,
@@ -273,7 +281,7 @@ def _compute_hail_sample_qc(
     """
     Runs Hail hl.sample_qc() to generate a Hail Table with
     per-sample QC metrics.
-    :param mt: input MatrixTable
+    :param mt: input MatrixTable, multiallelics split, genotype in GT fields
     :param work_bucket: bucket path to write checkpoints
     :param overwrite: overwrite checkpoints if they exist
     :return: a Hail Table with the following row fields:
@@ -329,6 +337,26 @@ def _compute_hail_sample_qc(
     return sample_qc_ht
 
 
+def _snps_not_in_gnomad(mt: hl.MatrixTable, gnomad_path: str = GNOMAD_HT) -> hl.Table:
+    """
+    Count the number of variants per sample that do not appear in gnomAD
+    :param mt: MatrixTable, with multiallelics split, GT field for genotype
+    :return: per-sample Table, with the only int field "nongnomad_snps"
+    """
+    # Filter to SNPs
+    mt = mt.filter_rows(hl.is_snp(mt.alleles[0], mt.alleles[1]))
+    # Get entries (table annotated with locus, allele, sample)
+    ht = mt.entries()
+    # Leave only non-ref entries
+    ht = ht.filter_entries(ht.GT.is_non_ref())
+    # Filter to those sites that are not in gnomad
+    gnomad = hl.read_table(gnomad_path)
+    ht.key_by('locus', 'alleles').anti_join(gnomad)
+    # Calculate number of non-gnomad variants for each sample
+    stats = ht.group_by(ht.s).aggregate(nongnomad_snps=hl.agg.counter(ht.GT))
+    return stats
+
+
 def _infer_sex(
     mt: hl.MatrixTable,
     work_bucket: str,
@@ -374,6 +402,7 @@ def _infer_sex(
 
 def _generate_metadata(
     sample_qc_ht: hl.Table,
+    nongnomad_snps_ht: hl.Table,
     sex_ht: hl.Table,
     input_meta_ht: hl.Table,
     hard_filtered_samples_ht: hl.Table,
@@ -390,6 +419,7 @@ def _generate_metadata(
     Combine all intermediate tables into a single metadata table
 
     :param sample_qc_ht: table with a `bi_allelic_sample_qc` row field
+    :param nongnomad_snps_ht: table with a `nongnomad_snps` row field
     :param sex_ht: table with the follwing row fields:
         `f_stat`, `n_called`, `expected_homs`, `observed_homs`
     :param input_meta_ht: table with stats from the input metadata
@@ -437,6 +467,7 @@ def _generate_metadata(
 
         meta_ht = meta_ht.annotate(
             sample_qc=sample_qc_ht[meta_ht.key].bi_allelic_sample_qc,
+            nongnomad_snps=nongnomad_snps_ht[meta_ht.key].nongnomad_snps,
             **hard_filtered_samples_ht[meta_ht.key],
             **regressed_metrics_ht[meta_ht.key],
             **pop_ht[meta_ht.key],

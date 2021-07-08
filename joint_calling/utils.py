@@ -365,6 +365,7 @@ def get_mt(
             & hl.any(lambda a: hl.is_indel(mt.alleles[0], a), mt.alleles[1:])
             & hl.any(lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:]),
         )
+        # Will use GT instead of LGT
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
     return mt
