@@ -320,7 +320,7 @@ def make_vqsr_eval_jobs(
             f'--info-split-ht {info_split_ht_path} '
             + (f'--fam-stats-ht {fam_stats_ht_path} ' if fam_stats_ht_path else '')
             + (
-                (f'--rf-result-ht {rf_result_ht_path} ')
+                f'--rf-result-ht {rf_result_ht_path} '
                 if (rf_annotations_ht_path and rf_result_ht_path)
                 else ''
             )
