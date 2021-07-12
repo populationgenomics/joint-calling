@@ -47,7 +47,9 @@ def create_analysis(csv_dict_reader, proj):
 
     # Pull a list containing the sample ID's that don't have gvcfs
     sapi = SampleApi()
-    previous_samples_internal = sapi.get_samples_with_gvcfs(proj)  # TODO: Implement
+    previous_samples_internal = sapi.get_all_sample_ids_without_analysis_type(
+        proj, 'gvcf'
+    )
     previous_samples_external = sapi.get_external_ids(
         previous_samples_internal, proj
     )  # TODO: Implement
@@ -68,12 +70,10 @@ def create_analysis(csv_dict_reader, proj):
         metadata = sample_meta_map[sample]
         metadata_json = json.dumps(list(metadata)[0], indent=2)
 
-        sapi.create_analysis_object(sample, 'gvcf')
-        sapi.create_analysis_object(sample, 'cram')
+        sapi.create_new_analysis(sample, 'gvcf')  # TODO, Fix inputs
+        sapi.create_new_analysist(sample, 'cram')
 
         sapi.update_metadata(sample, metadata_json)  # TODO: IMPLEMENT.
-
-        # sapi.update_sequencing_status(sample, 'Ready')  # TODO: IMPLEMENT.
 
     return latest_upload_external
 
@@ -122,7 +122,7 @@ def setup_job(
 def update_status(sample_group: SampleGroup):
     """ Updates the status of a SampleSequence """
     sapi = SampleApi()
-    sapi.update_sequencing_status(
+    sapi.update_sequencing_status_from_external_sample_id(
         sample_group.sample_id_external, 'Upload Successful'
     )  # TO IMPLEMENT: API CALL
 
