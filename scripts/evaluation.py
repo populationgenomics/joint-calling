@@ -34,6 +34,18 @@ logger = logging.getLogger('random_forest')
 logger.setLevel('INFO')
 
 
+TRUTH_GVCFS = dict(
+    syndip=dict(
+        s='syndip',
+        gvcf='gs://gnomad-public/resources/grch38/syndip/full.38.20180222.vcf.gz',
+    ),
+    NA12878=dict(
+        s='NA12878',
+        gvcf='gs://gnomad-public/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',
+    ),
+)
+
+
 @click.command()
 @click.version_option(_version.__version__)
 @click.option(
@@ -77,13 +89,13 @@ logger.setLevel('INFO')
 )
 @click.option(
     '--out-bin-ht',
-    'out_bin_ht',
+    'out_bin_ht_path',
     required=True,
     help='When set, creates file annotated with bin based on rank of VQSR/RF score.',
 )
 @click.option(
     '--out-aggregated-bin-ht',
-    'out_aggregated_bin_ht',
+    'out_aggregated_bin_ht_path',
     help='When set, creates a file with aggregate counts of variants based on bins.',
 )
 @click.option(
@@ -132,8 +144,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     fam_stats_ht_path: str,
     rf_result_ht_path: Optional[str],
     vqsr_filters_split_ht_path: Optional[str],
-    out_bin_ht: str,
-    out_aggregated_bin_ht: str,
+    out_bin_ht_path: str,
+    out_aggregated_bin_ht_path: str,
     run_sanity_checks: bool,
     n_bins: int,
     n_partitions: int,
@@ -143,7 +155,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
 ):  # pylint: disable=missing-function-docstring
     local_tmp_dir = utils.init_hail('variant_qc_evaluate', local_tmp_dir)
 
-    if overwrite or not utils.file_exists(out_bin_ht):
+    if overwrite or not utils.file_exists(out_bin_ht_path):
         scores_ht = create_bin_ht(
             rf_annotations_ht=hl.read_table(rf_annotations_ht_path),
             info_split_ht=hl.read_table(info_split_ht_path),
@@ -155,9 +167,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
             if vqsr_filters_split_ht_path
             else None,
         )
-        scores_ht.write(out_bin_ht, overwrite=True)
+        scores_ht.write(out_bin_ht_path, overwrite=True)
     else:
-        scores_ht = hl.read_table(out_bin_ht)
+        scores_ht = hl.read_table(out_bin_ht_path)
 
     if run_sanity_checks:
         logger.info('Running sanity checks...')
@@ -179,8 +191,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
             )
         )
 
-    if out_aggregated_bin_ht:
-        if overwrite or not utils.file_exists(out_aggregated_bin_ht):
+    if out_aggregated_bin_ht_path:
+        if overwrite or not utils.file_exists(out_aggregated_bin_ht_path):
             logger.warning('Use only workers, it typically crashes with preemptibles')
             agg_ht = create_aggregated_bin_ht(
                 ht=scores_ht,
@@ -189,10 +201,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
                 else None,
                 work_bucket=work_bucket,
             )
-            agg_ht.write(out_aggregated_bin_ht, overwrite=True)
+            agg_ht.write(out_aggregated_bin_ht_path, overwrite=True)
 
     mt = utils.get_mt(mt_path)
-    if all(truth_sample in mt.s.collect() for truth_sample in utils.TRUTH_GVCFS):
+    if all(truth_sample in mt.s.collect() for truth_sample in TRUTH_GVCFS):
         _truth_concordance(
             mt,
             overwrite,
@@ -215,15 +227,15 @@ def _truth_concordance(
 ):
     logger.info(f'Extracting truth samples from MT...')
     truth_dict = {
-        # utils.TRUTH_GVCFS['syndip']['name']: {
-        #     's': utils.TRUTH_GVCFS['syndip']['name'],
+        # TRUTH_GVCFS['syndip']['s']: {
+        #     's': TRUTH_GVCFS['syndip']['s'],
         #     'truth_mt': syndip.mt(),
         #     'hc_intervals': syndip_hc_intervals.ht(),
         #     'mt': None,
         #     'ht': None,
         # },
-        utils.TRUTH_GVCFS['NA12878']['name']: {
-            's': utils.TRUTH_GVCFS['NA12878']['name'],
+        TRUTH_GVCFS['NA12878']['s']: {
+            's': TRUTH_GVCFS['NA12878']['s'],
             'truth_mt': na12878_giab.mt(),
             'hc_intervals': na12878_giab_hc_intervals.ht(),
             'mt': None,

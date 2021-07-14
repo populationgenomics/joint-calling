@@ -47,17 +47,6 @@ BCFTOOLS_DOCKER = (
     'australia-southeast1-docker.pkg.dev/cpg-common/images/bcftools:1.10.2--h4f4756c_2'
 )
 
-TRUTH_GVCFS = dict(
-    syndip=dict(
-        s='syndip',
-        gvcf='gs://gnomad-public/resources/grch38/syndip/full.38.20180222.vcf.gz',
-    ),
-    NA12878=dict(
-        s='NA12878',
-        gvcf='gs://gnomad-public/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',
-    ),
-)
-
 
 def init_hail(name: str, local_tmp_dir: str = None):
     """
@@ -181,16 +170,6 @@ def find_inputs(
         else:
             df.loc[matching_sn[0], ['gvcf']] = gp
     df = df[df.gvcf.notnull()]
-
-    # # Adding truth samples
-    # df['truth'] = False
-    # for truth_sample in TRUTH_GVCFS.values():
-    #     df.loc[truth_sample['s'], ['s', 'gvcf', 'truth']] = [
-    #         truth_sample['s'],
-    #         truth_sample['gvcf'],
-    #         True,
-    #     ]
-
     return df
 
 
@@ -346,7 +325,9 @@ def get_mt(
     mt = hl.read_matrix_table(mt_path)
 
     if passing_sites_only:
-        mt = mt.filter_rows(~hl.is_missing(mt.filters))  # pylint disable:invalid-unary-operand-type
+        mt = mt.filter_rows(
+            ~hl.is_missing(mt.filters)
+        )  # pylint disable:invalid-unary-operand-type
 
     if hard_filtered_samples_to_remove_ht is not None:
         mt = mt.filter_cols(
