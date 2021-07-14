@@ -22,8 +22,8 @@ from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg
 from gnomad.resources.grch38 import (
     na12878_giab,
     na12878_giab_hc_intervals,
-    syndip,
-    syndip_hc_intervals,
+    # syndip,
+    # syndip_hc_intervals,
 )
 
 from joint_calling.utils import get_validation_callback
@@ -215,15 +215,15 @@ def _truth_concordance(
 ):
     logger.info(f'Extracting truth samples from MT...')
     truth_dict = {
-        utils.TRUTH_GVCFS['syndip']['name']: {
-            's': utils.TRUTH_GVCFS['syndip']['name'],
-            'truth_mt': syndip.mt(),
-            'hc_intervals': syndip_hc_intervals.ht(),
-            'mt': None,
-            'ht': None,
-        },
-        utils.TRUTH_GVCFS['na12878']['name']: {
-            's': utils.TRUTH_GVCFS['na12878']['name'],
+        # utils.TRUTH_GVCFS['syndip']['name']: {
+        #     's': utils.TRUTH_GVCFS['syndip']['name'],
+        #     'truth_mt': syndip.mt(),
+        #     'hc_intervals': syndip_hc_intervals.ht(),
+        #     'mt': None,
+        #     'ht': None,
+        # },
+        utils.TRUTH_GVCFS['NA12878']['name']: {
+            's': utils.TRUTH_GVCFS['NA12878']['name'],
             'truth_mt': na12878_giab.mt(),
             'hc_intervals': na12878_giab_hc_intervals.ht(),
             'mt': None,
