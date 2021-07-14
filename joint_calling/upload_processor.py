@@ -34,6 +34,7 @@ def batch_move_files(
     sample_group: SampleGroup,
     source_prefix: str,
     destination_prefix: str,
+    project: str,
     docker_image: Optional[str] = None,
     key: Optional[str] = None,
 ) -> List:
@@ -73,11 +74,10 @@ def batch_move_files(
     jobs = []
 
     # Get internal sample ID
-    external_id = sample_group.sample_id_external
+    external_id = {'external_ids': [sample_group.sample_id_external]}
     sapi = SampleApi()
-    internal_id_map = sapi.get_internal_id_from_external_id(
-        external_id
-    )  # TO IMPLEMENT: API CALL
+    internal_id_map = sapi.get_internal_id_from_external_id(project, external_id)
+    internal_id = list(internal_id_map.keys())[0]
 
     for tuple_key in sample_group:
         if tuple_key == 'sample_id_external':
@@ -86,9 +86,9 @@ def batch_move_files(
         file_name = getattr(sample_group, tuple_key)
         previous_location = os.path.join('gs://', source_prefix, file_name)
 
-        new_location = os.path.join('gs://', destination_prefix, internal_id_map)
+        new_location = os.path.join('gs://', destination_prefix, internal_id)
 
-        j = batch.new_job(name=f'move {file_name} -> {internal_id_map}')
+        j = batch.new_job(name=f'move {file_name} -> {internal_id}')
 
         if docker_image is not None:
             j.image(docker_image)
