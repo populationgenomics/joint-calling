@@ -52,8 +52,8 @@ TRUTH_GVCFS = dict(
         s='syndip',
         gvcf='gs://gnomad-public/resources/grch38/syndip/full.38.20180222.vcf.gz',
     ),
-    na12878=dict(
-        s='na12878',
+    NA12878=dict(
+        s='NA12878',
         gvcf='gs://gnomad-public/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',
     ),
 )
@@ -182,7 +182,7 @@ def find_inputs(
             df.loc[matching_sn[0], ['gvcf']] = gp
     df = df[df.gvcf.notnull()]
 
-    # Adding truth samples
+    # # Adding truth samples
     # df['truth'] = False
     # for truth_sample in TRUTH_GVCFS.values():
     #     df.loc[truth_sample['s'], ['s', 'gvcf', 'truth']] = [
@@ -323,6 +323,7 @@ def get_mt(
     meta_ht: hl.Table = None,
     add_meta: bool = False,
     release_only: bool = False,
+    passing_sites_only: bool = False,
 ) -> hl.MatrixTable:
     """
     Wrapper function to get data with desired filtering and metadata annotations
@@ -338,9 +339,14 @@ def get_mt(
     :param add_meta: whether to add metadata to MT in 'meta' column
     :param release_only: whether to filter the MT to only samples available for
         release (can only be used if metadata is present)
+    :param passing_sites_only: whether to filter the MT to only variants with
+        nothing in the filter field (e.g. passing soft filters)
     :return: MatrixTable with chosen annotations and filters
     """
     mt = hl.read_matrix_table(mt_path)
+
+    if passing_sites_only:
+        mt = mt.filter_rows(~hl.is_missing(mt.filters))  # pylint disable:invalid-unary-operand-type
 
     if hard_filtered_samples_to_remove_ht is not None:
         mt = mt.filter_cols(

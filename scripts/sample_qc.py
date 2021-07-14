@@ -164,7 +164,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     hail_sample_qc_ht = _compute_hail_sample_qc(mt_split, work_bucket, overwrite)
 
     # Calculate separately the number of non-gnomAD SNPs
-    nongnomad_snps_ht = _snps_not_in_gnomad(mt_split)
+    nongnomad_snps_ht = _snps_not_in_gnomad(mt_split, work_bucket, overwrite)
 
     # `sex_ht` row fields: is_female, chr20_mean_dp, sex_karyotype
     sex_ht = _infer_sex(
@@ -337,13 +337,23 @@ def _compute_hail_sample_qc(
     return sample_qc_ht
 
 
-def _snps_not_in_gnomad(mt: hl.MatrixTable, gnomad_path: str = GNOMAD_HT) -> hl.Table:
+def _snps_not_in_gnomad(
+    mt: hl.MatrixTable,
+    work_bucket: str,
+    overwrite: bool,
+    gnomad_path: str = GNOMAD_HT,
+) -> hl.Table:
     """
     Count the number of variants per sample that do not occur in gnomAD
     :param mt: MatrixTable, with multiallelics split, GT field for genotype
     :return: per-sample Table, with the only int field "nongnomad_snps"
     """
     # Filter to SNPs
+    logger.info('Countings SNPs not in gnomAD')
+    out_ht_path = join(work_bucket, 'notingnomad.ht')
+    if not overwrite and file_exists(out_ht_path):
+        return hl.read_table(out_ht_path)
+
     mt = mt.filter_rows(hl.len(mt.alleles) > 1)
     mt = mt.filter_rows(hl.is_snp(mt.alleles[0], mt.alleles[1]))
     # Get entries (table annotated with locus, allele, sample)
@@ -353,6 +363,7 @@ def _snps_not_in_gnomad(mt: hl.MatrixTable, gnomad_path: str = GNOMAD_HT) -> hl.
     ht.key_by('locus', 'alleles').anti_join(gnomad)
     # Calculate number of non-gnomad variants for each sample
     stats = ht.group_by(ht.s).aggregate(nongnomad_snps=hl.agg.count())
+    stats.write(out_ht_path, overwrite=True)
     return stats
 
 
