@@ -22,8 +22,8 @@ from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg
 from gnomad.resources.grch38 import (
     na12878_giab,
     na12878_giab_hc_intervals,
-    # syndip,
-    # syndip_hc_intervals,
+    syndip,
+    syndip_hc_intervals,
 )
 
 from joint_calling.utils import get_validation_callback
@@ -44,6 +44,23 @@ TRUTH_GVCFS = dict(
         gvcf='gs://gnomad-public/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',
     ),
 )
+
+TRUTH_DICT = {
+    TRUTH_GVCFS['syndip']['s']: {
+        's': TRUTH_GVCFS['syndip']['s'],
+        'truth_mt': syndip.mt(),
+        'hc_intervals': syndip_hc_intervals.ht(),
+        'mt': None,
+        'ht': None,
+    },
+    TRUTH_GVCFS['NA12878']['s']: {
+        's': TRUTH_GVCFS['NA12878']['s'],
+        'truth_mt': na12878_giab.mt(),
+        'hc_intervals': na12878_giab_hc_intervals.ht(),
+        'mt': None,
+        'ht': None,
+    },
+}
 
 
 @click.command()
@@ -204,7 +221,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
             agg_ht.write(out_aggregated_bin_ht_path, overwrite=True)
 
     mt = utils.get_mt(mt_path)
-    if all(truth_sample in mt.s.collect() for truth_sample in TRUTH_GVCFS):
+    truth_snames = [sn for sn in TRUTH_GVCFS if sn in mt.s.collect()]
+    if truth_snames:
+        truth_dict = {k: v for k, v in TRUTH_DICT if k in truth_snames}
         _truth_concordance(
             mt,
             overwrite,
@@ -213,6 +232,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
             scores_ht,
             info_split_ht_path,
             n_bins,
+            truth_dict,
         )
 
 
@@ -224,25 +244,9 @@ def _truth_concordance(
     scores_ht,
     info_split_ht_path,
     n_bins,
+    truth_dict,
 ):
     logger.info(f'Extracting truth samples from MT...')
-    truth_dict = {
-        # TRUTH_GVCFS['syndip']['s']: {
-        #     's': TRUTH_GVCFS['syndip']['s'],
-        #     'truth_mt': syndip.mt(),
-        #     'hc_intervals': syndip_hc_intervals.ht(),
-        #     'mt': None,
-        #     'ht': None,
-        # },
-        TRUTH_GVCFS['NA12878']['s']: {
-            's': TRUTH_GVCFS['NA12878']['s'],
-            'truth_mt': na12878_giab.mt(),
-            'hc_intervals': na12878_giab_hc_intervals.ht(),
-            'mt': None,
-            'ht': None,
-        },
-    }
-
     mt = mt.filter_cols(
         hl.literal([v['s'] for k, v in truth_dict.items()]).contains(mt.s)
     )
