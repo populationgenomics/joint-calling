@@ -16,7 +16,12 @@ import hailtop.batch as hb
 from google.cloud import storage
 
 # Import SampleAPI
-from sample_metadata.api.sample_api import SampleApi
+from sample_metadata.apis import SampleApi
+from sample_metadata.apis import AnalysisApi
+from sample_metadata.apis import SequenceApi
+from sample_metadata.models import AnalysisType, AnalysisStatus, SequencingStatus
+from sample_metadata.model.analysis_model import AnalysisModel
+from sample_metadata.model.sequence_update_model import SequenceUpdateModel
 from joint_calling.upload_processor import batch_move_files, SampleGroup
 
 
@@ -37,22 +42,19 @@ def get_csv(bucket_name, prefix) -> Tuple[csv.DictReader, str]:
     return csv_reader, csv_path
 
 
-def create_analysis(csv_dict_reader, proj):
-    """New analysis objects created for the gvcf and cram for each sample
-    Assumptions:
-    SampleSequence object created previously.
-    We are exclusively processing crams and gvcfs.
-    Samples with gvcfs have crams, and samples without gvcfs don't.
-    """
-
+def determine_samples(csv_dict_reader, proj):
+    """ Determine which samples should be processed """
     # Pull a list containing the sample ID's that don't have gvcfs
+    aapi = AnalysisApi()
     sapi = SampleApi()
-    previous_samples_internal = sapi.get_all_sample_ids_without_analysis_type(
-        proj, 'gvcf'
+    seqapi = SequenceApi()
+    previous_samples_internal = aapi.get_all_sample_ids_without_analysis_type(
+        'gvcf', proj
     )
-    previous_samples_external = sapi.get_external_ids(
-        previous_samples_internal, proj
-    )  # TODO: Implement
+
+    previous_samples_external = sapi.get_sample_external_id_map(
+        proj, {'internal_ids': previous_samples_internal['sample_ids']}
+    )
 
     samples: List[str] = []
     sample_metadata = []
@@ -61,19 +63,23 @@ def create_analysis(csv_dict_reader, proj):
         samples.append(sample_dict['sample.sample_name'])
         sample_metadata.append(sample_dict)
 
-    # Determine the samples in the latest upload.
-    latest_upload_external = samples - previous_samples_external
-    latest_upload_internal = sapi.get_internal_ids(latest_upload_external, proj)
+    # Determine the intersection between both lists.
+    latest_upload_external = list(set(samples) & set(previous_samples_external))
+    latest_upload_internal = sapi.get_sample_id_map(proj, latest_upload_external)
 
     sample_meta_map = {d['sample.sample_name']: d for d in sample_metadata}
-    for sample in latest_upload_internal:
+
+    for sample in list(latest_upload_internal.values()):
         metadata = sample_meta_map[sample]
         metadata_json = json.dumps(list(metadata)[0], indent=2)
 
-        sapi.create_new_analysis(sample, 'gvcf')  # TODO, Fix inputs
-        sapi.create_new_analysist(sample, 'cram')
+        sequence_metadata = SequenceUpdateModel(
+            status=SequencingStatus('uploaded'), meta=metadata_json
+        )
 
-        sapi.update_metadata(sample, metadata_json)  # TODO: IMPLEMENT.
+        sequence_id = seqapi.get_sequence_id_from_sample_id(sample, proj)
+
+        seqapi.update_sequence(sequence_id, sequence_metadata)
 
     return latest_upload_external
 
@@ -119,12 +125,44 @@ def setup_job(
     return job
 
 
-def update_status(sample_group: SampleGroup):
-    """ Updates the status of a SampleSequence """
+def upload_gvcf(sample_group: SampleGroup, proj, main_path):
+    """ Creates a new analysis object"""
     sapi = SampleApi()
-    sapi.update_sequencing_status_from_external_sample_id(
-        sample_group.sample_id_external, 'Upload Successful'
-    )  # TO IMPLEMENT: API CALL
+    aapi = AnalysisApi()
+    external_id = {'external_ids': [sample_group.sample_id_external]}
+    internal_id_map = sapi.get_sample_id_map(proj, external_id)
+    internal_id = list(internal_id_map.values())[0]
+
+    filepath = os.path.join('gs://', main_path, internal_id)
+
+    new_gvcf = AnalysisModel(
+        sample_ids=[internal_id],
+        type=AnalysisType('gvcf'),
+        status=AnalysisStatus('completed'),
+        output=filepath,
+    )
+
+    aapi.create_new_analysis(proj, new_gvcf)
+
+
+def upload_cram(sample_group: SampleGroup, proj, archive_path):
+    """ Creates a new analysis object"""
+    sapi = SampleApi()
+    aapi = AnalysisApi()
+    external_id = {'external_ids': [sample_group.sample_id_external]}
+    internal_id_map = sapi.get_sample_id_map(proj, external_id)
+    internal_id = list(internal_id_map.values())[0]
+
+    filepath = os.path.join('gs://', archive_path, internal_id)
+
+    new_gvcf = AnalysisModel(
+        sample_ids=[internal_id],
+        type=AnalysisType('cram'),
+        status=AnalysisStatus('completed'),
+        output=filepath,
+    )
+
+    aapi.create_new_analysis(proj, new_gvcf)
 
 
 def validate_md5(
@@ -174,7 +212,11 @@ def run_processor(
     archive_path = join(f'cpg-{project}-archive', 'cram', batch_path)
 
     docker_image = os.environ.get('DRIVER_IMAGE')
+    # TODO: Ensure docker image has sample-metadata API installed.
     key = os.environ.get('GSA_KEY')
+
+    if project is None:
+        raise ValueError('HAIL_BILLING_PROJECT must be set')
 
     # Determine the analysis results (i.e. list of gvcfs and crams) to be moved
     samples_external_ids: List[str] = []  # List of external sample IDs
@@ -184,7 +226,7 @@ def run_processor(
     #  Get the CSV file.
     csv_reader, csv_path = get_csv(upload_bucket, upload_prefix)
 
-    samples_external_ids = create_analysis(csv_reader, project)
+    samples_external_ids = determine_samples(csv_reader, project)
 
     # samples = get_samples_from_db(project)
     main_files, archive_files = generate_file_list(samples_external_ids)
@@ -204,6 +246,7 @@ def run_processor(
             sample_group,
             upload_path,
             main_path,
+            project,
             docker_image,
             key,
         )
@@ -221,7 +264,7 @@ def run_processor(
             docker_image,
             True,
         )
-        status_job.call(update_status, sample_group)
+        status_job.call(upload_gvcf, sample_group, main_path)
         status_job.depends_on(validate_job)
         main_jobs.append(status_job)
 
@@ -233,6 +276,7 @@ def run_processor(
             sample_group,
             upload_path,
             archive_path,
+            project,
             docker_image,
             key,
         )
@@ -248,7 +292,7 @@ def run_processor(
             docker_image,
             True,
         )
-        status_job.call(update_status, sample_group)
+        status_job.call(upload_cram, sample_group, archive_path)
         status_job.depends_on(validate_job)
         archive_jobs.append(status_job)
 
