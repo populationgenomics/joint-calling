@@ -8,20 +8,39 @@ import unittest
 import subprocess
 import os
 from datetime import datetime
-from typing import List
+from typing import NamedTuple
 import hailtop.batch as hb
-from joint_calling.upload_processor import batch_move_files
+from sample_metadata.api.sample_api import SampleApi
+from joint_calling.upload_processor import batch_move_files, SampleGroup
 
 
-def validate_move(upload_prefix: str, main_prefix: str, sample: str) -> bool:
+class SuccessGroup(NamedTuple):
+    """Similar to a SampleGroup, but excludes the index and md5 keys.
+    Used to mimic a partial upload."""
+
+    sample_id_external: str
+    data_file: str
+
+
+class FailedGroup(NamedTuple):
+    """Similar to a SampleGroup, but excludes the index and md5 keys.
+    Used to mimic a partial upload."""
+
+    sample_id_external: str
+    index_file: str
+    md5: str
+
+
+def validate_move(
+    upload_prefix: str, main_prefix: str, original_file: str, new_file: str
+) -> bool:
     """Checks that a given file exists at the location in
     the main bucket and no longer exists in the upload bucket.
     Returns True if this is the case and False otherwise.
     """
 
-    main_path = os.path.join('gs://', main_prefix, sample)
-    upload_path = os.path.join('gs://', upload_prefix, sample)
-
+    main_path = os.path.join('gs://', main_prefix, new_file)
+    upload_path = os.path.join('gs://', upload_prefix, original_file)
     exists_main = subprocess.run(['gsutil', '-q', 'stat', main_path], check=False)
     exists_upload = subprocess.run(['gsutil', '-q', 'stat', upload_path], check=False)
 
@@ -29,15 +48,20 @@ def validate_move(upload_prefix: str, main_prefix: str, sample: str) -> bool:
     return exists_upload.returncode != 0 and exists_main.returncode == 0
 
 
-def upload_files(files: List[str], upload_prefix: str):
-    """A function to mimic file upload. Takes a list of
+def upload_files(sample_group: SampleGroup, upload_prefix: str):
+    """Mimics the upload of a new sample. Takes a list of
     file names, creates these files, then moves them into
     the upload bucket used for further testing."""
 
-    for f in files:
-        subprocess.run(['touch', f], check=True)
-        full_path = os.path.join('gs://', upload_prefix, f)
-        subprocess.run(['gsutil', 'mv', f, full_path], check=True)
+    # Create and upload the files.
+
+    for f in sample_group._fields:
+        if f == 'sample_id_external':
+            continue
+        file_name = getattr(sample_group, f)
+        subprocess.run(['touch', file_name], check=True)
+        full_path = os.path.join('gs://', upload_prefix, file_name)
+        subprocess.run(['gsutil', 'mv', file_name, full_path], check=True)
 
 
 class TestUploadProcessor(unittest.TestCase):
@@ -57,19 +81,37 @@ class TestUploadProcessor(unittest.TestCase):
         self.main_prefix = os.path.join(
             'cpg-fewgenomes-test-tmp/test-main', test_folder
         )
+
         self.docker_image = os.environ.get('DOCKER_IMAGE')
         self.key = os.environ.get('GSA_KEY')
+        self.project = 'dev'
 
     def test_batch_move_standard(self):
         """Testing standard case of moving a list of files with valid inputs"""
-        sample_list = ['Sample5.gVCF', 'Sample6.gVCF', 'Sample7.gVCF']
-        upload_files(sample_list, self.upload_prefix)
+
+        # Assumption, that the following external ID already exists in the database.
+        sapi = SampleApi()
+        external_id = 'TOB02341'
+        external_id_map = {'external_ids': [external_id]}
+        internal_id_map = sapi.get_sample_id_map(self.project, external_id_map)
+        internal_id = list(internal_id_map.values())[0]
+
+        test_sample = SampleGroup(
+            external_id,
+            f'{external_id}.g.vcf.gz',
+            f'{external_id}.g.vcf.gz.tbi',
+            f'{external_id}.g.vcf.gz.md5',
+        )
+
+        upload_files(test_sample, self.upload_prefix)
+
         batch = hb.Batch(name='Test Batch Move Standard')
         batch_move_files(
             batch,
-            sample_list,
+            test_sample,
             self.upload_prefix,
             self.main_prefix,
+            self.project,
             self.docker_image,
             self.key,
         )
@@ -77,24 +119,55 @@ class TestUploadProcessor(unittest.TestCase):
         batch.run()
 
         # Check that the files have been moved to main
-        for sample in sample_list:
-            self.assertTrue(validate_move(self.upload_prefix, self.main_prefix, sample))
+        for f in test_sample._fields:
+            if f == 'sample_id_external':
+                continue
+            file_name = getattr(test_sample, f)
+            file_extension = file_name[len(test_sample.sample_id_external) :]
+            self.assertTrue(
+                validate_move(
+                    self.upload_prefix,
+                    self.main_prefix,
+                    file_name,
+                    str(internal_id) + file_extension,
+                )
+            )
 
     def test_batch_move_recovery(self):
         """Test cases that handles previous partially successful run.
         In this case, the file would not exist at the source
         but would exist at the destination"""
 
-        # Rather than uploading files to the upload bucket, files are added
+        # Rather than uploading files to the upload bucket, the sample
         # To the main bucket, to mimic this behaviour
-        sample_list = ['Sample1.gVCF', 'Sample2.gVCF', 'Sample3.gVCF']
-        upload_files(sample_list, self.main_prefix)
+        sapi = SampleApi()
+        external_id = 'TOB02242'
+        external_id_map = {'external_ids': [external_id]}
+        internal_id_map = sapi.get_sample_id_map(self.project, external_id_map)
+        internal_id = list(internal_id_map.values())[0]
+
+        test_sample = SampleGroup(
+            external_id,
+            f'{external_id}.g.vcf.gz',
+            f'{external_id}.g.vcf.gz.tbi',
+            f'{external_id}.g.vcf.gz.md5',
+        )
+
+        recovery_sample = SampleGroup(
+            str(internal_id),
+            f'{internal_id}.g.vcf.gz',
+            f'{internal_id}.g.vcf.gz.tbi',
+            f'{internal_id}.g.vcf.gz.md5',
+        )
+
+        upload_files(recovery_sample, self.main_prefix)
         recovery_batch = hb.Batch(name='Test Batch Move Recovery')
         batch_move_files(
             recovery_batch,
-            sample_list,
+            test_sample,
             self.upload_prefix,
             self.main_prefix,
+            self.project,
             self.docker_image,
             self.key,
         )
@@ -102,19 +175,37 @@ class TestUploadProcessor(unittest.TestCase):
         recovery_batch.run()
 
         # Check that the files have been moved to main
-        for sample in sample_list:
-            self.assertTrue(validate_move(self.upload_prefix, self.main_prefix, sample))
+        for f in test_sample._fields:
+            if f == 'sample_id_external':
+                continue
+            file_name = getattr(test_sample, f)
+            file_extension = file_name[len(test_sample.sample_id_external) :]
+            self.assertTrue(
+                validate_move(
+                    self.upload_prefix,
+                    self.main_prefix,
+                    file_name,
+                    str(internal_id) + file_extension,
+                )
+            )
 
     def test_invalid_samples(self):
         """Test case that handles invalid sample ID's i.e. samples that don't exist
         in the upload bucket"""
-        sample_list = ['Sample8.gVCF', 'Sample9.gVCF']
+        not_uploaded_id = 'TOB02337'
+        not_uploaded_sample = SampleGroup(
+            not_uploaded_id,
+            f'{not_uploaded_id}.g.vcf.gz',
+            f'{not_uploaded_id}.g.vcf.gz.tbi',
+            f'{not_uploaded_id}.g.vcf.gz.md5',
+        )
         invalid_batch = hb.Batch(name='Invalid Batch')
         batch_move_files(
             invalid_batch,
-            sample_list,
+            not_uploaded_sample,
             self.upload_prefix,
             self.main_prefix,
+            self.project,
             self.docker_image,
             self.key,
         )
@@ -126,35 +217,67 @@ class TestUploadProcessor(unittest.TestCase):
         """Another partial recovery test case. In this scenario,
         half the files were moved in a previous run and half were not."""
 
-        sample_list_failed = ['SampleA.gVCF', 'SampleB.gVCF']
-        sample_list_successful = ['SampleC.gVCF', 'SampleD.gVCF']
+        sapi = SampleApi()
+        external_id = 'TOB02341'
+        external_id_map = {'external_ids': [external_id]}
+        internal_id_map = sapi.get_sample_id_map(self.project, external_id_map)
+        internal_id = list(internal_id_map.values())[0]
+
+        full_sample = SampleGroup(
+            external_id,
+            f'{external_id}.g.vcf.gz',
+            f'{external_id}.g.vcf.gz.tbi',
+            f'{external_id}.g.vcf.gz.md5',
+        )
+
+        failed_files = FailedGroup(
+            external_id,
+            f'{external_id}.g.vcf.gz.tbi',
+            f'{external_id}.g.vcf.gz.md5',
+        )
+
+        success_files = SuccessGroup(
+            internal_id,
+            f'{internal_id}.g.vcf.gz',
+        )
 
         # Uploading this 'successful' files to the main bucket
-        upload_files(sample_list_successful, self.main_prefix)
+        upload_files(success_files, self.main_prefix)
 
         # Uploading the 'failed' files to the upload bucket
         # i.e. replicating the case were they have not moved.
-        upload_files(sample_list_failed, self.upload_prefix)
-
-        sample_list = sample_list_failed + sample_list_successful
+        upload_files(failed_files, self.upload_prefix)
 
         partial_batch = hb.Batch(name='Test Batch Move Partial Recovery')
         batch_move_files(
             partial_batch,
-            sample_list,
+            full_sample,
             self.upload_prefix,
             self.main_prefix,
+            self.project,
             self.docker_image,
             self.key,
         )
 
         partial_batch.run()
 
-        for sample in sample_list:
-            self.assertTrue(validate_move(self.upload_prefix, self.main_prefix, sample))
+        # Check that the files have been moved to main
+        for f in full_sample._fields:
+            if f == 'sample_id_external':
+                continue
+            file_name = getattr(full_sample, f)
+            file_extension = file_name[len(full_sample.sample_id_external) :]
+            self.assertTrue(
+                validate_move(
+                    self.upload_prefix,
+                    self.main_prefix,
+                    file_name,
+                    str(internal_id) + file_extension,
+                )
+            )
 
     def tearDown(self):
-        # Deleting files created in test run
+        """Deleting files created in test run"""
         full_path = os.path.join('gs://', self.main_prefix, '*')
         subprocess.run(['gsutil', 'rm', full_path], check=False)
 

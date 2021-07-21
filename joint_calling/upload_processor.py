@@ -77,19 +77,20 @@ def batch_move_files(
     external_id = {'external_ids': [sample_group.sample_id_external]}
     sapi = SampleApi()
     internal_id_map = sapi.get_sample_id_map(project, external_id)
-    internal_id = list(internal_id_map.values())[0]
+    internal_id = str(list(internal_id_map.values())[0])
     # TODO: Test Further
 
-    for tuple_key in sample_group:
+    for tuple_key in sample_group._fields:
         if tuple_key == 'sample_id_external':
             continue
 
         file_name = getattr(sample_group, tuple_key)
         previous_location = os.path.join('gs://', source_prefix, file_name)
+        file_extension = file_name[len(sample_group.sample_id_external) :]
+        new_file_name = internal_id + file_extension
+        new_location = os.path.join('gs://', destination_prefix, new_file_name)
 
-        new_location = os.path.join('gs://', destination_prefix, internal_id)
-
-        j = batch.new_job(name=f'move {file_name} -> {internal_id}')
+        j = batch.new_job(name=f'move {file_name} -> {new_file_name}')
 
         if docker_image is not None:
             j.image(docker_image)
