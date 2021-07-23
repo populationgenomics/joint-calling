@@ -606,7 +606,7 @@ def plot_score_distributions(
 
 def get_binned_concordance_pd(
     model_name_by_model_id: Dict[str, str],
-    work_bucket: str,
+    binned_concordance_ht_path_by_model_id: Dict[str, str],
     truth_samples: List[str],
 ) -> pd.DataFrame:
     """
@@ -616,7 +616,6 @@ def get_binned_concordance_pd(
     :param model_name_by_model_id:
            Which models to plot. A dict with mapping from model id
            to model name for display.
-    :param work_bucket: work_bucket
     :param list of str truth_samples: List of truth samples to include
     :return: Pandas dataframe with binned concordance results
     :rtype: DataFrame
@@ -633,9 +632,10 @@ def get_binned_concordance_pd(
         hts = []
         for truth_sample in truth_samples:
             for model_id, model_name in model_name_by_model_id.items():
-                conc_path = join(
-                    work_bucket, f'binned_concordance/{truth_sample}_{model_id}.ht'
-                )
+                conc_path = binned_concordance_ht_path_by_model_id[model_id]
+                # conc_path = join(
+                #     work_bucket, f'binned_concordance/{truth_sample}_{model_id}.ht'
+                # )
                 ht = hl.read_table(conc_path)
                 ht = ht.annotate(truth_sample=truth_sample, model=model_name)
                 hts.append(ht)
