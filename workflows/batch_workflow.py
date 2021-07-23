@@ -11,13 +11,13 @@ https://github.com/populationgenomics/analysis-runner (see helper script `driver
 
 import os
 import subprocess
+import tempfile
 from os.path import join, dirname, abspath, basename
 from typing import List, Optional, Tuple
 import logging
 import click
 import pandas as pd
 import hailtop.batch as hb
-from hail import hadoop_open
 from hailtop.batch.job import Job
 from analysis_runner import dataproc
 
@@ -173,8 +173,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     raw_combined_mt_path = f'{combiner_bucket}/{callset_version}-raw.mt'
     filtered_combined_mt_path = f'{mt_output_bucket}/{callset_version}.mt'
     filtered_combined_nonref_mt_path = f'{mt_output_bucket}/{callset_version}-nonref.mt'
-    readme_fpath = f'{mt_output_bucket}/README.txt'
-    with hadoop_open(readme_fpath, 'w') as f:
+
+    local_tmp_dir = tempfile.mkdtemp()
+    readme_local_fpath = join(local_tmp_dir, 'README.txt')
+    readme_gcs_fpath = join(mt_output_bucket, 'README.txt')
+    with open(local_tmp_dir, 'w') as f:
         f.write(f'Unfiltered:\n{raw_combined_mt_path}')
         f.write(
             f'AS-VQSR soft-filtered\n(use `mt.filter_rows(hl.is_missing(mt.filters)` to hard-filter):\n {basename(filtered_combined_mt_path)}'
@@ -182,6 +185,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         f.write(
             f'AS-VQSR soft-filtered, without reference blocks:\n{basename(filtered_combined_nonref_mt_path)}'
         )
+    subprocess.run(['gsutil', 'cp', readme_local_fpath, readme_gcs_fpath], check=False)
 
     filter_cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
 
