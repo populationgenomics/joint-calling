@@ -177,7 +177,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     local_tmp_dir = tempfile.mkdtemp()
     readme_local_fpath = join(local_tmp_dir, 'README.txt')
     readme_gcs_fpath = join(mt_output_bucket, 'README.txt')
-    with open(local_tmp_dir, 'w') as f:
+    with open(readme_local_fpath, 'w') as f:
         f.write(f'Unfiltered:\n{raw_combined_mt_path}')
         f.write(
             f'AS-VQSR soft-filtered\n(use `mt.filter_rows(hl.is_missing(mt.filters)` to hard-filter):\n {basename(filtered_combined_mt_path)}'
