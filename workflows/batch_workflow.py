@@ -242,7 +242,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     )
 
     if run_rf or run_vqsr:
-        var_qc_job, var_qc_final_filter_ht = add_variant_qc_jobs(
+        var_qc_job, vqsr_final_filter_ht = add_variant_qc_jobs(
             b=b,
             work_bucket=join(work_bucket, 'variant_qc'),
             web_bucket=join(web_bucket, 'variant_qc'),
@@ -264,7 +264,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
                 b,
                 f'{scripts_dir}/make_finalised_mt.py --overwrite '
                 f'--mt {raw_combined_mt_path} '
-                f'--var-qc-final-filter-ht {var_qc_final_filter_ht} '
+                f'--final-filter-ht {vqsr_final_filter_ht} '
                 f'--out-mt {filtered_combined_mt_path} '
                 f'--out-nonref-mt {filtered_combined_nonref_mt_path} '
                 f'--meta-ht {meta_ht_path} ',
