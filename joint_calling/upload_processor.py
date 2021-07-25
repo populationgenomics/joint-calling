@@ -78,7 +78,6 @@ def batch_move_files(
     sapi = SampleApi()
     internal_id_map = sapi.get_sample_id_map(project, external_id)
     internal_id = str(list(internal_id_map.values())[0])
-    # TODO: Test Further
 
     for tuple_key in sample_group._fields:
         if tuple_key == 'sample_id_external':
