@@ -145,7 +145,9 @@ class TestUploadProcessor(unittest.TestCase):
         sapi = SampleApi()
         external_id = 'TOB02242'
         external_id_map = {'external_ids': [external_id]}
-        internal_id_map = sapi.get_sample_id_map(self.project, external_id_map)
+        internal_id_map = sapi.get_sample_id_map_by_external(
+            self.project, external_id_map
+        )
         internal_id = list(internal_id_map.values())[0]
 
         test_sample = SampleGroup(
@@ -222,7 +224,9 @@ class TestUploadProcessor(unittest.TestCase):
         sapi = SampleApi()
         external_id = 'TOB02341'
         external_id_map = {'external_ids': [external_id]}
-        internal_id_map = sapi.get_sample_id_map(self.project, external_id_map)
+        internal_id_map = sapi.get_sample_id_map_by_external(
+            self.project, external_id_map
+        )
         internal_id = list(internal_id_map.values())[0]
 
         full_sample = SampleGroup(
