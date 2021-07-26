@@ -76,7 +76,7 @@ def batch_move_files(
     # Get internal sample ID
     external_id = {'external_ids': [sample_group.sample_id_external]}
     sapi = SampleApi()
-    internal_id_map = sapi.get_sample_id_map(project, external_id)
+    internal_id_map = sapi.get_sample_id_map_by_external(project, external_id)
     internal_id = str(list(internal_id_map.values())[0])
 
     for tuple_key in sample_group._fields:

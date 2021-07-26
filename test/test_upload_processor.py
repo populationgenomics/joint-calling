@@ -84,7 +84,7 @@ class TestUploadProcessor(unittest.TestCase):
 
         self.docker_image = os.environ.get('DOCKER_IMAGE')
         self.key = os.environ.get('GSA_KEY')
-        self.project = 'dev'
+        self.project = 'viviandev'
 
     def test_batch_move_standard(self):
         """Testing standard case of moving a list of files with valid inputs"""
@@ -93,7 +93,9 @@ class TestUploadProcessor(unittest.TestCase):
         sapi = SampleApi()
         external_id = 'TOB02341'
         external_id_map = {'external_ids': [external_id]}
-        internal_id_map = sapi.get_sample_id_map(self.project, external_id_map)
+        internal_id_map = sapi.get_sample_id_map_by_external(
+            self.project, external_id_map
+        )
         internal_id = list(internal_id_map.values())[0]
 
         test_sample = SampleGroup(
