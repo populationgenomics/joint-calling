@@ -310,11 +310,14 @@ def _compute_hail_sample_qc(
     # Remove centromeres and telomeres incase they were included and any reference blocks
     mt = filter_low_conf_regions(
         mt,
-        filter_lcr=False,
+        filter_lcr=True,
         filter_decoy=False,
         filter_segdup=False,
         filter_telomeres_and_centromeres=True,
     )
+
+    # Removing non-PASS variants
+    mt = mt.filter_rows(mt.filters.length() == 0)
 
     sample_qc_ht = compute_stratified_sample_qc(
         mt,
