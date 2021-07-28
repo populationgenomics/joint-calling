@@ -148,8 +148,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 ):
     local_tmp_dir = utils.init_hail('sample_qc', local_tmp_dir)
 
-    mt = get_mt(mt_path)
-    mt_split = get_mt(mt_path, split=True)
+    mt = get_mt(mt_path, passing_sites_only=True)
+    mt_split = get_mt(mt_path, split=True, passing_sites_only=True)
 
     local_meta_csv_path = join(local_tmp_dir, basename(meta_csv_path))
     subprocess.run(
@@ -315,9 +315,6 @@ def _compute_hail_sample_qc(
         filter_segdup=False,
         filter_telomeres_and_centromeres=True,
     )
-
-    # Removing non-PASS variants
-    mt = mt.filter_rows(mt.filters.length() == 0)
 
     sample_qc_ht = compute_stratified_sample_qc(
         mt,

@@ -325,9 +325,7 @@ def get_mt(
     mt = hl.read_matrix_table(mt_path)
 
     if passing_sites_only:
-        mt = mt.filter_rows(
-            ~hl.is_missing(mt.filters)
-        )  # pylint disable:invalid-unary-operand-type
+        mt = mt.filter_rows(mt.filters.length() == 0)
 
     if hard_filtered_samples_to_remove_ht is not None:
         mt = mt.filter_cols(
