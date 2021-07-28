@@ -662,7 +662,6 @@ def add_indels_variant_recalibrator_step(
       ls $(dirname {j.indel_rscript_file})
 
       ln {j.indel_rscript_file}.pdf {j.indel_features_pdf}
-      ln {j.tranches}.pdf {j.indel_tranches_pdf}
       """
     )
     if work_bucket:
@@ -674,10 +673,6 @@ def add_indels_variant_recalibrator_step(
         b.write_output(
             j.indel_features_pdf,
             os.path.join(web_bucket, 'recalibration-indels-features.pdf'),
-        )
-        b.write_output(
-            j.indel_tranches_pdf,
-            os.path.join(web_bucket, 'recalibration-indels-tranches.pdf'),
         )
     return j
 
