@@ -275,27 +275,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
                 job_name='Making final MT',
             )
         else:
-            var_qc_job = b.new_job('Making final MT [reuse]')
+            b.new_job('Making final MT [reuse]')
     else:
-        var_qc_job = b.new_job('Var QC [skip]')
-
-    # Run Sample_QC once again on AS-VQSR-filtered variants
-    _add_sample_qc_jobs(
-        b=b,
-        mt_path=filtered_combined_mt_path,
-        samples_csv_path=samples_csv_path,
-        sample_qc_bucket=f'{work_bucket}/sample_qc_after_vqsr',
-        output_metadata_bucket=f'{output_metadata_bucket}/after_vqsr',
-        callset_name=callset_name,
-        input_namespace=input_namespace,
-        filter_cutoffs_path=filter_cutoffs_path,
-        scripts_dir=scripts_dir,
-        overwrite=overwrite,
-        scatter_count=scatter_count,
-        depends_on=[var_qc_job],
-        billing_project=billing_project,
-        label='Sample QC after VQSR',
-    )
+        b.new_job('Var QC [skip]')
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
 
