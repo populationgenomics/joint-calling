@@ -310,7 +310,7 @@ def _compute_hail_sample_qc(
     # Remove centromeres and telomeres incase they were included and any reference blocks
     mt = filter_low_conf_regions(
         mt,
-        filter_lcr=True,
+        filter_lcr=False,
         filter_decoy=False,
         filter_segdup=False,
         filter_telomeres_and_centromeres=True,

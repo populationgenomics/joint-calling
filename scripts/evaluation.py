@@ -34,35 +34,6 @@ logger = logging.getLogger('random_forest')
 logger.setLevel('INFO')
 
 
-TRUTH_GVCFS = dict(
-    syndip=dict(
-        s='syndip',
-        gvcf='gs://gnomad-public/resources/grch38/syndip/full.38.20180222.vcf.gz',
-    ),
-    NA12878=dict(
-        s='NA12878',
-        gvcf='gs://gnomad-public/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',
-    ),
-)
-
-TRUTH_DICT = {
-    TRUTH_GVCFS['syndip']['s']: {
-        's': TRUTH_GVCFS['syndip']['s'],
-        'truth_mt': syndip.mt(),
-        'hc_intervals': syndip_hc_intervals.ht(),
-        'mt': None,
-        'ht': None,
-    },
-    TRUTH_GVCFS['NA12878']['s']: {
-        's': TRUTH_GVCFS['NA12878']['s'],
-        'truth_mt': na12878_giab.mt(),
-        'hc_intervals': na12878_giab_hc_intervals.ht(),
-        'mt': None,
-        'ht': None,
-    },
-}
-
-
 @click.command()
 @click.version_option(_version.__version__)
 @click.option(
@@ -221,9 +192,38 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
             agg_ht.write(out_aggregated_bin_ht_path, overwrite=True)
 
     mt = utils.get_mt(mt_path)
-    truth_snames = [sn for sn in TRUTH_GVCFS if sn in mt.s.collect()]
+
+    truth_gvcfs = dict(
+        syndip=dict(
+            s='syndip',
+            gvcf='gs://gnomad-public/resources/grch38/syndip/full.38.20180222.vcf.gz',
+        ),
+        NA12878=dict(
+            s='NA12878',
+            gvcf='gs://gnomad-public/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',
+        ),
+    )
+
+    truth_dict = {
+        truth_gvcfs['syndip']['s']: {
+            's': truth_gvcfs['syndip']['s'],
+            'truth_mt': syndip.mt(),
+            'hc_intervals': syndip_hc_intervals.ht(),
+            'mt': None,
+            'ht': None,
+        },
+        truth_gvcfs['NA12878']['s']: {
+            's': truth_gvcfs['NA12878']['s'],
+            'truth_mt': na12878_giab.mt(),
+            'hc_intervals': na12878_giab_hc_intervals.ht(),
+            'mt': None,
+            'ht': None,
+        },
+    }
+
+    truth_snames = [sn for sn in truth_gvcfs if sn in mt.s.collect()]
     if truth_snames:
-        truth_dict = {k: v for k, v in TRUTH_DICT if k in truth_snames}
+        truth_dict = {k: v for k, v in truth_dict.items() if k in truth_snames}
         _truth_concordance(
             mt,
             overwrite,
