@@ -356,15 +356,17 @@ def _snps_not_in_gnomad(
 
     mt = mt.filter_rows(hl.len(mt.alleles) > 1)
     mt = mt.filter_rows(hl.is_snp(mt.alleles[0], mt.alleles[1]))
+
     # Get entries (table annotated with locus, allele, sample)
     ht = mt.entries()
-    # Filter to those sites that are not in gnomad
+
+    # Filter to those variants that are not in gnomad
     gnomad = hl.read_table(gnomad_path)
     ht.key_by('locus', 'alleles').anti_join(gnomad)
-    # Calculate number of non-gnomad variants for each sample
-    stats = ht.group_by(ht.s).aggregate(nongnomad_snps=hl.agg.count())
-    stats.write(out_ht_path, overwrite=True)
-    return stats
+    # Count non-gnomad variants for each sample
+    stats_ht = ht.group_by(ht.s).aggregate(nongnomad_snps=hl.agg.count())
+    stats_ht.write(out_ht_path, overwrite=True)
+    return stats_ht
 
 
 def _infer_sex(
