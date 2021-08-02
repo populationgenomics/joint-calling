@@ -5,81 +5,46 @@ into the MAIN and ARCHIVE buckets using the batch_move_files function.
 
 Assumes that the csv file has been processed in a previous step. 
 """
-import csv
-import io
 import os
-import json
 from os.path import join
 from typing import List, Optional, Tuple
 import click
 import hailtop.batch as hb
-from google.cloud import storage
 
 # Import SampleAPI
 from sample_metadata.apis import SampleApi
 from sample_metadata.apis import AnalysisApi
 from sample_metadata.apis import SequenceApi
-from sample_metadata.models import AnalysisType, AnalysisStatus, SequencingStatus
+from sample_metadata.models import AnalysisType, AnalysisStatus
 from sample_metadata.model.analysis_model import AnalysisModel
-from sample_metadata.model.sequence_update_model import SequenceUpdateModel
 from joint_calling.upload_processor import batch_move_files, SampleGroup
 
 
-def get_csv(bucket_name, prefix) -> Tuple[csv.DictReader, str]:
-    """Pull relevant data from csv file in a given bucket
-    ==========
-    Only one .csv file exists in the upload bucket and previous batch directory.
-    """
-    client = storage.Client()
-    gcs_bucket = client.get_bucket(bucket_name)
-
-    all_blobs = list(client.list_blobs(bucket_name, prefix=prefix))
-    csv_path = next(filter(lambda blob: blob.name.endswith('.csv'), all_blobs)).name
-
-    csv_as_text = gcs_bucket.get_blob(csv_path).download_as_text()
-    csv_reader = csv.DictReader(io.StringIO(csv_as_text))
-
-    return csv_reader, csv_path
-
-
-def determine_samples(csv_dict_reader, proj):
+def determine_samples(proj):
     """ Determine which samples should be processed """
-    # Pull a list containing the sample ID's that don't have gvcfs
+    # Pull a list containing the sample ID's that don't have gvcfs and that also
+    # Have sequencing metadata attached.
     aapi = AnalysisApi()
     sapi = SampleApi()
     seqapi = SequenceApi()
-    previous_samples_internal = aapi.get_all_sample_ids_without_analysis_type(
+
+    samples_without_analysis = aapi.get_all_sample_ids_without_analysis_type(
         'gvcf', proj
     )
 
-    previous_samples_external = sapi.get_sample_external_id_map(
-        proj, {'internal_ids': previous_samples_internal['sample_ids']}
-    )
-
-    samples: List[str] = []
-    sample_metadata = []
-
-    for sample_dict in csv_dict_reader:
-        samples.append(sample_dict['sample.sample_name'])
-        sample_metadata.append(sample_dict)
+    # TODO: Implement
+    samples_with_sequencing_meta = seqapi.get_all_sequences_with_metadata()
 
     # Determine the intersection between both lists.
-    latest_upload_external = list(set(samples) & set(previous_samples_external))
+    latest_upload_internal = list(
+        set(samples_with_sequencing_meta) & set(samples_without_analysis)
+    )
+
+    latest_upload_external = sapi.get_sample_external_id_map(
+        proj, {'internal_ids': latest_upload_internal}
+    )
+
     latest_upload_internal = sapi.get_sample_id_map(proj, latest_upload_external)
-
-    sample_meta_map = {d['sample.sample_name']: d for d in sample_metadata}
-
-    for sample in list(latest_upload_internal.values()):
-        metadata = sample_meta_map[sample]
-        metadata_json = json.dumps(list(metadata)[0], indent=2)
-
-        sequence_metadata = SequenceUpdateModel(
-            status=SequencingStatus('uploaded'), meta=metadata_json
-        )
-
-        sequence_id = seqapi.get_sequence_id_from_sample_id(sample, proj)
-
-        seqapi.update_sequence(sequence_id, sequence_metadata)
 
     return latest_upload_external
 
@@ -208,11 +173,10 @@ def run_processor(
     main_bucket = f'cpg-{project}-main'
     main_prefix = join('gvcf', batch_path)
     main_path = join(main_bucket, main_prefix)
-    metadata_bucket = f'cpg-{project}-main-metadata'
+    # metadata_bucket = f'cpg-{project}-main-metadata'
     archive_path = join(f'cpg-{project}-archive', 'cram', batch_path)
 
     docker_image = os.environ.get('DRIVER_IMAGE')
-    # TODO: Ensure docker image has sample-metadata API installed.
     key = os.environ.get('GSA_KEY')
 
     if project is None:
@@ -224,9 +188,9 @@ def run_processor(
     archive_files: List[SampleGroup] = []
 
     #  Get the CSV file.
-    csv_reader, csv_path = get_csv(upload_bucket, upload_prefix)
+    # csv_reader, csv_path = get_csv(upload_bucket, upload_prefix)
 
-    samples_external_ids = determine_samples(csv_reader, project)
+    samples_external_ids = determine_samples(project)
 
     # samples = get_samples_from_db(project)
     main_files, archive_files = generate_file_list(samples_external_ids)
@@ -295,13 +259,6 @@ def run_processor(
         status_job.call(upload_cram, sample_group, archive_path)
         status_job.depends_on(validate_job)
         archive_jobs.append(status_job)
-
-    # Move the csv file to the metadata bucket, after the gVCFs and CRAMs have been
-    # moved to the main and archive buckets.
-    csv_job = setup_job(batch, f'Move {csv_path}', docker_image)
-    csv_job.command(f'gsutil mv gs://{csv_path} gs://{metadata_bucket}/{batch_path}/')
-    csv_job.depends_on(*main_jobs)
-    csv_job.depends_on(*archive_jobs)
 
     batch.run()
 
