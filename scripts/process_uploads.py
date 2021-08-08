@@ -17,6 +17,7 @@ from sample_metadata.apis import AnalysisApi
 from sample_metadata.apis import SequenceApi
 from sample_metadata.models import AnalysisType, AnalysisStatus
 from sample_metadata.model.analysis_model import AnalysisModel
+from sample_metadata.exceptions import ServiceException
 from joint_calling.upload_processor import batch_move_files, SampleGroup
 
 
@@ -32,19 +33,40 @@ def determine_samples(proj):
         'gvcf', proj
     )
 
-    # TODO: Implement
-    samples_with_sequencing_meta = seqapi.get_all_sequences_with_metadata()
+    print(samples_without_analysis)
+
+    # print(samples_without_analysis)
+
+    samples_with_sequencing_meta = []
+
+    for sample in samples_without_analysis['sample_ids']:
+        print(sample)
+
+        try:
+            seq_entry = seqapi.get_sequence_id_from_sample_id(sample, proj)
+            print(seq_entry)
+            # This will return a dictionary. Check if a dictionary has a key.
+            if 'meta' in seq_entry:
+                if 'reads' in seq_entry['meta']:
+                    samples_with_sequencing_meta.append(sample)
+
+        except ServiceException:
+            print(f'Sequencing for {sample} not found')
+
+    print(samples_with_sequencing_meta)
 
     # Determine the intersection between both lists.
     latest_upload_internal = list(
-        set(samples_with_sequencing_meta) & set(samples_without_analysis)
+        set(samples_with_sequencing_meta) & set(samples_without_analysis['sample_ids'])
     )
 
     latest_upload_external = sapi.get_sample_external_id_map(
         proj, {'internal_ids': latest_upload_internal}
     )
 
-    latest_upload_internal = sapi.get_sample_id_map(proj, latest_upload_external)
+    # latest_upload_internal = sapi.get_sample_id_map(proj, latest_upload_external)
+
+    # latest_upload_external = []
 
     return latest_upload_external
 
@@ -264,4 +286,5 @@ def run_processor(
 
 
 if __name__ == '__main__':
-    run_processor()  # pylint: disable=E1120
+    # run_processor()  # pylint: disable=E1120
+    determine_samples('viviandev')
