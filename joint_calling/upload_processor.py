@@ -77,10 +77,9 @@ def batch_move_files(
     internal_id = sample_group.sample_id_internal
     batch_number = sample_group.batch_number
 
-    for tuple_key in sample_group._fields:
-        if tuple_key in ['sample_id_external', 'batch_number', 'sample_id_internal']:
-            continue
-        file_name = getattr(sample_group, tuple_key)
+    files_to_move = (sample_group.data_file, sample_group.index_file, sample_group.md5)
+
+    for file_name in files_to_move:
         previous_location = os.path.join('gs://', source_prefix, file_name)
         file_extension = file_name[len(external_id) :]
         new_file_name = internal_id + file_extension

@@ -35,28 +35,32 @@ def determine_samples(proj):
 
     # Determines which sequences have had their metadata fields updated
     # (This metadata is updated on initial notification of upload)
-    for sample in samples_without_analysis['sample_ids']:
+    for internal_sample_id in samples_without_analysis['sample_ids']:
         try:
-            seq_id = int(seqapi.get_sequence_id_from_sample_id(sample, proj))
+            seq_id = int(
+                seqapi.get_sequence_id_from_sample_id(internal_sample_id, proj)
+            )
             seq_entry = seqapi.get_sequence_by_id(seq_id, proj)
             full_external_id_batch_mapping = []
 
             # This will return a dictionary. Check if a dictionary has a key.
             if seq_entry['meta'] is not None:
                 if 'gvcf' in seq_entry['meta']:
-                    batch = seq_entry['meta']['gvcf'][-1]['batch']
-                    samples_with_sequencing_meta.append(sample)
-                    external_map = sapi.get_sample_id_map_by_internal(proj, [sample])
+                    batch = seq_entry['meta']['gvcf'].get('batch')
+                    samples_with_sequencing_meta.append(internal_sample_id)
+                    external_map = sapi.get_sample_id_map_by_internal(
+                        proj, [internal_sample_id]
+                    )
                     full_external_id_batch_mapping.append(
                         {
-                            'internal_id': sample,
-                            'external_id': external_map[sample],
+                            'internal_id': internal_sample_id,
+                            'external_id': external_map[internal_sample_id],
                             'batch': batch,
                         }
                     )
 
         except ServiceException:
-            print(f'Sequencing for {sample} not found')
+            print(f'Sequencing for {internal_sample_id} not found')
 
     # Intersection determines the sequencing that is ready to be processed, but has not
     # yet been.
@@ -99,21 +103,21 @@ def generate_file_list(
         internal_id = sample_batch_pair['internal_id']
         batch_id = sample_batch_pair['batch']
         sample_group_main = SampleGroup(
-            external_id,
-            internal_id,
-            f'{external_id}.g.vcf.gz',
-            f'{external_id}.g.vcf.gz.tbi',
-            f'{external_id}.g.vcf.gz.md5',
-            batch_id,
+            sample_id_external=external_id,
+            sample_id_internal=internal_id,
+            data_file=f'{external_id}.g.vcf.gz',
+            index_file=f'{external_id}.g.vcf.gz.tbi',
+            md5=f'{external_id}.g.vcf.gz.md5',
+            batch_number=batch_id,
         )
         main_files.append(sample_group_main)
         sample_group_archive = SampleGroup(
-            external_id,
-            internal_id,
-            f'{external_id}.cram',
-            f'{external_id}.cram.crai',
-            f'{external_id}.cram.md5',
-            batch_id,
+            sample_id_external=external_id,
+            sample_id_internal=internal_id,
+            data_file=f'{external_id}.cram',
+            index_file=f'{external_id}.cram.crai',
+            md5=f'{external_id}.cram.md5',
+            batch_number=batch_id,
         )
         archive_files.append(sample_group_archive)
 
@@ -138,7 +142,7 @@ def setup_job(
     return job
 
 
-def upload_analysis(sample_group: SampleGroup, proj, path, analysis_type):
+def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_type):
     """ Creates a new analysis object"""
     aapi = AnalysisApi()
 
@@ -253,7 +257,9 @@ def run_processor():
             True,
         )
         full_path = os.path.join(main_path, f'batch{sample_group.batch_number}')
-        status_job.call(upload_analysis, sample_group, full_path, 'gvcf')
+        status_job.call(
+            create_analysis_in_sm_db, sample_group, sm_project, full_path, 'gvcf'
+        )
         status_job.depends_on(validate_job)
         main_jobs.append(status_job)
 
@@ -280,7 +286,9 @@ def run_processor():
             docker_image,
             True,
         )
-        status_job.call(upload_analysis, sample_group, archive_path, 'cram')
+        status_job.call(
+            create_analysis_in_sm_db, sample_group, sm_project, archive_path, 'cram'
+        )
         status_job.depends_on(validate_job)
         archive_jobs.append(status_job)
 
