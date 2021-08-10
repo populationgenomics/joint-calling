@@ -99,10 +99,12 @@ class TestUploadProcessor(unittest.TestCase):
         internal_id = list(internal_id_map.values())[0]
 
         test_sample = SampleGroup(
-            external_id,
-            f'{external_id}.g.vcf.gz',
-            f'{external_id}.g.vcf.gz.tbi',
-            f'{external_id}.g.vcf.gz.md5',
+            sample_id_external=external_id,
+            sample_id_internal=internal_id,
+            data_file=f'{external_id}.g.vcf.gz',
+            index_file=f'{external_id}.g.vcf.gz.tbi',
+            md5=f'{external_id}.g.vcf.gz.md5',
+            batch_number='0',
         )
 
         upload_files(test_sample, self.upload_prefix)
@@ -113,7 +115,6 @@ class TestUploadProcessor(unittest.TestCase):
             test_sample,
             self.upload_prefix,
             self.main_prefix,
-            self.project,
             self.docker_image,
             self.key,
         )
@@ -151,10 +152,12 @@ class TestUploadProcessor(unittest.TestCase):
         internal_id = list(internal_id_map.values())[0]
 
         test_sample = SampleGroup(
-            external_id,
-            f'{external_id}.g.vcf.gz',
-            f'{external_id}.g.vcf.gz.tbi',
-            f'{external_id}.g.vcf.gz.md5',
+            sample_id_external=external_id,
+            sample_id_internal=internal_id,
+            data_file=f'{external_id}.g.vcf.gz',
+            index_file=f'{external_id}.g.vcf.gz.tbi',
+            md5=f'{external_id}.g.vcf.gz.md5',
+            batch_number='0',
         )
 
         recovery_sample = SampleGroup(
@@ -171,7 +174,6 @@ class TestUploadProcessor(unittest.TestCase):
             test_sample,
             self.upload_prefix,
             self.main_prefix,
-            self.project,
             self.docker_image,
             self.key,
         )
@@ -197,11 +199,13 @@ class TestUploadProcessor(unittest.TestCase):
         """Test case that handles invalid sample ID's i.e. samples that don't exist
         in the upload bucket"""
         not_uploaded_id = 'TOB02337'
+        internal_id = 'FALSE_ID'
         not_uploaded_sample = SampleGroup(
-            not_uploaded_id,
-            f'{not_uploaded_id}.g.vcf.gz',
-            f'{not_uploaded_id}.g.vcf.gz.tbi',
-            f'{not_uploaded_id}.g.vcf.gz.md5',
+            sample_id_external=not_uploaded_id,
+            sample_id_internal=internal_id,
+            data_file=f'{not_uploaded_id}.g.vcf.gz',
+            index_file=f'{not_uploaded_id}.g.vcf.gz.tbi',
+            md5=f'{not_uploaded_id}.g.vcf.gz.md5',
         )
         invalid_batch = hb.Batch(name='Invalid Batch')
         batch_move_files(
@@ -209,7 +213,6 @@ class TestUploadProcessor(unittest.TestCase):
             not_uploaded_sample,
             self.upload_prefix,
             self.main_prefix,
-            self.project,
             self.docker_image,
             self.key,
         )
@@ -230,21 +233,23 @@ class TestUploadProcessor(unittest.TestCase):
         internal_id = list(internal_id_map.values())[0]
 
         full_sample = SampleGroup(
-            external_id,
-            f'{external_id}.g.vcf.gz',
-            f'{external_id}.g.vcf.gz.tbi',
-            f'{external_id}.g.vcf.gz.md5',
+            sample_id_external=external_id,
+            sample_id_internal=internal_id,
+            data_file=f'{external_id}.g.vcf.gz',
+            index_file=f'{external_id}.g.vcf.gz.tbi',
+            md5=f'{external_id}.g.vcf.gz.md5',
+            batch_number='0',
         )
 
         failed_files = FailedGroup(
-            external_id,
-            f'{external_id}.g.vcf.gz.tbi',
-            f'{external_id}.g.vcf.gz.md5',
+            sample_id_external=external_id,
+            index_file=f'{external_id}.g.vcf.gz.tbi',
+            md5=f'{external_id}.g.vcf.gz.md5',
         )
 
         success_files = SuccessGroup(
             internal_id,
-            f'{internal_id}.g.vcf.gz',
+            data_file=f'{internal_id}.g.vcf.gz',
         )
 
         # Uploading this 'successful' files to the main bucket
@@ -260,7 +265,6 @@ class TestUploadProcessor(unittest.TestCase):
             full_sample,
             self.upload_prefix,
             self.main_prefix,
-            self.project,
             self.docker_image,
             self.key,
         )

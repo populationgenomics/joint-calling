@@ -202,7 +202,7 @@ def run_processor():
 
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
-    upload_path = join(f'cpg-{project}-upload')
+    upload_path = join(f'cpg-{project}-main-upload')
     main_bucket = f'cpg-{project}-main'
     main_path = join(main_bucket, 'gvcf')
     archive_path = join(f'cpg-{project}-archive', 'cram')
