@@ -8,14 +8,14 @@ Assumes that the csv file has been processed in a previous step.
 import os
 from os.path import join
 from typing import List, Optional, Tuple
-import click
 import hailtop.batch as hb
 
 # Import SampleAPI
 from sample_metadata.apis import SampleApi
 from sample_metadata.apis import AnalysisApi
 from sample_metadata.apis import SequenceApi
-from sample_metadata.models import AnalysisType, AnalysisStatus
+from sample_metadata.model.analysis_type import AnalysisType
+from sample_metadata.model.analysis_status import AnalysisStatus
 from sample_metadata.model.analysis_model import AnalysisModel
 from sample_metadata.exceptions import ServiceException
 from joint_calling.upload_processor import batch_move_files, SampleGroup
@@ -23,8 +23,6 @@ from joint_calling.upload_processor import batch_move_files, SampleGroup
 
 def determine_samples(proj):
     """ Determine which samples should be processed """
-    # Pull a list containing the sample ID's that don't have gvcfs and that also
-    # Have sequencing metadata attached.
     aapi = AnalysisApi()
     sapi = SampleApi()
     seqapi = SequenceApi()
@@ -33,64 +31,89 @@ def determine_samples(proj):
         'gvcf', proj
     )
 
-    print(samples_without_analysis)
-
-    # print(samples_without_analysis)
-
     samples_with_sequencing_meta = []
 
+    # Determines which sequences have had their metadata fields updated
+    # (This metadata is updated on initial notification of upload)
     for sample in samples_without_analysis['sample_ids']:
-        print(sample)
-
         try:
-            seq_entry = seqapi.get_sequence_id_from_sample_id(sample, proj)
-            print(seq_entry)
+            seq_id = int(seqapi.get_sequence_id_from_sample_id(sample, proj))
+            seq_entry = seqapi.get_sequence_by_id(seq_id, proj)
+            full_external_id_batch_mapping = []
+
             # This will return a dictionary. Check if a dictionary has a key.
-            if 'meta' in seq_entry:
-                if 'reads' in seq_entry['meta']:
+            if seq_entry['meta'] is not None:
+                if 'gvcf' in seq_entry['meta']:
+                    batch = seq_entry['meta']['gvcf'][-1]['batch']
                     samples_with_sequencing_meta.append(sample)
+                    external_map = sapi.get_sample_id_map_by_internal(proj, [sample])
+                    full_external_id_batch_mapping.append(
+                        {
+                            'internal_id': sample,
+                            'external_id': external_map[sample],
+                            'batch': batch,
+                        }
+                    )
 
         except ServiceException:
             print(f'Sequencing for {sample} not found')
 
-    print(samples_with_sequencing_meta)
-
-    # Determine the intersection between both lists.
+    # Intersection determines the sequencing that is ready to be processed, but has not
+    # yet been.
     latest_upload_internal = list(
         set(samples_with_sequencing_meta) & set(samples_without_analysis['sample_ids'])
     )
 
-    latest_upload_external = sapi.get_sample_external_id_map(
-        proj, {'internal_ids': latest_upload_internal}
-    )
+    latest_upload_external = []
 
-    # latest_upload_internal = sapi.get_sample_id_map(proj, latest_upload_external)
+    # Map back to the external IDs (required for move)
+    if latest_upload_internal:
+        latest_upload_external = sapi.get_sample_id_map_by_internal(
+            proj, latest_upload_internal
+        )
 
-    # latest_upload_external = []
+    latest_upload_external_batch = []
 
-    return latest_upload_external
+    # Links batch data with external ID
+    for sample_id in latest_upload_external:
+        mapped_batch = next(
+            batch_map
+            for batch_map in full_external_id_batch_mapping
+            if batch_map['internal_id'] == sample_id
+        )
+
+        latest_upload_external_batch.append(mapped_batch)
+
+    return latest_upload_external_batch
 
 
 def generate_file_list(
-    external_sample_ids: List[str],
+    external_sample_ids,
 ) -> Tuple[List[SampleGroup], List[SampleGroup]]:
     """ Generate list of expected files, given a list of external sample ids"""
     main_files: List[SampleGroup] = []
     archive_files: List[SampleGroup] = []
 
-    for external_id in external_sample_ids:
+    for sample_batch_pair in external_sample_ids:
+        external_id = sample_batch_pair['external_id']
+        internal_id = sample_batch_pair['internal_id']
+        batch_id = sample_batch_pair['batch']
         sample_group_main = SampleGroup(
             external_id,
+            internal_id,
             f'{external_id}.g.vcf.gz',
             f'{external_id}.g.vcf.gz.tbi',
             f'{external_id}.g.vcf.gz.md5',
+            batch_id,
         )
         main_files.append(sample_group_main)
         sample_group_archive = SampleGroup(
             external_id,
+            internal_id,
             f'{external_id}.cram',
             f'{external_id}.cram.crai',
             f'{external_id}.cram.md5',
+            batch_id,
         )
         archive_files.append(sample_group_archive)
 
@@ -107,49 +130,30 @@ def setup_job(
     if docker_image is not None:
         job.image(docker_image)
 
-    job.command('gcloud -q auth activate-service-account --key-file=/gsa-key/key.json')
+    if not python_job:
+        job.command(
+            'gcloud -q auth activate-service-account --key-file=/gsa-key/key.json'
+        )
 
     return job
 
 
-def upload_gvcf(sample_group: SampleGroup, proj, main_path):
+def upload_analysis(sample_group: SampleGroup, proj, path, analysis_type):
     """ Creates a new analysis object"""
-    sapi = SampleApi()
     aapi = AnalysisApi()
-    external_id = {'external_ids': [sample_group.sample_id_external]}
-    internal_id_map = sapi.get_sample_id_map(proj, external_id)
-    internal_id = list(internal_id_map.values())[0]
 
-    filepath = os.path.join('gs://', main_path, internal_id)
+    internal_id = sample_group.sample_id_internal
 
-    new_gvcf = AnalysisModel(
+    filepath = os.path.join('gs://', path, internal_id)
+
+    new_analysis = AnalysisModel(
         sample_ids=[internal_id],
-        type=AnalysisType('gvcf'),
+        type=AnalysisType(analysis_type),
         status=AnalysisStatus('completed'),
         output=filepath,
     )
 
-    aapi.create_new_analysis(proj, new_gvcf)
-
-
-def upload_cram(sample_group: SampleGroup, proj, archive_path):
-    """ Creates a new analysis object"""
-    sapi = SampleApi()
-    aapi = AnalysisApi()
-    external_id = {'external_ids': [sample_group.sample_id_external]}
-    internal_id_map = sapi.get_sample_id_map(proj, external_id)
-    internal_id = list(internal_id_map.values())[0]
-
-    filepath = os.path.join('gs://', archive_path, internal_id)
-
-    new_gvcf = AnalysisModel(
-        sample_ids=[internal_id],
-        type=AnalysisType('cram'),
-        status=AnalysisStatus('completed'),
-        output=filepath,
-    )
-
-    aapi.create_new_analysis(proj, new_gvcf)
+    aapi.create_new_analysis(proj, new_analysis)
 
 
 def validate_md5(
@@ -158,45 +162,48 @@ def validate_md5(
     """Each gvcf and cram file is uploaded with a corresponding md5 checksum.
     This function appends commands to the job that moves these files, to validate each .md5 file."""
 
+    file_extension = sample_group.data_file[len(sample_group.sample_id_internal) :]
+    file_path = f'{sample_group.sample_id_internal}{file_extension}'
+
     # Generate paths to files that are being validated
-    path_to_data = join('gs://', upload_path, sample_group.data_file)
-    path_to_md5 = join('gs://', upload_path, sample_group.md5)
+    path_to_data = join(
+        'gs://',
+        upload_path,
+        f'batch{sample_group.batch_number}',
+        file_path,
+    )
+    # extension = sample_group.data_file[len(sample)]
+
+    path_to_md5 = join(
+        'gs://',
+        upload_path,
+        f'batch{sample_group.batch_number}',
+        f'{file_path}.md5',
+    )
 
     # Calculate md5 checksum.
     job.command(
         f'gsutil cat {path_to_data} | md5sum | sed "s/-/{sample_group.data_file}/" > /tmp/{sample_group.md5}'
     )
-    job.command(f'diff /tmp/{sample_group.md5} <(gsutil cat {path_to_md5})')
+
+    job.command(
+        f'diff <(cat /tmp/{sample_group.md5} | cut -d " " -f1 ) <(gsutil cat {path_to_md5} | cut -d " " -f1 )'
+    )
 
     return job
 
 
-@click.command()
-@click.option('--batch_number')
-def run_processor(
-    batch_number: int,
-):
-    """Set up and execute batch_move_files
-
-    Parameters
-    =========
-    batch_number: int
-    Indexed starting at 1. Used to navigate subdirectory structure
-    e.g. 1 --> batch1
-
-    """
+def run_processor():
+    """Set up and execute batch_move_files, validate_md5 and update_status"""
 
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
-    batch_path = f'batch{batch_number}'
-    upload_bucket = f'cpg-{project}-upload'
-    upload_prefix = ''
-    upload_path = join(upload_bucket, upload_prefix)
+    upload_path = join(f'cpg-{project}-upload')
     main_bucket = f'cpg-{project}-main'
-    main_prefix = join('gvcf', batch_path)
-    main_path = join(main_bucket, main_prefix)
-    # metadata_bucket = f'cpg-{project}-main-metadata'
-    archive_path = join(f'cpg-{project}-archive', 'cram', batch_path)
+    main_path = join(main_bucket, 'gvcf')
+    archive_path = join(f'cpg-{project}-archive', 'cram')
+
+    sm_project = project.replace('-', '')
 
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
@@ -209,12 +216,8 @@ def run_processor(
     main_files: List[SampleGroup] = []
     archive_files: List[SampleGroup] = []
 
-    #  Get the CSV file.
-    # csv_reader, csv_path = get_csv(upload_bucket, upload_prefix)
+    samples_external_ids = determine_samples(sm_project)
 
-    samples_external_ids = determine_samples(project)
-
-    # samples = get_samples_from_db(project)
     main_files, archive_files = generate_file_list(samples_external_ids)
 
     service_backend = hb.ServiceBackend(
@@ -232,7 +235,6 @@ def run_processor(
             sample_group,
             upload_path,
             main_path,
-            project,
             docker_image,
             key,
         )
@@ -250,7 +252,8 @@ def run_processor(
             docker_image,
             True,
         )
-        status_job.call(upload_gvcf, sample_group, main_path)
+        full_path = os.path.join(main_path, f'batch{sample_group.batch_number}')
+        status_job.call(upload_analysis, sample_group, full_path, 'gvcf')
         status_job.depends_on(validate_job)
         main_jobs.append(status_job)
 
@@ -262,7 +265,6 @@ def run_processor(
             sample_group,
             upload_path,
             archive_path,
-            project,
             docker_image,
             key,
         )
@@ -278,7 +280,7 @@ def run_processor(
             docker_image,
             True,
         )
-        status_job.call(upload_cram, sample_group, archive_path)
+        status_job.call(upload_analysis, sample_group, archive_path, 'cram')
         status_job.depends_on(validate_job)
         archive_jobs.append(status_job)
 
@@ -286,5 +288,4 @@ def run_processor(
 
 
 if __name__ == '__main__':
-    # run_processor()  # pylint: disable=E1120
-    determine_samples('viviandev')
+    run_processor()  # pylint: disable=E1120
