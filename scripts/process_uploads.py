@@ -11,9 +11,9 @@ from typing import List, Optional, Tuple
 import hailtop.batch as hb
 
 # Import SampleAPI
-from sample_metadata.apis import SampleApi
-from sample_metadata.apis import AnalysisApi
-from sample_metadata.apis import SequenceApi
+from sample_metadata.api import SampleApi
+from sample_metadata.api import AnalysisApi
+from sample_metadata.api import SequenceApi
 from sample_metadata.model.analysis_type import AnalysisType
 from sample_metadata.model.analysis_status import AnalysisStatus
 from sample_metadata.model.analysis_model import AnalysisModel
