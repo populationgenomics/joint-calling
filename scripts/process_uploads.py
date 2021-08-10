@@ -14,9 +14,9 @@ import hailtop.batch as hb
 from sample_metadata.api import SampleApi
 from sample_metadata.api import AnalysisApi
 from sample_metadata.api import SequenceApi
-from sample_metadata.model.analysis_type import AnalysisType
-from sample_metadata.model.analysis_status import AnalysisStatus
-from sample_metadata.model.analysis_models import AnalysisModel
+from sample_metadata.models.analysis_type import AnalysisType
+from sample_metadata.models.analysis_status import AnalysisStatus
+from sample_metadata.models.analysis_model import AnalysisModel
 from sample_metadata.exceptions import ServiceException
 from joint_calling.upload_processor import batch_move_files, SampleGroup
 
