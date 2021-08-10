@@ -17,7 +17,8 @@ from sample_metadata.api import SequenceApi
 from sample_metadata.models.analysis_type import AnalysisType
 from sample_metadata.models.analysis_status import AnalysisStatus
 from sample_metadata.models.analysis_model import AnalysisModel
-from sample_metadata.exceptions import ServiceException
+
+# from sample_metadata.exceptions import ServiceException
 from joint_calling.upload_processor import batch_move_files, SampleGroup
 
 
@@ -36,31 +37,25 @@ def determine_samples(proj):
     # Determines which sequences have had their metadata fields updated
     # (This metadata is updated on initial notification of upload)
     for internal_sample_id in samples_without_analysis['sample_ids']:
-        try:
-            seq_id = int(
-                seqapi.get_sequence_id_from_sample_id(internal_sample_id, proj)
-            )
-            seq_entry = seqapi.get_sequence_by_id(seq_id, proj)
-            full_external_id_batch_mapping = []
+        seq_id = int(seqapi.get_sequence_id_from_sample_id(internal_sample_id, proj))
+        seq_entry = seqapi.get_sequence_by_id(seq_id, proj)
+        full_external_id_batch_mapping = []
 
-            # This will return a dictionary. Check if a dictionary has a key.
-            if seq_entry['meta'] is not None:
-                if 'gvcf' in seq_entry['meta']:
-                    batch = seq_entry['meta']['gvcf'].get('batch')
-                    samples_with_sequencing_meta.append(internal_sample_id)
-                    external_map = sapi.get_sample_id_map_by_internal(
-                        proj, [internal_sample_id]
-                    )
-                    full_external_id_batch_mapping.append(
-                        {
-                            'internal_id': internal_sample_id,
-                            'external_id': external_map[internal_sample_id],
-                            'batch': batch,
-                        }
-                    )
-
-        except ServiceException:
-            print(f'Sequencing for {internal_sample_id} not found')
+        # This will return a dictionary. Check if a dictionary has a key.
+        if seq_entry['meta'] is not None:
+            if 'gvcf' in seq_entry['meta']:
+                batch = seq_entry['meta']['gvcf'].get('batch')
+                samples_with_sequencing_meta.append(internal_sample_id)
+                external_map = sapi.get_sample_id_map_by_internal(
+                    proj, [internal_sample_id]
+                )
+                full_external_id_batch_mapping.append(
+                    {
+                        'internal_id': internal_sample_id,
+                        'external_id': external_map[internal_sample_id],
+                        'batch': batch,
+                    }
+                )
 
     # Intersection determines the sequencing that is ready to be processed, but has not
     # yet been.
