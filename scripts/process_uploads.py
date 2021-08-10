@@ -140,10 +140,6 @@ def setup_job(
 
 def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_type):
     """ Creates a new analysis object"""
-    print(f'the analysis type string is {analysis_type}')
-
-    print(f'the analysis type object is')
-    print(AnalysisType(analysis_type))
     aapi = AnalysisApi()
 
     internal_id = sample_group.sample_id_internal
@@ -152,8 +148,8 @@ def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_typ
 
     new_analysis = AnalysisModel(
         sample_ids=[internal_id],
-        type=AnalysisType(analysis_type),
-        status=AnalysisStatus('completed'),
+        type=analysis_type,
+        status=AnalysisStatus.COMPLETED,
         output=filepath,
     )
 
@@ -259,7 +255,11 @@ def run_processor():
         )
         full_path = os.path.join(main_path, f'batch{sample_group.batch_number}')
         status_job.call(
-            create_analysis_in_sm_db, sample_group, sm_project, full_path, 'gvcf'
+            create_analysis_in_sm_db,
+            sample_group,
+            sm_project,
+            full_path,
+            AnalysisType.GVCF,
         )
         status_job.depends_on(validate_job)
         main_jobs.append(status_job)
@@ -288,7 +288,11 @@ def run_processor():
             True,
         )
         status_job.call(
-            create_analysis_in_sm_db, sample_group, sm_project, archive_path, 'cram'
+            create_analysis_in_sm_db,
+            sample_group,
+            sm_project,
+            archive_path,
+            AnalysisType.CRAM,
         )
         status_job.depends_on(validate_job)
         archive_jobs.append(status_job)
