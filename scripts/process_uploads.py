@@ -140,6 +140,10 @@ def setup_job(
 
 def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_type):
     """ Creates a new analysis object"""
+    print(f'the analysis type string is {analysis_type}')
+
+    print(f'the analysis type object is')
+    print(AnalysisType(analysis_type))
     aapi = AnalysisApi()
 
     internal_id = sample_group.sample_id_internal
