@@ -38,8 +38,7 @@ def determine_samples(proj):
     # (This metadata is updated on initial notification of upload)
     for internal_sample_id in samples_without_analysis['sample_ids']:
         # TODO: Replace.
-        # seq_id = int(seqapi.get_sequence_id_from_sample_id(internal_sample_id, proj))
-        seq_id = int(seqapi.get_sequence(internal_sample_id, proj))
+        seq_id = int(seqapi.get_sequence_id_from_sample_id(internal_sample_id, proj))
         seq_entry = seqapi.get_sequence_by_id(seq_id, proj)
         full_external_id_batch_mapping = []
 
