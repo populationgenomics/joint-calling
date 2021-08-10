@@ -16,17 +16,16 @@ import os
 from typing import List, Optional, NamedTuple
 import hailtop.batch as hb
 
-# Import SampleAPI
-from sample_metadata.api.sample_api import SampleApi
-
 
 class SampleGroup(NamedTuple):
     """ Defines a group of files associated with each sample"""
 
     sample_id_external: str
+    sample_id_internal: str
     data_file: str
     index_file: str
     md5: str
+    batch_number: int
 
 
 def batch_move_files(
@@ -34,7 +33,6 @@ def batch_move_files(
     sample_group: SampleGroup,
     source_prefix: str,
     destination_prefix: str,
-    project: str,
     docker_image: Optional[str] = None,
     key: Optional[str] = None,
 ) -> List:
@@ -48,12 +46,14 @@ def batch_move_files(
     files: SampleGroup
         A NamedTuple containing 3 files to be moved.
         For example ["TOB1543.g.vcf.gz","TOB1543.g.vcf.tbi","TOB1543.g.vcf.md5"]
+        As well as the internal id, external id and batch number associated with each
+        sample.
     source_prefix: str
         The path to the sub-directory where the files are initially located.
         For example "cpg-tob-wgs-upload" or "cpg-tob-wgs-upload/v1"
     destination_prefix: str
         The path to the sub-directory where the files should be moved.
-        For example "cpg-tob-wgs-main" or "cpg-tob-wgs-upload/batch1"
+        For example "cpg-tob-wgs-main" (not including the batch number)
     docker_image: str, optional
         The address and tag of a previously built docker image, within the
         artifact registry. Each batch job will run in this image.
@@ -73,21 +73,20 @@ def batch_move_files(
 
     jobs = []
 
-    # Get internal sample ID
-    external_id = {'external_ids': [sample_group.sample_id_external]}
-    sapi = SampleApi()
-    internal_id_map = sapi.get_sample_id_map_by_external(project, external_id)
-    internal_id = str(list(internal_id_map.values())[0])
+    external_id = sample_group.sample_id_external
+    internal_id = sample_group.sample_id_internal
+    batch_number = sample_group.batch_number
 
     for tuple_key in sample_group._fields:
-        if tuple_key == 'sample_id_external':
+        if tuple_key in ['sample_id_external', 'batch_number', 'sample_id_internal']:
             continue
-
         file_name = getattr(sample_group, tuple_key)
         previous_location = os.path.join('gs://', source_prefix, file_name)
-        file_extension = file_name[len(sample_group.sample_id_external) :]
+        file_extension = file_name[len(external_id) :]
         new_file_name = internal_id + file_extension
-        new_location = os.path.join('gs://', destination_prefix, new_file_name)
+        new_location = os.path.join(
+            'gs://', destination_prefix, f'batch{batch_number}', new_file_name
+        )
 
         j = batch.new_job(name=f'move {file_name} -> {new_file_name}')
 
