@@ -130,12 +130,12 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
         'gvcf', proj
     )
 
-    sequences = seqapi.get_sequences_by_ids(
-        proj, samples_without_analysis['sample_ids']
-    )
+    sample_ids_without_analysis = samples_without_analysis['sample_ids']
+
+    sequences = seqapi.get_sequences_by_ids(sample_ids_without_analysis, proj)
 
     external_sample_mapping = sapi.get_sample_id_map_by_internal(
-        proj, samples_without_analysis['sample_ids']
+        proj, sample_ids_without_analysis
     )
 
     main_files = []
