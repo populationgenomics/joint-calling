@@ -38,11 +38,16 @@ def validate_move(
     the main bucket and no longer exists in the upload bucket.
     Returns True if this is the case and False otherwise.
     """
-
+    print(
+        f'validating move with the following inputs {upload_prefix},{main_prefix},{original_file},{new_file}'
+    )
     main_path = os.path.join('gs://', main_prefix, new_file)
     upload_path = os.path.join('gs://', upload_prefix, original_file)
     exists_main = subprocess.run(['gsutil', '-q', 'stat', main_path], check=False)
     exists_upload = subprocess.run(['gsutil', '-q', 'stat', upload_path], check=False)
+
+    print(f'exists in upload {exists_upload.returncode} should be 1')
+    print(f'exists in main {exists_main.returncode} should be 0')
 
     # Exists at destination and not at source
     return exists_upload.returncode != 0 and exists_main.returncode == 0
