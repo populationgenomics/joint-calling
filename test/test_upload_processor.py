@@ -125,11 +125,15 @@ class TestUploadProcessor(unittest.TestCase):
         batch.run()
 
         # Check that the files have been moved to main
-        for f in test_sample._fields:
-            if f == 'sample_id_external':
-                continue
-            file_name = getattr(test_sample, f)
+        files_to_move = (
+            test_sample.data_file,
+            test_sample.index_file,
+            test_sample.md5,
+        )
+
+        for file_name in files_to_move:
             file_extension = file_name[len(test_sample.sample_id_external) :]
+            print(f'validating the move of {internal_id}{file_extension}')
             self.assertTrue(
                 validate_move(
                     self.upload_prefix,
