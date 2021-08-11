@@ -131,7 +131,7 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
     )
 
     sequences = seqapi.get_sequences_by_ids(
-        project=proj, request_body=samples_without_analysis['sample_ids']
+        proj, samples_without_analysis['sample_ids']
     )
 
     external_sample_mapping = sapi.get_sample_id_map_by_internal(
