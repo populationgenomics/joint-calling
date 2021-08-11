@@ -20,104 +20,7 @@ from sample_metadata.models.analysis_status import AnalysisStatus
 from sample_metadata.models.analysis_model import AnalysisModel
 
 # from sample_metadata.exceptions import ServiceException
-from joint_calling.upload_processor import batch_move_files, SampleGroup
-
-
-def determine_samples_archived(proj):
-    """ Determine which samples should be processed """
-    aapi = AnalysisApi()
-    sapi = SampleApi()
-    seqapi = SequenceApi()
-
-    samples_without_analysis = aapi.get_all_sample_ids_without_analysis_type(
-        'gvcf', proj
-    )
-
-    samples_with_sequencing_meta = []
-
-    # Determines which sequences have had their metadata fields updated
-    # (This metadata is updated on initial notification of upload)
-    for internal_sample_id in samples_without_analysis['sample_ids']:
-        seq_id = int(seqapi.get_sequence_id_from_sample_id(internal_sample_id, proj))
-        seq_entry = seqapi.get_sequence_by_id(seq_id, proj)
-        full_external_id_batch_mapping = []
-
-        # This will return a dictionary. Check if a dictionary has a key.
-        if seq_entry['meta'] is not None:
-            if 'gvcf' in seq_entry['meta']:
-                batch = seq_entry['meta']['gvcf'].get('batch')
-                samples_with_sequencing_meta.append(internal_sample_id)
-                external_map = sapi.get_sample_id_map_by_internal(
-                    proj, [internal_sample_id]
-                )
-                full_external_id_batch_mapping.append(
-                    {
-                        'internal_id': internal_sample_id,
-                        'external_id': external_map[internal_sample_id],
-                        'batch': batch,
-                    }
-                )
-
-    # Intersection determines the sequencing that is ready to be processed, but has not
-    # yet been.
-    latest_upload_internal = list(
-        set(samples_with_sequencing_meta) & set(samples_without_analysis['sample_ids'])
-    )
-
-    latest_upload_external = []
-
-    # Map back to the external IDs (required for move)
-    if latest_upload_internal:
-        latest_upload_external = sapi.get_sample_id_map_by_internal(
-            proj, latest_upload_internal
-        )
-
-    latest_upload_external_batch = []
-
-    # Links batch data with external ID
-    for sample_id in latest_upload_external:
-        mapped_batch = next(
-            batch_map
-            for batch_map in full_external_id_batch_mapping
-            if batch_map['internal_id'] == sample_id
-        )
-
-        latest_upload_external_batch.append(mapped_batch)
-
-    return latest_upload_external_batch
-
-
-def generate_file_list(
-    external_sample_ids,
-) -> Tuple[List[SampleGroup], List[SampleGroup]]:
-    """ Generate list of expected files, given a list of external sample ids"""
-    main_files: List[SampleGroup] = []
-    archive_files: List[SampleGroup] = []
-
-    for sample_batch_pair in external_sample_ids:
-        external_id = sample_batch_pair['external_id']
-        internal_id = sample_batch_pair['internal_id']
-        batch_id = sample_batch_pair['batch']
-        sample_group_main = SampleGroup(
-            sample_id_external=external_id,
-            sample_id_internal=internal_id,
-            data_file=f'{external_id}.g.vcf.gz',
-            index_file=f'{external_id}.g.vcf.gz.tbi',
-            md5=f'{external_id}.g.vcf.gz.md5',
-            batch_number=batch_id,
-        )
-        main_files.append(sample_group_main)
-        sample_group_archive = SampleGroup(
-            sample_id_external=external_id,
-            sample_id_internal=internal_id,
-            data_file=f'{external_id}.cram',
-            index_file=f'{external_id}.cram.crai',
-            md5=f'{external_id}.cram.md5',
-            batch_number=batch_id,
-        )
-        archive_files.append(sample_group_archive)
-
-    return main_files, archive_files
+from joint_calling.upload_processor import batch_move_files, SampleGroup, FileGroup
 
 
 def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
@@ -154,18 +57,29 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
             batch_number = seq_entry['meta'].get('batch')
 
             if 'gvcf' in seq_entry['meta']:
-                data_file = seq_entry['meta']['gvcf'].get('location')
+                data_file_path = seq_entry['meta']['gvcf'].get('location')
+                data_file_basename = seq_entry['meta']['gvcf'].get('basename')
                 # Note this will handle only one secondary file.
-                index_file = seq_entry['meta']['gvcf']['secondaryFiles'][0].get(
+                index_file_path = seq_entry['meta']['gvcf']['secondaryFiles'][0].get(
                     'location'
                 )
+                index_file_basename = seq_entry['meta']['gvcf']['secondaryFiles'][
+                    0
+                ].get('basename')
 
                 sample_group_main = SampleGroup(
                     sample_id_external=external_sample_mapping.get(internal_sample_id),
                     sample_id_internal=internal_sample_id,
-                    data_file=data_file,
-                    index_file=index_file,
-                    md5=data_file + '.md5',
+                    data_file=FileGroup(
+                        path=data_file_path, basename=data_file_basename
+                    ),
+                    index_file=FileGroup(
+                        path=index_file_path, basename=index_file_basename
+                    ),
+                    md5=FileGroup(
+                        path=data_file_path + '.md5',
+                        basename=data_file_basename + '.md5',
+                    ),
                     batch_number=batch_number,
                 )
 
@@ -174,16 +88,25 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
             if 'reads' in seq_entry['meta']:
 
                 for read in seq_entry['meta']['reads']:
-                    data_file = read.get('location')
-                    index_file = read['secondaryFiles'][0].get('location')
+                    data_file_path = read.get('location')
+                    data_file_basename = read.get('basename')
+                    index_file_path = read['secondaryFiles'][0].get('location')
+                    index_file_basename = read['secondaryFiles'][0].get('basename')
                     sample_group_archive = SampleGroup(
                         sample_id_external=external_sample_mapping.get(
                             internal_sample_id
                         ),
                         sample_id_internal=internal_sample_id,
-                        data_file=data_file,
-                        index_file=index_file,
-                        md5=data_file + '.md5',
+                        data_file=FileGroup(
+                            path=data_file_path, basename=data_file_basename
+                        ),
+                        index_file=FileGroup(
+                            path=index_file_path, basename=index_file_basename
+                        ),
+                        md5=FileGroup(
+                            path=data_file_path + '.md5',
+                            basename=data_file_basename + '.md5',
+                        ),
                         batch_number=batch_number,
                     )
 
@@ -232,6 +155,7 @@ def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_typ
     )
 
     aapi.create_new_analysis(proj, new_analysis)
+    # Update the seq meta?
 
 
 def validate_md5(
@@ -242,7 +166,10 @@ def validate_md5(
 
     # TODO: Re-work this function.
 
-    file_extension = sample_group.data_file[len(sample_group.sample_id_internal) :]
+    base = sample_group.data_file.basename
+    file_extension = base[len(sample_group.sample_id_external) :]
+
+    # file_extension = sample_group.data_file[len(sample_group.sample_id_internal) :]
     file_path = f'{sample_group.sample_id_internal}{file_extension}'
 
     # Generate paths to files that are being validated
@@ -278,7 +205,7 @@ def run_processor():
 
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
-    upload_path = join(f'cpg-{project}-main-upload')
+    # upload_path = join(f'cpg-{project}-main-upload')
     main_bucket = f'cpg-{project}-main'
     main_path = join(main_bucket, 'gvcf')
     archive_path = join(f'cpg-{project}-archive', 'cram')
@@ -314,7 +241,6 @@ def run_processor():
         sample_group_main_jobs = batch_move_files(
             batch,
             sample_group,
-            upload_path,
             main_path,
             docker_image,
             key,
@@ -350,7 +276,6 @@ def run_processor():
         sample_group_archive_jobs = batch_move_files(
             batch,
             sample_group,
-            upload_path,
             archive_path,
             docker_image,
             key,

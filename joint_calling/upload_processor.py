@@ -17,21 +17,27 @@ from typing import List, Optional, NamedTuple
 import hailtop.batch as hb
 
 
+class FileGroup(NamedTuple):
+    """Defines a file path and it's basename"""
+
+    path: str
+    basename: str
+
+
 class SampleGroup(NamedTuple):
     """ Defines a group of files associated with each sample"""
 
     sample_id_external: str
     sample_id_internal: str
-    data_file: str
-    index_file: str
-    md5: str
+    data_file: FileGroup
+    index_file: FileGroup
+    md5: FileGroup
     batch_number: int
 
 
 def batch_move_files(
     batch: hb.batch,
     sample_group: SampleGroup,
-    source_prefix: str,
     destination_prefix: str,
     docker_image: Optional[str] = None,
     key: Optional[str] = None,
@@ -80,20 +86,19 @@ def batch_move_files(
     files_to_move = (sample_group.data_file, sample_group.index_file, sample_group.md5)
 
     for file_name in files_to_move:
-        # File name will now be the entire previous location.
-        # New location will need to be built as it is.
-        # TODO: Modify this.
-        print(f'the file_name is {file_name}')
-        print(f'the source prefix is is {source_prefix}')
-        print(f'the destination prefix is {destination_prefix}')
-        previous_location = os.path.join('gs://', source_prefix, file_name)
-        file_extension = file_name[len(external_id) :]
+        base = file_name.basename
+        previous_location = file_name.path
+
+        # previous_location = os.path.join('gs://', source_prefix, file_name)
+        # previous_location = file_name
+
+        file_extension = base[len(external_id) :]
         new_file_name = internal_id + file_extension
         new_location = os.path.join(
             'gs://', destination_prefix, f'batch{batch_number}', new_file_name
         )
 
-        j = batch.new_job(name=f'move {file_name} -> {new_file_name}')
+        j = batch.new_job(name=f'move {base} -> {new_file_name}')
 
         if docker_image is not None:
             j.image(docker_image)
