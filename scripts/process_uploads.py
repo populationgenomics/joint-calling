@@ -23,7 +23,7 @@ from sample_metadata.models.analysis_model import AnalysisModel
 from joint_calling.upload_processor import batch_move_files, SampleGroup
 
 
-def determine_samples(proj):
+def determine_samples_archived(proj):
     """ Determine which samples should be processed """
     aapi = AnalysisApi()
     sapi = SampleApi()
@@ -116,6 +116,73 @@ def generate_file_list(
             batch_number=batch_id,
         )
         archive_files.append(sample_group_archive)
+
+    return main_files, archive_files
+
+
+def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
+    """ Determine which samples should be processed """
+    aapi = AnalysisApi()
+    sapi = SampleApi()
+    seqapi = SequenceApi()
+
+    samples_without_analysis = aapi.get_all_sample_ids_without_analysis_type(
+        'gvcf', proj
+    )
+
+    sequences = seqapi.get_sequences_by_internal_sample_ids(
+        project=proj, request_body=samples_without_analysis['sample_ids']
+    )
+
+    external_sample_mapping = sapi.get_sample_id_map_by_internal(
+        proj, samples_without_analysis['sample_ids']
+    )
+
+    main_files = []
+    archive_files = []
+
+    for seq_entry in sequences:
+
+        internal_sample_id = seq_entry.sample_id
+
+        if seq_entry['meta'] is not None:
+            batch_number = seq_entry['meta'].get('batch')
+
+            if 'gvcf' in seq_entry['meta']:
+                data_file = seq_entry['meta']['gvcf'].get('location')
+                # Note this will handle only one secondary file.
+                index_file = seq_entry['meta']['gvcf']['secondaryFiles'][0].get(
+                    'location'
+                )
+
+                sample_group_main = SampleGroup(
+                    sample_id_external=external_sample_mapping.get(internal_sample_id),
+                    sample_id_internal=internal_sample_id,
+                    data_file=data_file,
+                    index_file=index_file,
+                    md5=data_file + '.md5',
+                    batch_number=batch_number,
+                )
+
+                main_files.append(sample_group_main)
+
+            if 'reads' in seq_entry['meta']:
+
+                for read in seq_entry['meta']['reads']:
+                    data_file = read.get('location')
+                    index_file = read['secondaryFiles'][0].get('location')
+                    sample_group_archive = SampleGroup(
+                        sample_id_external=external_sample_mapping.get(
+                            internal_sample_id
+                        ),
+                        sample_id_internal=internal_sample_id,
+                        data_file=data_file,
+                        index_file=index_file,
+                        md5=data_file + '.md5',
+                        batch_number=batch_number,
+                    )
+
+                    archive_files.append(sample_group_archive)
 
     return main_files, archive_files
 
