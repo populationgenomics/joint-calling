@@ -91,9 +91,8 @@ class TestUploadProcessor(unittest.TestCase):
         # Assumption, that the following external ID already exists in the database.
         sapi = SampleApi()
         external_id = 'TEST0000'
-        external_id_map = {'external_ids': [external_id]}
         internal_id_map = sapi.get_sample_id_map_by_external(
-            self.project, external_id_map
+            self.project, [external_id]
         )
         internal_id = list(internal_id_map.values())[0]
 
