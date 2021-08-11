@@ -55,10 +55,9 @@ def upload_files(sample_group: SampleGroup, upload_prefix: str):
 
     # Create and upload the files.
 
-    for f in sample_group._fields:
-        if f == 'sample_id_external':
-            continue
-        file_name = getattr(sample_group, f)
+    files_to_move = (sample_group.data_file, sample_group.index_file, sample_group.md5)
+
+    for file_name in files_to_move:
         subprocess.run(['touch', file_name], check=True)
         full_path = os.path.join('gs://', upload_prefix, file_name)
         subprocess.run(['gsutil', 'mv', file_name, full_path], check=True)
