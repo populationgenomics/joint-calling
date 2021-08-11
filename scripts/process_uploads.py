@@ -221,6 +221,7 @@ def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_typ
     else:
         file_extension = '.cram'
 
+    # TODO Rebuild this file path
     filepath = os.path.join('gs://', path, internal_id + file_extension)
 
     new_analysis = AnalysisModel(
@@ -238,6 +239,8 @@ def validate_md5(
 ) -> hb.batch.job:
     """Each gvcf and cram file is uploaded with a corresponding md5 checksum.
     This function appends commands to the job that moves these files, to validate each .md5 file."""
+
+    # TODO: Re-work this function.
 
     file_extension = sample_group.data_file[len(sample_group.sample_id_internal) :]
     file_path = f'{sample_group.sample_id_internal}{file_extension}'

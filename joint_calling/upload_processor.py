@@ -80,6 +80,12 @@ def batch_move_files(
     files_to_move = (sample_group.data_file, sample_group.index_file, sample_group.md5)
 
     for file_name in files_to_move:
+        # File name will now be the entire previous location.
+        # New location will need to be built as it is.
+        # TODO: Modify this.
+        print(f'the file_name is {file_name}')
+        print(f'the source prefix is is {source_prefix}')
+        print(f'the destination prefix is {destination_prefix}')
         previous_location = os.path.join('gs://', source_prefix, file_name)
         file_extension = file_name[len(external_id) :]
         new_file_name = internal_id + file_extension
