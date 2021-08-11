@@ -147,7 +147,7 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
     for seq_entry in sequences:
         print(seq_entry)
 
-        internal_sample_id = seq_entry.sample_id
+        internal_sample_id = seq_entry.get('sample_id')
 
         if seq_entry['meta'] is not None:
             batch_number = seq_entry['meta'].get('batch')
