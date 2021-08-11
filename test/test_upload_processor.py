@@ -61,6 +61,7 @@ def upload_files(sample_group: SampleGroup, upload_prefix: str):
         subprocess.run(['touch', file_name], check=True)
         full_path = os.path.join('gs://', upload_prefix, file_name)
         subprocess.run(['gsutil', 'mv', file_name, full_path], check=True)
+        print(f'Uploading {file_name} to {full_path}')
 
 
 class TestUploadProcessor(unittest.TestCase):
@@ -87,6 +88,7 @@ class TestUploadProcessor(unittest.TestCase):
 
     def test_batch_move_standard(self):
         """Testing standard case of moving a list of files with valid inputs"""
+        print('Commencing Test_Batch_move')
 
         # Assumption, that the following external ID already exists in the database.
         sapi = SampleApi()
@@ -94,7 +96,10 @@ class TestUploadProcessor(unittest.TestCase):
         internal_id_map = sapi.get_sample_id_map_by_external(
             self.project, [external_id]
         )
+        print(internal_id_map)
+
         internal_id = list(internal_id_map.values())[0]
+        print(internal_id)
 
         test_sample = SampleGroup(
             sample_id_external=external_id,
@@ -134,6 +139,7 @@ class TestUploadProcessor(unittest.TestCase):
                 )
             )
 
+    @unittest.skip('Skip for testing')
     def test_invalid_samples(self):
         """Test case that handles invalid sample ID's i.e. samples that don't exist
         in the upload bucket"""
