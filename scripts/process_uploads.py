@@ -146,6 +146,7 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
 
     for seq_entry in sequences:
         print(seq_entry)
+        print(type(seq_entry))
 
         internal_sample_id = seq_entry.get('sample_id')
 
