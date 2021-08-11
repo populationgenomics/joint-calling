@@ -38,17 +38,10 @@ def validate_move(
     the main bucket and no longer exists in the upload bucket.
     Returns True if this is the case and False otherwise.
     """
-    print(
-        f'validating move with the following inputs {upload_prefix},{main_prefix},{original_file},{new_file}'
-    )
     main_path = os.path.join('gs://', main_prefix, 'batch0', new_file)
-    print(f'the main_path is {main_path}')
     upload_path = os.path.join('gs://', upload_prefix, original_file)
     exists_main = subprocess.run(['gsutil', '-q', 'stat', main_path], check=False)
     exists_upload = subprocess.run(['gsutil', '-q', 'stat', upload_path], check=False)
-
-    print(f'exists in upload {exists_upload.returncode} should be 1')
-    print(f'exists in main {exists_main.returncode} should be 0')
 
     # Exists at destination and not at source
     return exists_upload.returncode != 0 and exists_main.returncode == 0
@@ -67,7 +60,6 @@ def upload_files(sample_group: SampleGroup, upload_prefix: str):
         subprocess.run(['touch', file_name], check=True)
         full_path = os.path.join('gs://', upload_prefix, file_name)
         subprocess.run(['gsutil', 'mv', file_name, full_path], check=True)
-        print(f'Uploading {file_name} to {full_path}')
 
 
 class TestUploadProcessor(unittest.TestCase):
@@ -94,7 +86,6 @@ class TestUploadProcessor(unittest.TestCase):
 
     def test_batch_move_standard(self):
         """Testing standard case of moving a list of files with valid inputs"""
-        print('Commencing Test_Batch_move')
 
         # Assumption, that the following external ID already exists in the database.
         sapi = SampleApi()
@@ -102,10 +93,8 @@ class TestUploadProcessor(unittest.TestCase):
         internal_id_map = sapi.get_sample_id_map_by_external(
             self.project, [external_id]
         )
-        print(internal_id_map)
 
         internal_id = list(internal_id_map.values())[0]
-        print(internal_id)
 
         test_sample = SampleGroup(
             sample_id_external=external_id,
@@ -139,7 +128,6 @@ class TestUploadProcessor(unittest.TestCase):
 
         for file_name in files_to_move:
             file_extension = file_name[len(test_sample.sample_id_external) :]
-            print(f'validating the move of {internal_id}{file_extension}')
             self.assertTrue(
                 validate_move(
                     self.upload_prefix,
