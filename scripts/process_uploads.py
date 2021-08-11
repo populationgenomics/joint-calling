@@ -144,7 +144,12 @@ def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_typ
 
     internal_id = sample_group.sample_id_internal
 
-    filepath = os.path.join('gs://', path, internal_id)
+    if analysis_type == 'gvcf':
+        file_extension = '.g.vcf.gz'
+    else:
+        file_extension = '.cram'
+
+    filepath = os.path.join('gs://', path, internal_id, file_extension)
 
     new_analysis = AnalysisModel(
         sample_ids=[internal_id],
