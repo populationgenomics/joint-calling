@@ -122,6 +122,7 @@ def generate_file_list(
 
 def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
     """ Determine which samples should be processed """
+    print('entered here')
     aapi = AnalysisApi()
     sapi = SampleApi()
     seqapi = SequenceApi()
@@ -131,6 +132,7 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
     )
 
     sample_ids_without_analysis = samples_without_analysis['sample_ids']
+    print(sample_ids_without_analysis)
 
     sequences = seqapi.get_sequences_by_ids(sample_ids_without_analysis, proj)
 
