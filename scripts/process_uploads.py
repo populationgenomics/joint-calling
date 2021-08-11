@@ -149,7 +149,7 @@ def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_typ
     else:
         file_extension = '.cram'
 
-    filepath = os.path.join('gs://', path, internal_id, file_extension)
+    filepath = os.path.join('gs://', path, internal_id + file_extension)
 
     new_analysis = AnalysisModel(
         sample_ids=[internal_id],
