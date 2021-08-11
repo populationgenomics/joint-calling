@@ -42,6 +42,7 @@ def validate_move(
         f'validating move with the following inputs {upload_prefix},{main_prefix},{original_file},{new_file}'
     )
     main_path = os.path.join('gs://', main_prefix, new_file)
+    print(f'the main_path is {main_path}')
     upload_path = os.path.join('gs://', upload_prefix, original_file)
     exists_main = subprocess.run(['gsutil', '-q', 'stat', main_path], check=False)
     exists_upload = subprocess.run(['gsutil', '-q', 'stat', upload_path], check=False)
