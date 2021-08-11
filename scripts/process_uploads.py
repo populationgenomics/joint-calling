@@ -142,8 +142,10 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
 
     main_files = []
     archive_files = []
+    print(sequences)
 
     for seq_entry in sequences:
+        print(seq_entry)
 
         internal_sample_id = seq_entry.sample_id
 
