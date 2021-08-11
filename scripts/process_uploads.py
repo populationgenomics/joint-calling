@@ -289,14 +289,15 @@ def run_processor():
         raise ValueError('HAIL_BILLING_PROJECT must be set')
 
     # Determine the analysis results (i.e. list of gvcfs and crams) to be moved
-    samples_external_ids: List[str] = []  # List of external sample IDs
+    # samples_external_ids: List[str] = []  # List of external sample IDs
     main_files: List[SampleGroup] = []
     archive_files: List[SampleGroup] = []
 
-    samples_external_ids = determine_samples(sm_project)
+    # samples_external_ids = determine_samples(sm_project)
 
-    main_files, archive_files = generate_file_list(samples_external_ids)
+    # main_files, archive_files = generate_file_list(samples_external_ids)
 
+    main_files, archive_files = determine_samples(sm_project)
     service_backend = hb.ServiceBackend(
         billing_project=project,
         bucket=os.getenv('HAIL_BUCKET'),
