@@ -130,7 +130,7 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
         'gvcf', proj
     )
 
-    sequences = seqapi.get_sequences_by_internal_sample_ids(
+    sequences = seqapi.get_sequences_by_ids(
         project=proj, request_body=samples_without_analysis['sample_ids']
     )
 
