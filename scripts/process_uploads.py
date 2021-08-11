@@ -3,7 +3,8 @@
 Processes a new batch of samples from the UPLOAD bucket,
 into the MAIN and ARCHIVE buckets using the batch_move_files function. 
 
-Assumes that the csv file has been processed in a previous step. 
+Assumes that each relevant sample and sample_sequencing has been previously 
+uploaded. 
 """
 import os
 from os.path import join
@@ -37,7 +38,6 @@ def determine_samples(proj):
     # Determines which sequences have had their metadata fields updated
     # (This metadata is updated on initial notification of upload)
     for internal_sample_id in samples_without_analysis['sample_ids']:
-        # TODO: Replace.
         seq_id = int(seqapi.get_sequence_id_from_sample_id(internal_sample_id, proj))
         seq_entry = seqapi.get_sequence_by_id(seq_id, proj)
         full_external_id_batch_mapping = []
@@ -208,9 +208,7 @@ def run_processor():
     main_path = join(main_bucket, 'gvcf')
     archive_path = join(f'cpg-{project}-archive', 'cram')
 
-    # sm_project = project.replace('-', '')
-    # TODO: Uncomment above, delete below. TMP for testing.
-    sm_project = 'viviandev'
+    sm_project = project.replace('-', '')
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
 
