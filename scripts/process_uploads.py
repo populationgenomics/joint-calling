@@ -18,6 +18,8 @@ from sample_metadata.api import SequenceApi
 from sample_metadata.models.analysis_type import AnalysisType
 from sample_metadata.models.analysis_status import AnalysisStatus
 from sample_metadata.models.analysis_model import AnalysisModel
+from sample_metadata.models.sequence_status import SequenceStatus
+from sample_metadata.models.sequence_update_model import SequenceUpdateModel
 
 # from sample_metadata.exceptions import ServiceException
 from joint_calling.upload_processor import batch_move_files, SampleGroup, FileGroup
@@ -131,6 +133,7 @@ def setup_job(
 def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_type):
     """ Creates a new analysis object"""
     aapi = AnalysisApi()
+    seqapi = SequenceApi()
 
     internal_id = sample_group.sample_id_internal
 
@@ -149,6 +152,25 @@ def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_typ
     )
 
     aapi.create_new_analysis(proj, new_analysis)
+
+    # Update the sequencing metadata accordingly
+    seq_id = seqapi.get_sequence_id_from_sample_id(sample_id=internal_id)
+    seq_object = seqapi.get_sequence_by_id(sequence_id=seq_id)
+    current_meta = seq_object.get('meta')
+    if analysis_type == 'gvcf':
+        current_meta['gvcf']['location'] = filepath
+        current_meta['gvcf']['basename'] = internal_id + file_extension
+    else:
+        # Question: What does it mean to have multiple reads in this case?
+        # I'm going to pull the first one am unsure -- let me know if this should
+        # Be implemented differently
+        current_meta['reads'][-1]['location'] = filepath
+        current_meta['reads'][-1]['basename'] = internal_id + file_extension
+
+    sequence_metadata = SequenceUpdateModel(
+        status=SequenceStatus.UPLOADED, meta=current_meta
+    )
+    seqapi.update_sequence(seq_id, sequence_metadata)
 
 
 def validate_md5(
