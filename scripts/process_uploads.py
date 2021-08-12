@@ -54,6 +54,8 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
 
         if seq_entry['meta'] is not None:
             batch_number = seq_entry['meta'].get('batch')
+            print(batch_number)
+            print(seq_entry)
 
             if 'gvcf' in seq_entry['meta']:
                 data_file_path = seq_entry['meta']['gvcf'].get('location')
@@ -162,8 +164,6 @@ def validate_md5(
 ) -> hb.batch.job:
     """Each gvcf and cram file is uploaded with a corresponding md5 checksum.
     This function appends commands to the job that moves these files, to validate each .md5 file."""
-
-    # TODO: Re-work this function.
 
     base = sample_group.data_file.basename
     file_extension = base[len(sample_group.sample_id_external) :]
