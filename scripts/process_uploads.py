@@ -150,8 +150,6 @@ def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_typ
 
     aapi.create_new_analysis(proj, new_analysis)
 
-    # Update the seq meta?
-
 
 def validate_md5(
     job: hb.batch.job, sample_group: SampleGroup, upload_path: str
