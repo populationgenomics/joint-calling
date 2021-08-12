@@ -44,18 +44,12 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
 
     main_files = []
     archive_files = []
-    print(sequences)
 
     for seq_entry in sequences:
-        print(seq_entry)
-        print(type(seq_entry))
-
         internal_sample_id = seq_entry.get('sample_id')
 
         if seq_entry['meta'] is not None:
             batch_number = seq_entry['meta'].get('batch')
-            print(batch_number)
-            print(seq_entry)
 
             if 'gvcf' in seq_entry['meta']:
                 data_file_path = seq_entry['meta']['gvcf'].get('location')
@@ -145,7 +139,6 @@ def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_typ
     else:
         file_extension = '.cram'
 
-    # TODO Rebuild this file path
     filepath = os.path.join('gs://', path, internal_id + file_extension)
 
     new_analysis = AnalysisModel(
@@ -156,6 +149,7 @@ def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_typ
     )
 
     aapi.create_new_analysis(proj, new_analysis)
+
     # Update the seq meta?
 
 
@@ -167,8 +161,6 @@ def validate_md5(
 
     base = sample_group.data_file.basename
     file_extension = base[len(sample_group.sample_id_external) :]
-
-    # file_extension = sample_group.data_file[len(sample_group.sample_id_internal) :]
     file_path = f'{sample_group.sample_id_internal}{file_extension}'
 
     # Generate paths to files that are being validated
@@ -178,7 +170,6 @@ def validate_md5(
         f'batch{sample_group.batch_number}',
         file_path,
     )
-    # extension = sample_group.data_file[len(sample)]
 
     path_to_md5 = join(
         'gs://',
@@ -204,7 +195,6 @@ def run_processor():
 
     # Setting up inputs for batch_move_files
     project = os.getenv('HAIL_BILLING_PROJECT')
-    # upload_path = join(f'cpg-{project}-main-upload')
     main_bucket = f'cpg-{project}-main'
     main_path = join(main_bucket, 'gvcf')
     archive_path = join(f'cpg-{project}-archive', 'cram')
@@ -218,15 +208,11 @@ def run_processor():
         raise ValueError('HAIL_BILLING_PROJECT must be set')
 
     # Determine the analysis results (i.e. list of gvcfs and crams) to be moved
-    # samples_external_ids: List[str] = []  # List of external sample IDs
     main_files: List[SampleGroup] = []
     archive_files: List[SampleGroup] = []
 
-    # samples_external_ids = determine_samples(sm_project)
-
-    # main_files, archive_files = generate_file_list(samples_external_ids)
-
     main_files, archive_files = determine_samples(sm_project)
+
     service_backend = hb.ServiceBackend(
         billing_project=project,
         bucket=os.getenv('HAIL_BUCKET'),
