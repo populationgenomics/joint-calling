@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import NamedTuple
 import hailtop.batch as hb
 from sample_metadata.api.sample_api import SampleApi
-from joint_calling.upload_processor import batch_move_files, SampleGroup
+from joint_calling.upload_processor import batch_move_files, SampleGroup, FileGroup
 
 
 class SuccessGroup(NamedTuple):
@@ -31,15 +31,14 @@ class FailedGroup(NamedTuple):
     md5: str
 
 
-def validate_move(
-    upload_prefix: str, main_prefix: str, original_file: str, new_file: str
-) -> bool:
+def validate_move(main_prefix: str, original_path: str, new_file: str) -> bool:
     """Checks that a given file exists at the location in
     the main bucket and no longer exists in the upload bucket.
     Returns True if this is the case and False otherwise.
     """
     main_path = os.path.join('gs://', main_prefix, 'batch0', new_file)
-    upload_path = os.path.join('gs://', upload_prefix, original_file)
+    # upload_path = os.path.join('gs://', upload_prefix, original_file)
+    upload_path = original_path
     exists_main = subprocess.run(['gsutil', '-q', 'stat', main_path], check=False)
     exists_upload = subprocess.run(['gsutil', '-q', 'stat', upload_path], check=False)
 
@@ -47,7 +46,7 @@ def validate_move(
     return exists_upload.returncode != 0 and exists_main.returncode == 0
 
 
-def upload_files(sample_group: SampleGroup, upload_prefix: str):
+def upload_files(sample_group: SampleGroup):
     """Mimics the upload of a new sample. Takes a list of
     file names, creates these files, then moves them into
     the upload bucket used for further testing."""
@@ -57,9 +56,10 @@ def upload_files(sample_group: SampleGroup, upload_prefix: str):
     files_to_move = (sample_group.data_file, sample_group.index_file, sample_group.md5)
 
     for file_name in files_to_move:
-        subprocess.run(['touch', file_name], check=True)
-        full_path = os.path.join('gs://', upload_prefix, file_name)
-        subprocess.run(['gsutil', 'mv', file_name, full_path], check=True)
+        subprocess.run(['touch', file_name.basename], check=True)
+        # full_path = os.path.join('gs://', upload_prefix, file_name)
+        full_path = file_name.path
+        subprocess.run(['gsutil', 'mv', file_name.basename, full_path], check=True)
 
 
 class TestUploadProcessor(unittest.TestCase):
@@ -95,23 +95,28 @@ class TestUploadProcessor(unittest.TestCase):
         )
 
         internal_id = list(internal_id_map.values())[0]
+        data_basename = f'{external_id}.g.vcf.gz'
+        data_path = os.path.join('gs://', self.upload_prefix, data_basename)
+        index_basename = f'{external_id}.g.vcf.gz.tbi'
+        index_path = os.path.join('gs://', self.upload_prefix, index_basename)
+        md5_basename = f'{external_id}.g.vcf.gz.md5'
+        md5_path = os.path.join('gs://', self.upload_prefix, md5_basename)
 
         test_sample = SampleGroup(
             sample_id_external=external_id,
             sample_id_internal=internal_id,
-            data_file=f'{external_id}.g.vcf.gz',
-            index_file=f'{external_id}.g.vcf.gz.tbi',
-            md5=f'{external_id}.g.vcf.gz.md5',
+            data_file=FileGroup(path=data_path, basename=data_basename),
+            index_file=FileGroup(path=index_path, basename=index_basename),
+            md5=FileGroup(path=md5_path, basename=md5_basename),
             batch_number='0',
         )
 
-        upload_files(test_sample, self.upload_prefix)
+        upload_files(test_sample)
 
         batch = hb.Batch(name='Test Batch Move Standard')
         batch_move_files(
             batch,
             test_sample,
-            self.upload_prefix,
             self.main_prefix,
             self.docker_image,
             self.key,
@@ -127,12 +132,11 @@ class TestUploadProcessor(unittest.TestCase):
         )
 
         for file_name in files_to_move:
-            file_extension = file_name[len(test_sample.sample_id_external) :]
+            file_extension = file_name.basename[len(test_sample.sample_id_external) :]
             self.assertTrue(
                 validate_move(
-                    self.upload_prefix,
                     self.main_prefix,
-                    file_name,
+                    file_name.path,
                     str(internal_id) + file_extension,
                 )
             )
@@ -143,19 +147,24 @@ class TestUploadProcessor(unittest.TestCase):
         in the upload bucket"""
         not_uploaded_id = 'TOB02337'
         internal_id = 'FALSE_ID'
+        data_basename = f'{not_uploaded_id}.g.vcf.gz'
+        data_path = os.path.join('gs://', self.upload_prefix, data_basename)
+        index_basename = f'{not_uploaded_id}.g.vcf.gz.tbi'
+        index_path = os.path.join('gs://', self.upload_prefix, index_basename)
+        md5_basename = f'{not_uploaded_id}.g.vcf.gz.md5'
+        md5_path = os.path.join('gs://', self.upload_prefix, md5_basename)
         not_uploaded_sample = SampleGroup(
             sample_id_external=not_uploaded_id,
             sample_id_internal=internal_id,
-            data_file=f'{not_uploaded_id}.g.vcf.gz',
-            index_file=f'{not_uploaded_id}.g.vcf.gz.tbi',
-            md5=f'{not_uploaded_id}.g.vcf.gz.md5',
+            data_file=FileGroup(path=data_path, basename=data_basename),
+            index_file=FileGroup(path=index_path, basename=index_basename),
+            md5=FileGroup(path=md5_path, basename=md5_basename),
             batch_number='0',
         )
         invalid_batch = hb.Batch(name='Invalid Batch')
         batch_move_files(
             invalid_batch,
             not_uploaded_sample,
-            self.upload_prefix,
             self.main_prefix,
             self.docker_image,
             self.key,
