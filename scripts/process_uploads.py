@@ -25,7 +25,6 @@ from joint_calling.upload_processor import batch_move_files, SampleGroup, FileGr
 
 def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
     """ Determine which samples should be processed """
-    print('entered here')
     aapi = AnalysisApi()
     sapi = SampleApi()
     seqapi = SequenceApi()
@@ -35,12 +34,12 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
     )
 
     sample_ids_without_analysis = samples_without_analysis['sample_ids']
-    sequences = seqapi.get_sequences_by_ids(
-        sample_ids=sample_ids_without_analysis, project=proj
+    sequences = seqapi.get_sequences_by_sample_ids(
+        sample_ids=sample_ids_without_analysis
     )
 
     external_sample_mapping = sapi.get_sample_id_map_by_internal(
-        proj, sample_ids_without_analysis
+        internal_ids=sample_ids_without_analysis
     )
 
     main_files = []
