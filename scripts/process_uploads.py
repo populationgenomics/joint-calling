@@ -81,8 +81,9 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
                 main_files.append(sample_group_main)
 
             if 'reads' in seq_entry['meta']:
-
-                for read in seq_entry['meta']['reads']:
+                reads = seq_entry['meta']['reads']
+                reads = reads if isinstance(reads, list) else [reads]
+                for read in reads:
                     data_file_path = read.get('location')
                     data_file_basename = read.get('basename')
                     index_file_path = read['secondaryFiles'][0].get('location')
