@@ -19,7 +19,6 @@ from sample_metadata.models.analysis_type import AnalysisType
 from sample_metadata.models.analysis_status import AnalysisStatus
 from sample_metadata.models.analysis_model import AnalysisModel
 
-# from sample_metadata.exceptions import ServiceException
 from joint_calling.upload_processor import batch_move_files, SampleGroup, FileGroup
 
 
@@ -197,8 +196,7 @@ def run_processor():
     main_path = join(main_bucket, 'gvcf')
     archive_path = join(f'cpg-{project}-archive', 'cram')
 
-    sm_project = 'viviandev'
-    # sm_project = project.replace('-', '')
+    sm_project = project.replace('-', '')
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
 
