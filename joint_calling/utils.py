@@ -90,21 +90,7 @@ def find_inputs_from_db(project):
     aapi = AnalysisApi()
     seqapi = SequenceApi()
 
-    # ADDED SAMPLES
-    # Those those that have GVCFs but have not been included in the latest analysis.
-    samples_without_joint_calling = aapi.get_all_sample_ids_without_analysis_type(
-        'joint-calling', project
-    )
-    samples_without_gvcfs = aapi.get_all_sample_ids_without_analysis_type(
-        'gvcf', project
-    )
-    new_samples = list(
-        set(samples_without_joint_calling['sample_ids'])
-        - set(samples_without_gvcfs['sample_ids'])
-    )
-
-    # DELETED SAMPLES
-    # Those included in the latest analysis that have an invalid status.
+    # Get samples in latest analysis
     latest_analysis = aapi.get_latest_complete_analyses_by_type(
         analysis_type='joint-calling', project=project
     )
@@ -114,10 +100,12 @@ def find_inputs_from_db(project):
     samples_in_latest_analysis = [
         sample_id for sublist in latest_analysis_sample_ids for sample_id in sublist
     ]
-    # TODO: Need an endpoint to pull samples with an inactive status
-    inactive_samples = []
+    # TODO: Need an endpoint to pull samples with an active status
+    active_samples = []
 
-    deleted_samples = set(samples_in_latest_analysis) & set(inactive_samples)
+    new_samples = set(active_samples) - set(samples_in_latest_analysis)
+
+    deleted_samples = set(samples_in_latest_analysis) - set(active_samples)
 
     processed_samples = new_samples + list(deleted_samples)
     inputs = []
@@ -125,6 +113,7 @@ def find_inputs_from_db(project):
     sequences_data = seqapi.get_sequences_by_sample_ids(sample_ids=processed_samples)
 
     # TODO: Need to pull gvcf location from analysis object. Currently pulls incorrect location.
+    # Awaiting getLatestGVCFsForSampleIDs
 
     for sample in processed_samples:
         if sample in new_samples:
