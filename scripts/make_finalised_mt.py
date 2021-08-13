@@ -8,7 +8,7 @@ import logging
 import click
 import hail as hl
 
-from joint_calling.utils import get_validation_callback, get_mt, file_exists
+from joint_calling.utils import get_validation_callback, file_exists
 from joint_calling import utils, _version
 
 logger = logging.getLogger('joint-calling')
@@ -30,6 +30,13 @@ logger.setLevel('INFO')
     required=True,
     callback=get_validation_callback(ext='mt', must_exist=False),
     help='path to write the final annotated soft-filtered Matrix Table',
+)
+@click.option(
+    '--out-nonref-mt',
+    'out_nonref_mt_path',
+    required=True,
+    callback=get_validation_callback(ext='mt', must_exist=False),
+    help='write a version of output Matrix Table without reference blocks',
 )
 @click.option(
     '--meta-ht',
@@ -63,15 +70,13 @@ logger.setLevel('INFO')
 def main(
     mt_path: str,
     out_mt_path: str,
+    out_nonref_mt_path: str,
     meta_ht_path: str,
     var_qc_final_filter_ht_path: str,
     local_tmp_dir: str,
     overwrite: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
-):
-    """
-    Generate final annotated, soft-filtered Matrix Table
-    """
+):  # pylint: disable=missing-function-docstring
     utils.init_hail('make_finalised_mt', local_tmp_dir)
 
     if file_exists(out_mt_path):
@@ -83,17 +88,18 @@ def main(
             )
             return
 
-    mt = get_mt(
-        mt_path,
-        split=True,
-        meta_ht=hl.read_table(meta_ht_path),
-        add_meta=True,
-    )
+    mt = hl.read_matrix_table(mt_path)
+
+    meta_ht = hl.read_table(meta_ht_path)
+    mt = mt.annotate_cols(meta=meta_ht[mt.col_key])
 
     var_qc_ht = hl.read_table(var_qc_final_filter_ht_path)
     mt = mt.annotate_rows(**var_qc_ht[mt.row_key])
     mt = mt.annotate_globals(**var_qc_ht.index_globals())
     mt.write(out_mt_path, overwrite=True)
+
+    mt = mt.filter_rows(hl.agg.any(mt.LGT.is_non_ref()))
+    mt.write(out_nonref_mt_path, overwrite=True)
 
 
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Imports vqsr site vcf into a HT
+Imports AS-VQSR site VCF into a HT
 """
 
 import logging

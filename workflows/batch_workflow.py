@@ -11,12 +11,13 @@ https://github.com/populationgenomics/analysis-runner (see helper script `driver
 
 import os
 import subprocess
-from os.path import join, dirname, abspath
+from os.path import join, dirname, abspath, basename
 from typing import List, Optional, Tuple
 import logging
 import click
 import pandas as pd
 import hailtop.batch as hb
+from hail import hadoop_open
 from hailtop.batch.job import Job
 from analysis_runner import dataproc
 
@@ -166,13 +167,21 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         f'gs://cpg-{callset_name}-{web_bucket_suffix}/joint-calling/{callset_version}'
     )
     mt_output_bucket = f'gs://cpg-{callset_name}-{output_suffix}/mt'
-
-    raw_combined_mt_path = f'{mt_output_bucket}/{callset_version}-raw.mt'
-    # pylint: disable=unused-variable
-    filtered_combined_mt_path = f'{mt_output_bucket}/{callset_version}.mt'
-
     combiner_bucket = f'{work_bucket}/combiner'
     sample_qc_bucket = f'{work_bucket}/sample_qc'
+
+    raw_combined_mt_path = f'{combiner_bucket}/{callset_version}-raw.mt'
+    filtered_combined_mt_path = f'{mt_output_bucket}/{callset_version}.mt'
+    filtered_combined_nonref_mt_path = f'{mt_output_bucket}/{callset_version}-nonref.mt'
+    readme_fpath = f'{mt_output_bucket}/README.txt'
+    with hadoop_open(readme_fpath, 'w') as f:
+        f.write(f'Unfiltered:\n{raw_combined_mt_path}')
+        f.write(
+            f'AS-VQSR soft-filtered\n(use `mt.filter_rows(hl.is_missing(mt.filters)` to hard-filter):\n {basename(filtered_combined_mt_path)}'
+        )
+        f.write(
+            f'AS-VQSR soft-filtered, without reference blocks:\n{basename(filtered_combined_nonref_mt_path)}'
+        )
 
     filter_cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
 
@@ -209,18 +218,15 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     info_ht_path = join(sample_qc_bucket, 'info.ht')
     info_split_ht_path = join(sample_qc_bucket, 'info-split.ht')
-    info_vcf_path = join(sample_qc_bucket, 'info.vcf')
     if overwrite or any(
-        not utils.file_exists(fp)
-        for fp in [info_ht_path, info_split_ht_path, info_vcf_path]
+        not utils.file_exists(fp) for fp in [info_ht_path, info_split_ht_path]
     ):
         generate_info_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/generate_info_ht.py --overwrite '
             f'--mt {raw_combined_mt_path} '
             f'--out-info-ht {info_ht_path} '
-            f'--out-split-info-ht {info_split_ht_path} '
-            f'--out-info-vcf {info_vcf_path}',
+            f'--out-split-info-ht {info_split_ht_path}',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             # Adding more workers as this is a much longer step
@@ -293,24 +299,25 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             scatter_count=scatter_count,
         )
         if overwrite or not utils.file_exists(filtered_combined_mt_path):
-            finalised_mt_job = dataproc.hail_dataproc_job(
+            dataproc.hail_dataproc_job(
                 b,
                 f'{scripts_dir}/make_finalised_mt.py --overwrite '
                 f'--mt {raw_combined_mt_path} '
                 f'--var-qc-final-filter-ht {var_qc_final_filter_ht} '
                 f'--out-mt {filtered_combined_mt_path} '
+                f'--out-nonref-mt {filtered_combined_nonref_mt_path} '
                 f'--meta-ht {meta_ht_path} ',
                 max_age='8h',
                 packages=utils.DATAPROC_PACKAGES,
                 num_secondary_workers=scatter_count,
-                depends_on=[var_qc_job],
+                depends_on=[var_qc_job, combiner_job],
                 job_name='Making final MT',
             )
         else:
-            finalised_mt_job = b.new_job('Making final MT [reuse]')
+            b.new_job('Making final MT [reuse]')
 
     else:
-        var_qc_job = b.new_job('Var QC [skip]')
+        b.new_job('Var QC [skip]')
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
 

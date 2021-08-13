@@ -3,6 +3,7 @@
 """
 Run Random Forest variant QC
 """
+
 from os.path import join
 from typing import List, Optional, Tuple
 import json
@@ -179,7 +180,7 @@ TRUTH_DATA = ['hapmap', 'omni', 'mills', 'kgp_phase1_hc']
     help='Train RF without centromeres and telomeres.',
     is_flag=True,
 )
-def main(  # pylint: disable=too-many-arguments,too-many-locals
+def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     annotations_ht_path: str,
     vqsr_filters_split_ht_path: Optional[str],
     out_results_ht_path: str,
@@ -199,10 +200,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     no_inbreeding_coeff: Optional[bool],
     filter_centromere_telomere: Optional[bool],
 ):
-    """
-    Run variant QC on a MatrixTable, hard filter samples and add soft filter labels,
-    output a sample-level Hail Table
-    """
     local_tmp_dir = utils.init_hail('variant_qc_random_forest', local_tmp_dir)
 
     rf_json_path = join(work_bucket, 'rf_runs.json')
