@@ -17,18 +17,27 @@ from typing import List, Optional, NamedTuple
 import hailtop.batch as hb
 
 
+class FileGroup(NamedTuple):
+    """Defines a file path and it's basename"""
+
+    path: str
+    basename: str
+
+
 class SampleGroup(NamedTuple):
     """ Defines a group of files associated with each sample"""
 
-    data_file: str
-    index_file: str
-    md5: str
+    sample_id_external: str
+    sample_id_internal: str
+    data_file: FileGroup
+    index_file: FileGroup
+    md5: FileGroup
+    batch_number: int
 
 
 def batch_move_files(
     batch: hb.batch,
-    files: SampleGroup,
-    source_prefix: str,
+    sample_group: SampleGroup,
     destination_prefix: str,
     docker_image: Optional[str] = None,
     key: Optional[str] = None,
@@ -43,12 +52,14 @@ def batch_move_files(
     files: SampleGroup
         A NamedTuple containing 3 files to be moved.
         For example ["TOB1543.g.vcf.gz","TOB1543.g.vcf.tbi","TOB1543.g.vcf.md5"]
+        As well as the internal id, external id and batch number associated with each
+        sample.
     source_prefix: str
         The path to the sub-directory where the files are initially located.
         For example "cpg-tob-wgs-upload" or "cpg-tob-wgs-upload/v1"
     destination_prefix: str
         The path to the sub-directory where the files should be moved.
-        For example "cpg-tob-wgs-main" or "cpg-tob-wgs-upload/batch1"
+        For example "cpg-tob-wgs-main" (not including the batch number)
     docker_image: str, optional
         The address and tag of a previously built docker image, within the
         artifact registry. Each batch job will run in this image.
@@ -67,11 +78,27 @@ def batch_move_files(
         " """
 
     jobs = []
-    for sample in files:
-        previous_location = os.path.join('gs://', source_prefix, sample)
-        new_location = os.path.join('gs://', destination_prefix, sample)
 
-        j = batch.new_job(name=f'move {sample}')
+    external_id = sample_group.sample_id_external
+    internal_id = sample_group.sample_id_internal
+    batch_number = sample_group.batch_number
+
+    files_to_move = (sample_group.data_file, sample_group.index_file, sample_group.md5)
+
+    for file_name in files_to_move:
+        base = file_name.basename
+        previous_location = file_name.path
+
+        # previous_location = os.path.join('gs://', source_prefix, file_name)
+        # previous_location = file_name
+
+        file_extension = base[len(external_id) :]
+        new_file_name = internal_id + file_extension
+        new_location = os.path.join(
+            'gs://', destination_prefix, f'batch{batch_number}', new_file_name
+        )
+
+        j = batch.new_job(name=f'move {base} -> {new_file_name}')
 
         if docker_image is not None:
             j.image(docker_image)
