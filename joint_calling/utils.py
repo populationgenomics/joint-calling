@@ -103,18 +103,24 @@ def find_inputs_from_db(project):
         sample_id for sublist in latest_analysis_sample_ids for sample_id in sublist
     ]
 
-    active_samples = sapi.get_samples(active=True)
+    active_samples = sapi.get_samples(
+        body_get_samples_by_criteria_api_v1_sample_post={
+            'project_ids': [project],
+            'active': True,
+        }
+    )
+    active_sample_ids = [active_sample['id'] for active_sample in active_samples]
 
-    new_samples = set(active_samples) - set(samples_in_latest_analysis)
+    new_samples = list(set(active_sample_ids) - set(samples_in_latest_analysis))
 
-    deleted_samples = set(samples_in_latest_analysis) - set(active_samples)
+    deleted_samples = list(set(samples_in_latest_analysis) - set(active_sample_ids))
 
     inputs = []
 
     # Get all sequence metadata for the list of processed samples
-    sequences_data = seqapi.get_sequences_by_sample_ids(sample_ids=new_samples)
+    sequences_data = seqapi.get_sequences_by_sample_ids(sample_ids=new_samples[:20])
 
-    new_sample_gvcfs = aapi.get_latest_gvcfs_for_sample_ids(new_samples)
+    new_sample_gvcfs = aapi.get_latest_gvcfs_for_samples(new_samples[:20])
 
     for new_gvcf in new_sample_gvcfs:
         sample_id = new_gvcf.get('sample_ids')[0]
@@ -499,4 +505,4 @@ def get_filter_cutoffs(
 
 
 if __name__ == '__main__':
-    find_inputs_from_db('viviandev')
+    find_inputs_from_db('tob-wgs')
