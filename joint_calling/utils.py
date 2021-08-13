@@ -118,9 +118,9 @@ def find_inputs_from_db(project):
     inputs = []
 
     # Get all sequence metadata for the list of processed samples
-    sequences_data = seqapi.get_sequences_by_sample_ids(sample_ids=new_samples[:20])
+    sequences_data = seqapi.get_sequences_by_sample_ids(request_body=new_samples)
 
-    new_sample_gvcfs = aapi.get_latest_gvcfs_for_samples(new_samples[:20])
+    new_sample_gvcfs = aapi.get_latest_gvcfs_for_samples(new_samples)
 
     for new_gvcf in new_sample_gvcfs:
         sample_id = new_gvcf.get('sample_ids')[0]
