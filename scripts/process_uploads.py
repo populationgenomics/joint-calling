@@ -153,7 +153,7 @@ def validate_md5(
 
     base = sample_group.data_file.basename
     file_extension = '.'.join(base.split('.')[1:])
-    file_path = f'{sample_group.sample_id_internal}{file_extension}'
+    file_path = f'{sample_group.sample_id_internal}.{file_extension}'
 
     # Generate paths to files that are being validated
     path_to_data = join(
@@ -191,7 +191,8 @@ def run_processor():
     main_path = join(main_bucket, 'gvcf')
     archive_path = join(f'cpg-{project}-archive', 'cram')
 
-    sm_project = project.replace('-', '')
+    sm_project = 'viviandev'
+    # sm_project = project.replace('-', '')
 
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
