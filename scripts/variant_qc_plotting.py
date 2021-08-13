@@ -4,7 +4,6 @@ Functions for variant QC plotting
 
 import logging
 from typing import Set, Tuple, Union, Dict, List, Callable, Optional
-from os.path import join
 from bokeh.layouts import gridplot
 from bokeh.palettes import d3  # pylint: disable=no-name-in-module
 from bokeh.models import (
