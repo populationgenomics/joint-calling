@@ -542,7 +542,7 @@ def _add_subset_noalt_step(
     b: hb.Batch,
     input_gvcf: hb.ResourceGroup,
     output_gvcf_path: str,
-    noalt_regions: str,
+    noalt_regions: hb.ResourceFile,
 ) -> Job:
     """
     1. Subset GVCF to main chromosomes to avoid downstream errors

@@ -362,7 +362,7 @@ def _snps_not_in_gnomad(
 
     # Filter to those variants that are not in gnomad
     gnomad = hl.read_table(gnomad_path)
-    ht.key_by('locus', 'alleles').anti_join(gnomad)
+    ht = ht.key_by('locus', 'alleles').anti_join(gnomad)
     # Count non-gnomad variants for each sample
     stats_ht = ht.group_by(ht.s).aggregate(nongnomad_snps=hl.agg.count())
     stats_ht.write(out_ht_path, overwrite=True)
