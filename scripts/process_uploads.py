@@ -192,8 +192,6 @@ def run_processor():
     main_path = join(main_bucket, 'gvcf')
     archive_path = join(f'cpg-{project}-archive', 'cram')
 
-    sm_project = project.replace('-', '')
-
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
 
@@ -204,7 +202,7 @@ def run_processor():
     main_files: List[SampleGroup] = []
     archive_files: List[SampleGroup] = []
 
-    main_files, archive_files = determine_samples(sm_project)
+    main_files, archive_files = determine_samples(project)
 
     service_backend = hb.ServiceBackend(
         billing_project=project,
@@ -247,7 +245,7 @@ def run_processor():
         status_job.call(
             create_analysis_in_sm_db,
             sample_group,
-            sm_project,
+            project,
             output_path,
             AnalysisType.GVCF,
         )
@@ -285,7 +283,7 @@ def run_processor():
         status_job.call(
             create_analysis_in_sm_db,
             sample_group,
-            sm_project,
+            project,
             output_path,
             AnalysisType.CRAM,
         )
