@@ -39,7 +39,7 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
     )
 
     external_sample_mapping = sapi.get_sample_id_map_by_internal(
-        internal_ids=sample_ids_without_analysis
+        request_body=sample_ids_without_analysis
     )
 
     main_files = []
