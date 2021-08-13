@@ -19,6 +19,7 @@ from google.cloud import storage  # pylint : disable=E0611
 
 from sample_metadata.api import AnalysisApi
 from sample_metadata.api import SequenceApi
+from sample_metadata.api import SampleApi
 
 from joint_calling import _version, get_package_path
 
@@ -89,6 +90,7 @@ def find_inputs_from_db(project):
     """
     aapi = AnalysisApi()
     seqapi = SequenceApi()
+    sapi = SampleApi()
 
     # Get samples in latest analysis
     latest_analysis = aapi.get_latest_complete_analyses_by_type(
@@ -100,37 +102,31 @@ def find_inputs_from_db(project):
     samples_in_latest_analysis = [
         sample_id for sublist in latest_analysis_sample_ids for sample_id in sublist
     ]
-    # TODO: Need an endpoint to pull samples with an active status
-    active_samples = []
+
+    active_samples = sapi.get_samples(active=True)
 
     new_samples = set(active_samples) - set(samples_in_latest_analysis)
 
     deleted_samples = set(samples_in_latest_analysis) - set(active_samples)
 
-    processed_samples = new_samples + list(deleted_samples)
     inputs = []
+
     # Get all sequence metadata for the list of processed samples
-    sequences_data = seqapi.get_sequences_by_sample_ids(sample_ids=processed_samples)
+    sequences_data = seqapi.get_sequences_by_sample_ids(sample_ids=new_samples)
 
-    # TODO: Need to pull gvcf location from analysis object. Currently pulls incorrect location.
-    # Awaiting getLatestGVCFsForSampleIDs
+    new_sample_gvcfs = aapi.get_latest_gvcfs_for_sample_ids(new_samples)
 
-    for sample in processed_samples:
-        if sample in new_samples:
-            operation = 'add'
-        if sample in deleted_samples:
-            operation = 'add'
-
-        print(f'the sample is {sample}')
+    for new_gvcf in new_sample_gvcfs:
+        sample_id = new_gvcf.get('sample_ids')[0]
         current_seq_data = next(
-            seq_data for seq_data in sequences_data if seq_data['sample_id'] == sample
+            seq_data
+            for seq_data in sequences_data
+            if seq_data['sample_id'] == sample_id
         )
-        print(current_seq_data)
-
         sample_information = {
-            's': sample,
+            's': sample_id,
             'population': 'EUR',
-            'gvcf': current_seq_data.get('meta').get('gvcf').get('location'),
+            'gvcf': new_gvcf.get('output'),
             'r_contamination': current_seq_data.get('meta').get('raw_data.FREEMIX'),
             'r_chimera': current_seq_data.get('meta').get('raw_data.PCT_CHIMERAS'),
             'r_duplication': current_seq_data.get('meta').get(
@@ -139,9 +135,22 @@ def find_inputs_from_db(project):
             'median_insert_size': current_seq_data.get('meta').get(
                 'raw_data.MEDIAN_INSERT_SIZE'
             ),
-            'operation': operation,
+            'operation': 'add',
         }
 
+        inputs.append(sample_information)
+
+    for sample in deleted_samples:
+        sample_information = {
+            's': sample,
+            'population': None,
+            'gvcf': None,
+            'r_contamination': None,
+            'r_chimera': None,
+            'r_duplication': None,
+            'median_insert_size': None,
+            'operation': 'delete',
+        }
         inputs.append(sample_information)
 
     df = pd.DataFrame(inputs)
