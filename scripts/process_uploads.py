@@ -191,7 +191,9 @@ def run_processor():
     main_path = join(main_bucket, 'gvcf')
     archive_path = join(f'cpg-{project}-archive', 'cram')
 
-    sm_project = project.replace('-', '')
+    sm_project = 'viviandev'
+    # sm_project = project.replace('-', '')
+
     docker_image = os.environ.get('DRIVER_IMAGE')
     key = os.environ.get('GSA_KEY')
 
