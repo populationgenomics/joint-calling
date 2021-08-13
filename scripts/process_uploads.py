@@ -173,7 +173,6 @@ def validate_md5(
     )
 
     # Calculate md5 checksum.
-    job.command(f'gsutil cat {path_to_data} | md5sum > /tmp/{sample_group.md5}')
     job.command(
         f'gsutil cat {path_to_data} | md5sum | sed "s/-/{sample_group.data_file.basename}/" > /tmp/{sample_group.md5.basename}'
     )
