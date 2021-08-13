@@ -127,24 +127,19 @@ def setup_job(
     return job
 
 
-def create_analysis_in_sm_db(sample_group: SampleGroup, proj, path, analysis_type):
+def create_analysis_in_sm_db(
+    sample_group: SampleGroup, proj, output_path, analysis_type
+):
     """ Creates a new analysis object"""
     aapi = AnalysisApi()
 
     internal_id = sample_group.sample_id_internal
 
-    if analysis_type == 'gvcf':
-        file_extension = '.g.vcf.gz'
-    else:
-        file_extension = '.cram'
-
-    filepath = os.path.join('gs://', path, internal_id + file_extension)
-
     new_analysis = AnalysisModel(
         sample_ids=[internal_id],
         type=analysis_type,
         status=AnalysisStatus.COMPLETED,
-        output=filepath,
+        output=output_path,
     )
 
     aapi.create_new_analysis(proj, new_analysis)
@@ -157,7 +152,7 @@ def validate_md5(
     This function appends commands to the job that moves these files, to validate each .md5 file."""
 
     base = sample_group.data_file.basename
-    file_extension = base[len(sample_group.sample_id_external) :]
+    file_extension = '.'.join(base.split('.')[1:])
     file_path = f'{sample_group.sample_id_internal}{file_extension}'
 
     # Generate paths to files that are being validated
@@ -240,12 +235,18 @@ def run_processor():
             docker_image,
             True,
         )
-        full_path = os.path.join(main_path, f'batch{sample_group.batch_number}')
+        output_path = os.path.join(
+            'gs://',
+            main_path,
+            f'batch{sample_group.batch_number}',
+            sample_group.sample_id_internal + '.g.vcf.gz',
+        )
+
         status_job.call(
             create_analysis_in_sm_db,
             sample_group,
             sm_project,
-            full_path,
+            output_path,
             AnalysisType.GVCF,
         )
         status_job.depends_on(validate_job)
@@ -273,11 +274,17 @@ def run_processor():
             docker_image,
             True,
         )
+        output_path = os.path.join(
+            'gs://',
+            archive_path,
+            f'batch{sample_group.batch_number}',
+            sample_group.sample_id_internal + '.cram',
+        )
         status_job.call(
             create_analysis_in_sm_db,
             sample_group,
             sm_project,
-            archive_path,
+            output_path,
             AnalysisType.CRAM,
         )
         status_job.depends_on(validate_job)
