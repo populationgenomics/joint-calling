@@ -15,8 +15,13 @@ import yaml
 import pandas as pd
 import hail as hl
 import click
-from google.cloud import storage
+from google.cloud import storage  # pylint : disable=E0611
+
+from sample_metadata.api import AnalysisApi
+from sample_metadata.api import SequenceApi
+
 from joint_calling import _version, get_package_path
+
 
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
@@ -76,6 +81,83 @@ def init_hail(name: str, local_tmp_dir: str = None):
     hl.init(default_reference=DEFAULT_REF, log=hl_log)
     logger.info(f'Running joint-calling version {_version.__version__}')
     return local_tmp_dir
+
+
+def find_inputs_from_db(project):
+    """
+    Determine inputs from SM DB
+    """
+    aapi = AnalysisApi()
+    seqapi = SequenceApi()
+
+    # ADDED SAMPLES
+    # Those those that have GVCFs but have not been included in the latest analysis.
+    samples_without_joint_calling = aapi.get_all_sample_ids_without_analysis_type(
+        'joint-calling', project
+    )
+    samples_without_gvcfs = aapi.get_all_sample_ids_without_analysis_type(
+        'gvcf', project
+    )
+    new_samples = list(
+        set(samples_without_joint_calling['sample_ids'])
+        - set(samples_without_gvcfs['sample_ids'])
+    )
+
+    # DELETED SAMPLES
+    # Those included in the latest analysis that have an invalid status.
+    latest_analysis = aapi.get_latest_complete_analyses_by_type(
+        analysis_type='joint-calling', project=project
+    )
+    latest_analysis_sample_ids = [
+        analysis['sample_ids'] for analysis in latest_analysis
+    ]
+    samples_in_latest_analysis = [
+        sample_id for sublist in latest_analysis_sample_ids for sample_id in sublist
+    ]
+    # TODO: Need an endpoint to pull samples with an inactive status
+    inactive_samples = []
+
+    deleted_samples = set(samples_in_latest_analysis) & set(inactive_samples)
+
+    processed_samples = new_samples + list(deleted_samples)
+    inputs = []
+    # Get all sequence metadata for the list of processed samples
+    sequences_data = seqapi.get_sequences_by_sample_ids(sample_ids=processed_samples)
+
+    # TODO: Need to pull gvcf location from analysis object. Currently pulls incorrect location.
+
+    for sample in processed_samples:
+        if sample in new_samples:
+            operation = 'add'
+        if sample in deleted_samples:
+            operation = 'add'
+
+        print(f'the sample is {sample}')
+        current_seq_data = next(
+            seq_data for seq_data in sequences_data if seq_data['sample_id'] == sample
+        )
+        print(current_seq_data)
+
+        sample_information = {
+            's': sample,
+            'population': 'EUR',
+            'gvcf': current_seq_data.get('meta').get('gvcf').get('location'),
+            'r_contamination': current_seq_data.get('meta').get('raw_data.FREEMIX'),
+            'r_chimera': current_seq_data.get('meta').get('raw_data.PCT_CHIMERAS'),
+            'r_duplication': current_seq_data.get('meta').get(
+                'raw_data.PERCENT_DUPLICATION'
+            ),
+            'median_insert_size': current_seq_data.get('meta').get(
+                'raw_data.MEDIAN_INSERT_SIZE'
+            ),
+            'operation': operation,
+        }
+
+        inputs.append(sample_information)
+
+    df = pd.DataFrame(inputs)
+
+    return df
 
 
 def find_inputs(
@@ -416,3 +498,7 @@ def get_filter_cutoffs(
             filter_cutoffs_d = yaml.load(f)
 
     return filter_cutoffs_d
+
+
+if __name__ == '__main__':
+    find_inputs_from_db('viviandev')
