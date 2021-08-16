@@ -22,8 +22,11 @@ from sample_metadata import (
     AnalysisApi,
     AnalysisType,
     AnalysisStatus,
+    SequenceApi,
+    SampleApi,
 )
 from joint_calling import _version, get_package_path
+
 
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
@@ -189,6 +192,86 @@ python update.py
     """
     )
     return j
+
+
+def find_inputs_from_db(project):
+    """
+    Determine inputs from SM DB
+    """
+    aapi = AnalysisApi()
+    seqapi = SequenceApi()
+    sapi = SampleApi()
+
+    # Get samples in latest analysis
+    latest_analysis = aapi.get_latest_complete_analyses_by_type(
+        analysis_type='joint-calling', project=project
+    )
+    latest_analysis_sample_ids = [
+        analysis['sample_ids'] for analysis in latest_analysis
+    ]
+    samples_in_latest_analysis = [
+        sample_id for sublist in latest_analysis_sample_ids for sample_id in sublist
+    ]
+
+    active_samples = sapi.get_samples(
+        body_get_samples_by_criteria_api_v1_sample_post={
+            'project_ids': [project],
+            'active': True,
+        }
+    )
+    active_sample_ids = [active_sample['id'] for active_sample in active_samples]
+
+    new_samples = list(set(active_sample_ids) - set(samples_in_latest_analysis))
+
+    deleted_samples = list(set(samples_in_latest_analysis) - set(active_sample_ids))
+
+    inputs = []
+
+    # Get all sequence metadata for the list of processed samples
+    sequences_data = seqapi.get_sequences_by_sample_ids(request_body=new_samples)
+
+    new_sample_gvcfs = aapi.get_latest_gvcfs_for_samples(new_samples)
+
+    for new_gvcf in new_sample_gvcfs:
+        sample_id = new_gvcf.get('sample_ids')[0]
+        current_seq_data = next(
+            seq_data
+            for seq_data in sequences_data
+            if seq_data['sample_id'] == sample_id
+        )
+        sample_information = {
+            's': sample_id,
+            'population': 'EUR',
+            'gvcf': new_gvcf.get('output'),
+            'r_contamination': current_seq_data.get('meta').get('raw_data.FREEMIX'),
+            'r_chimera': current_seq_data.get('meta').get('raw_data.PCT_CHIMERAS'),
+            'r_duplication': current_seq_data.get('meta').get(
+                'raw_data.PERCENT_DUPLICATION'
+            ),
+            'median_insert_size': current_seq_data.get('meta').get(
+                'raw_data.MEDIAN_INSERT_SIZE'
+            ),
+            'operation': 'add',
+        }
+
+        inputs.append(sample_information)
+
+    for sample in deleted_samples:
+        sample_information = {
+            's': sample,
+            'population': None,
+            'gvcf': None,
+            'r_contamination': None,
+            'r_chimera': None,
+            'r_duplication': None,
+            'median_insert_size': None,
+            'operation': 'delete',
+        }
+        inputs.append(sample_information)
+
+    df = pd.DataFrame(inputs)
+
+    return df
 
 
 def find_inputs(
@@ -529,3 +612,7 @@ def get_filter_cutoffs(
             filter_cutoffs_d = yaml.load(f)
 
     return filter_cutoffs_d
+
+
+if __name__ == '__main__':
+    find_inputs_from_db('tob-wgs')
