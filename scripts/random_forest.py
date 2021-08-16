@@ -13,7 +13,6 @@ import pyspark
 import click
 import hail as hl
 
-from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.variant_qc.pipeline import train_rf_model
 from gnomad.variant_qc.random_forest import (
     apply_rf_model,
@@ -397,7 +396,9 @@ def train_rf(
 
     if filter_centromere_telomere:
         logger.info('Filtering centromeres and telomeres from HT...')
-        rf_ht = ht.filter(~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]))
+        rf_ht = ht.filter(
+            ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT_PATH)[ht.locus])
+        )
     else:
         rf_ht = ht
 

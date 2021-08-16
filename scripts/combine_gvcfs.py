@@ -17,7 +17,7 @@ import hail as hl
 from hail.experimental.vcf_combiner import vcf_combiner
 
 from joint_calling.utils import get_validation_callback
-from joint_calling import utils
+from joint_calling import utils, sm_utils
 from joint_calling import _version
 
 logger = logging.getLogger('combine_gvcfs')
@@ -107,7 +107,7 @@ def main(
         )
         new_samples_df = pd.read_table(local_meta_csv_path)
     else:
-        new_samples_df = utils.find_inputs(vcf_buckets, metadata_buckets)
+        new_samples_df = sm_utils.find_inputs(vcf_buckets, metadata_buckets)
 
     new_mt_path = os.path.join(work_bucket, 'new.mt')
     combine_gvcfs(

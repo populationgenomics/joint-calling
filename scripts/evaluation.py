@@ -11,7 +11,6 @@ from pprint import pformat
 import click
 import hail as hl
 
-from gnomad.resources.grch38.reference_data import clinvar, telomeres_and_centromeres
 from gnomad.utils.filtering import filter_low_conf_regions, filter_to_clinvar_pathogenic
 from gnomad.variant_qc.evaluation import (
     compute_binned_truth_sample_concordance,
@@ -77,13 +76,13 @@ logger.setLevel('INFO')
 )
 @click.option(
     '--out-bin-ht',
-    'out_bin_ht',
+    'out_bin_ht_path',
     required=True,
     help='When set, creates file annotated with bin based on rank of VQSR/RF score.',
 )
 @click.option(
     '--out-aggregated-bin-ht',
-    'out_aggregated_bin_ht',
+    'out_aggregated_bin_ht_path',
     help='When set, creates a file with aggregate counts of variants based on bins.',
 )
 @click.option(
@@ -132,8 +131,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     fam_stats_ht_path: str,
     rf_result_ht_path: Optional[str],
     vqsr_filters_split_ht_path: Optional[str],
-    out_bin_ht: str,
-    out_aggregated_bin_ht: str,
+    out_bin_ht_path: str,
+    out_aggregated_bin_ht_path: str,
     run_sanity_checks: bool,
     n_bins: int,
     n_partitions: int,
@@ -143,7 +142,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
 ):  # pylint: disable=missing-function-docstring
     local_tmp_dir = utils.init_hail('variant_qc_evaluate', local_tmp_dir)
 
-    if overwrite or not utils.file_exists(out_bin_ht):
+    if overwrite or not utils.file_exists(out_bin_ht_path):
         scores_ht = create_bin_ht(
             rf_annotations_ht=hl.read_table(rf_annotations_ht_path),
             info_split_ht=hl.read_table(info_split_ht_path),
@@ -155,9 +154,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
             if vqsr_filters_split_ht_path
             else None,
         )
-        scores_ht.write(out_bin_ht, overwrite=True)
+        scores_ht.write(out_bin_ht_path, overwrite=True)
     else:
-        scores_ht = hl.read_table(out_bin_ht)
+        scores_ht = hl.read_table(out_bin_ht_path)
 
     if run_sanity_checks:
         logger.info('Running sanity checks...')
@@ -179,8 +178,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
             )
         )
 
-    if out_aggregated_bin_ht:
-        if overwrite or not utils.file_exists(out_aggregated_bin_ht):
+    if out_aggregated_bin_ht_path:
+        if overwrite or not utils.file_exists(out_aggregated_bin_ht_path):
             logger.warning('Use only workers, it typically crashes with preemptibles')
             agg_ht = create_aggregated_bin_ht(
                 ht=scores_ht,
@@ -189,10 +188,41 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
                 else None,
                 work_bucket=work_bucket,
             )
-            agg_ht.write(out_aggregated_bin_ht, overwrite=True)
+            agg_ht.write(out_aggregated_bin_ht_path, overwrite=True)
 
     mt = utils.get_mt(mt_path)
-    if all(truth_sample in mt.s.collect() for truth_sample in utils.TRUTH_GVCFS):
+
+    truth_gvcfs = dict(
+        syndip=dict(
+            s='syndip',
+            gvcf='gs://gnomad-public-requester-pays/resources/grch38/syndip/full.38.20180222.vcf.gz',
+        ),
+        NA12878=dict(
+            s='NA12878',
+            gvcf='gs://gnomad-public-requester-pays/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',
+        ),
+    )
+
+    truth_dict = {
+        truth_gvcfs['syndip']['s']: {
+            's': truth_gvcfs['syndip']['s'],
+            'truth_mt': syndip.mt(),
+            'hc_intervals': syndip_hc_intervals.ht(),
+            'mt': None,
+            'ht': None,
+        },
+        truth_gvcfs['NA12878']['s']: {
+            's': truth_gvcfs['NA12878']['s'],
+            'truth_mt': na12878_giab.mt(),
+            'hc_intervals': na12878_giab_hc_intervals.ht(),
+            'mt': None,
+            'ht': None,
+        },
+    }
+
+    truth_snames = [sn for sn in truth_gvcfs if sn in mt.s.collect()]
+    if truth_snames:
+        truth_dict = {k: v for k, v in truth_dict.items() if k in truth_snames}
         _truth_concordance(
             mt,
             overwrite,
@@ -201,6 +231,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
             scores_ht,
             info_split_ht_path,
             n_bins,
+            truth_dict,
         )
 
 
@@ -212,25 +243,9 @@ def _truth_concordance(
     scores_ht,
     info_split_ht_path,
     n_bins,
+    truth_dict,
 ):
     logger.info(f'Extracting truth samples from MT...')
-    truth_dict = {
-        utils.TRUTH_GVCFS['syndip']['name']: {
-            's': utils.TRUTH_GVCFS['syndip']['name'],
-            'truth_mt': syndip.mt(),
-            'hc_intervals': syndip_hc_intervals.ht(),
-            'mt': None,
-            'ht': None,
-        },
-        utils.TRUTH_GVCFS['na12878']['name']: {
-            's': utils.TRUTH_GVCFS['na12878']['name'],
-            'truth_mt': na12878_giab.mt(),
-            'hc_intervals': na12878_giab_hc_intervals.ht(),
-            'mt': None,
-            'ht': None,
-        },
-    }
-
     mt = mt.filter_cols(
         hl.literal([v['s'] for k, v in truth_dict.items()]).contains(mt.s)
     )
@@ -292,16 +307,14 @@ def _truth_concordance(
         ht = truth_dict[truth_sample]['ht']
         ht = ht.filter(
             ~info_ht[ht.key].AS_lowqual
-            & ~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus])
+            & ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT_PATH)[ht.locus])
         )
 
         logger.info('Filtering out low confidence regions and segdups...')
-        ht = filter_low_conf_regions(
-            ht,
-            filter_lcr=True,
-            filter_decoy=False,  # Set if having decoy path
-            filter_segdup=True,
-        )
+        lcr = hl.read_table(utils.LCR_INTERVALS_HT_PATH)
+        segdup = hl.read_table(utils.SEG_DUP_INTERVALS_HT_PATH)
+        ht = ht.filter(hl.is_missing(lcr[mt.locus]))
+        ht = ht.filter(hl.is_missing(segdup[mt.locus]))
 
         logger.info(
             'Loading HT containing RF or VQSR scores annotated with a bin based '
@@ -370,7 +383,7 @@ def create_bin_ht(
 
     ht = ht.filter(
         ~info_split_ht[ht.key].AS_lowqual
-        & ~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus])
+        & ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT_PATH)[ht.locus])
     )
     ht_non_lcr = filter_low_conf_regions(
         ht,
@@ -416,7 +429,9 @@ def create_aggregated_bin_ht(
     ht = ht.annotate_globals(bin_variant_counts=bin_variant_counts)
 
     # Load ClinVar pathogenic data
-    clinvar_pathogenic_ht = filter_to_clinvar_pathogenic(clinvar.ht())
+    clinvar_pathogenic_ht = filter_to_clinvar_pathogenic(
+        hl.read_table(utils.CLINVAR_HT_PATH)
+    )
     ht = ht.annotate(clinvar_path=hl.is_defined(clinvar_pathogenic_ht[ht.key]))
 
     logger.info(f'Creating grouped bin table...')

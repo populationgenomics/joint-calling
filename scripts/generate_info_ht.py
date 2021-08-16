@@ -1,8 +1,12 @@
 #!/usr/bin/env python
 
 """
-Generates info.ht, info-split.ht, needed for 
-sample qc and for random forest
+Computes a HT with the typical GATK AS and site-level info fields
+as well as ACs and lowqual fields. Note that this table doesn't 
+split multi-allelic sites.
+
+Generates info.ht, info-split.ht, needed for sample_qc and for 
+random forest jobs.
 """
 
 import logging
@@ -86,9 +90,6 @@ def compute_info(
     overwrite: bool = False,
 ) -> hl.Table:
     """
-    Computes a HT with the typical GATK AS and site-level info fields
-    as well as ACs and lowqual fields.
-    Note that this table doesn't split multi-allelic sites.
     :param mt: full matrix table
     :param out_ht_path: where to write the info Table
     :param out_split_ht_path: if provided, in the info Table multiallelics will be split
@@ -96,7 +97,6 @@ def compute_info(
     :param overwrite: overwrite checkpoints if they exist
     :return: Table with info fields
     """
-    logger.info('Compute info')
     if not overwrite and file_exists(out_ht_path):
         info_ht = hl.read_table(out_ht_path)
     else:

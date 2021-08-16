@@ -13,13 +13,11 @@ import click
 import hail as hl
 import pandas as pd
 
-from gnomad.resources.grch38 import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.sample_qc.pipeline import annotate_sex
 from gnomad.utils.annotations import bi_allelic_expr
 from gnomad.utils.filtering import (
     filter_to_autosomes,
-    filter_low_conf_regions,
     add_filters_expr,
 )
 from gnomad.utils.sparse_mt import filter_ref_blocks
@@ -34,6 +32,10 @@ from joint_calling import (
 
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
+
+GNOMAD_HT = (
+    'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'
+)
 
 
 @click.command()
@@ -144,8 +146,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 ):
     local_tmp_dir = utils.init_hail('sample_qc', local_tmp_dir)
 
-    mt = get_mt(mt_path)
-    mt_split = get_mt(mt_path, split=True)
+    mt = get_mt(mt_path, passing_sites_only=True)
+    mt_split = get_mt(mt_path, split=True, passing_sites_only=True)
 
     local_meta_csv_path = join(local_tmp_dir, basename(meta_csv_path))
     subprocess.run(
@@ -158,6 +160,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     # `hail_sample_qc_ht` row fields: sample_qc, bi_allelic_sample_qc
     hail_sample_qc_ht = _compute_hail_sample_qc(mt_split, work_bucket, overwrite)
+
+    # Calculate separately the number of non-gnomAD SNPs
+    nongnomad_snps_ht = _snps_not_in_gnomad(mt_split, work_bucket, overwrite)
 
     # `sex_ht` row fields: is_female, chr20_mean_dp, sex_karyotype
     sex_ht = _infer_sex(
@@ -247,6 +252,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     # Combine all intermediate tables together
     _generate_metadata(
         sample_qc_ht=hail_sample_qc_ht,
+        nongnomad_snps_ht=nongnomad_snps_ht,
         sex_ht=sex_ht,
         input_meta_ht=input_meta_ht,
         hard_filtered_samples_ht=hard_filtered_samples_ht,
@@ -273,7 +279,7 @@ def _compute_hail_sample_qc(
     """
     Runs Hail hl.sample_qc() to generate a Hail Table with
     per-sample QC metrics.
-    :param mt: input MatrixTable
+    :param mt: input MatrixTable, multiallelics split, genotype in GT fields
     :param work_bucket: bucket path to write checkpoints
     :param overwrite: overwrite checkpoints if they exist
     :return: a Hail Table with the following row fields:
@@ -300,13 +306,8 @@ def _compute_hail_sample_qc(
     mt = filter_ref_blocks(mt)
 
     # Remove centromeres and telomeres incase they were included and any reference blocks
-    mt = filter_low_conf_regions(
-        mt,
-        filter_lcr=False,
-        filter_decoy=False,
-        filter_segdup=False,
-        filter_telomeres_and_centromeres=True,
-    )
+    tel_cent_ht = hl.read_table(utils.TEL_AND_CENT_HT_PATH)
+    mt = mt.filter_rows(hl.is_missing(tel_cent_ht[mt.locus]))
 
     sample_qc_ht = compute_stratified_sample_qc(
         mt,
@@ -327,6 +328,38 @@ def _compute_hail_sample_qc(
     sample_qc_ht = sample_qc_ht.repartition(100)
     sample_qc_ht.write(out_ht_path, overwrite=True)
     return sample_qc_ht
+
+
+def _snps_not_in_gnomad(
+    mt: hl.MatrixTable,
+    work_bucket: str,
+    overwrite: bool,
+    gnomad_path: str = GNOMAD_HT,
+) -> hl.Table:
+    """
+    Count the number of variants per sample that do not occur in gnomAD
+    :param mt: MatrixTable, with multiallelics split, GT field for genotype
+    :return: per-sample Table, with the only int field "nongnomad_snps"
+    """
+    # Filter to SNPs
+    logger.info('Countings SNPs not in gnomAD')
+    out_ht_path = join(work_bucket, 'notingnomad.ht')
+    if not overwrite and file_exists(out_ht_path):
+        return hl.read_table(out_ht_path)
+
+    mt = mt.filter_rows(hl.len(mt.alleles) > 1)
+    mt = mt.filter_rows(hl.is_snp(mt.alleles[0], mt.alleles[1]))
+
+    # Get entries (table annotated with locus, allele, sample)
+    ht = mt.entries()
+
+    # Filter to those variants that are not in gnomad
+    gnomad = hl.read_table(gnomad_path)
+    ht = ht.key_by('locus', 'alleles').anti_join(gnomad)
+    # Count non-gnomad variants for each sample
+    stats_ht = ht.group_by(ht.s).aggregate(nongnomad_snps=hl.agg.count())
+    stats_ht.write(out_ht_path, overwrite=True)
+    return stats_ht
 
 
 def _infer_sex(
@@ -363,7 +396,7 @@ def _infer_sex(
 
     ht = annotate_sex(
         mt,
-        excluded_intervals=telomeres_and_centromeres.ht(),
+        excluded_intervals=hl.read_table(utils.TEL_AND_CENT_HT_PATH),
         included_intervals=target_regions,
         gt_expr='LGT',
     )
@@ -374,6 +407,7 @@ def _infer_sex(
 
 def _generate_metadata(
     sample_qc_ht: hl.Table,
+    nongnomad_snps_ht: hl.Table,
     sex_ht: hl.Table,
     input_meta_ht: hl.Table,
     hard_filtered_samples_ht: hl.Table,
@@ -390,6 +424,7 @@ def _generate_metadata(
     Combine all intermediate tables into a single metadata table
 
     :param sample_qc_ht: table with a `bi_allelic_sample_qc` row field
+    :param nongnomad_snps_ht: table with a `nongnomad_snps` row field
     :param sex_ht: table with the follwing row fields:
         `f_stat`, `n_called`, `expected_homs`, `observed_homs`
     :param input_meta_ht: table with stats from the input metadata
@@ -437,6 +472,7 @@ def _generate_metadata(
 
         meta_ht = meta_ht.annotate(
             sample_qc=sample_qc_ht[meta_ht.key].bi_allelic_sample_qc,
+            nongnomad_snps=nongnomad_snps_ht[meta_ht.key].nongnomad_snps,
             **hard_filtered_samples_ht[meta_ht.key],
             **regressed_metrics_ht[meta_ht.key],
             **pop_ht[meta_ht.key],

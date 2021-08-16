@@ -21,7 +21,7 @@ logger.setLevel('INFO')
 def add_variant_qc_jobs(
     b: hb.Batch,
     work_bucket: str,
-    analysis_bucket: str,
+    web_bucket: str,
     raw_combined_mt_path: str,
     info_split_ht_path: str,
     hard_filter_ht_path: str,
@@ -161,8 +161,8 @@ def add_variant_qc_jobs(
                 hard_filter_ht_path=hard_filter_ht_path,
                 meta_ht_path=meta_ht_path,
                 gvcf_count=len(samples_df),
-                vqsr_bucket=vqsr_bucket,
-                analysis_bucket=join(analysis_bucket, 'vqsr'),
+                work_bucket=vqsr_bucket,
+                web_bucket=join(web_bucket, 'vqsr'),
                 depends_on=[sample_qc_job],
                 scripts_dir=scripts_dir,
                 vqsr_params_d=vqsr_params_d,
@@ -184,7 +184,7 @@ def add_variant_qc_jobs(
             fam_stats_ht_path=fam_stats_ht_path,
             freq_ht_path=freq_ht_path,
             work_bucket=vqsr_bucket,
-            analysis_bucket=join(analysis_bucket, 'vqsr'),
+            analysis_bucket=join(web_bucket, 'vqsr'),
             overwrite=overwrite,
             scripts_dir=scripts_dir,
             final_gathered_vcf_job=final_gathered_vcf_job,
@@ -320,7 +320,7 @@ def make_vqsr_eval_jobs(
             f'--info-split-ht {info_split_ht_path} '
             + (f'--fam-stats-ht {fam_stats_ht_path} ' if fam_stats_ht_path else '')
             + (
-                (f'--rf-result-ht {rf_result_ht_path} ')
+                f'--rf-result-ht {rf_result_ht_path} '
                 if (rf_annotations_ht_path and rf_result_ht_path)
                 else ''
             )

@@ -7,20 +7,12 @@ import logging
 import sys
 import time
 import hashlib
-from os.path import isdir, isfile, exists, join, basename
-from typing import Any, Callable, List, Dict, Optional
-import shutil
+from os.path import isdir, isfile, exists, join
+from typing import Any, Callable, Dict, Optional
 import yaml
-
-import pandas as pd
 import hail as hl
 import click
-from google.cloud import storage  # pylint : disable=E0611
-
-from sample_metadata.api import AnalysisApi
-from sample_metadata.api import SequenceApi
-from sample_metadata.api import SampleApi
-
+from google.cloud import storage
 from joint_calling import _version, get_package_path
 
 
@@ -29,6 +21,8 @@ logger.setLevel('INFO')
 
 
 DEFAULT_REF = 'GRCh38'
+
+REF_BUCKET = 'gs://cpg-reference/hg38/v1'
 
 DATAPROC_PACKAGES = [
     'joint-calling',
@@ -42,27 +36,24 @@ DATAPROC_PACKAGES = [
 ]
 
 DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
+
+AR_REPO = 'australia-southeast1-docker.pkg.dev/cpg-common/images'
 GATK_VERSION = '4.2.0.0'
-GATK_DOCKER = (
-    f'australia-southeast1-docker.pkg.dev/cpg-common/images/gatk:{GATK_VERSION}'
-)
+GATK_IMAGE = f'{AR_REPO}/gatk:{GATK_VERSION}'
 # GnarlyGenotyper is in Beta and crashes with NullPointerException when using the
 # official GATK docker, that's why we're using a separate image for it:
-GNARLY_DOCKER = 'australia-southeast1-docker.pkg.dev/cpg-common/images/gnarly_genotyper:hail_ukbb_300K'
-BCFTOOLS_DOCKER = (
-    'australia-southeast1-docker.pkg.dev/cpg-common/images/bcftools:1.10.2--h4f4756c_2'
-)
+GNARLY_IMAGE = f'{AR_REPO}/gnarly_genotyper:hail_ukbb_300K'
+BCFTOOLS_IMAGE = f'{AR_REPO}/bcftools:1.10.2--h4f4756c_2'
+SM_IMAGE = f'{AR_REPO}/sm-api:2.0.3'
 
-TRUTH_GVCFS = dict(
-    syndip=dict(
-        s='syndip',
-        gvcf='gs://gnomad-public/resources/grch38/syndip/full.38.20180222.vcf.gz',
-    ),
-    na12878=dict(
-        s='na12878',
-        gvcf='gs://gnomad-public/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',
-    ),
+TEL_AND_CENT_HT_PATH = join(
+    REF_BUCKET, 'gnomad/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht'
 )
+LCR_INTERVALS_HT_PATH = join(REF_BUCKET, 'gnomad/lcr_intervals/LCRFromHengHg38.ht')
+SEG_DUP_INTERVALS_HT_PATH = join(
+    REF_BUCKET, 'gnomad/seg_dup_intervals/GRCh38_segdups.ht'
+)
+CLINVAR_HT_PATH = join(REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
 
 
 def init_hail(name: str, local_tmp_dir: str = None):
@@ -82,202 +73,6 @@ def init_hail(name: str, local_tmp_dir: str = None):
     hl.init(default_reference=DEFAULT_REF, log=hl_log)
     logger.info(f'Running joint-calling version {_version.__version__}')
     return local_tmp_dir
-
-
-def find_inputs_from_db(project):
-    """
-    Determine inputs from SM DB
-    """
-    aapi = AnalysisApi()
-    seqapi = SequenceApi()
-    sapi = SampleApi()
-
-    # Get samples in latest analysis
-    latest_analysis = aapi.get_latest_complete_analyses_by_type(
-        analysis_type='joint-calling', project=project
-    )
-    latest_analysis_sample_ids = [
-        analysis['sample_ids'] for analysis in latest_analysis
-    ]
-    samples_in_latest_analysis = [
-        sample_id for sublist in latest_analysis_sample_ids for sample_id in sublist
-    ]
-
-    active_samples = sapi.get_samples(
-        body_get_samples_by_criteria_api_v1_sample_post={
-            'project_ids': [project],
-            'active': True,
-        }
-    )
-    active_sample_ids = [active_sample['id'] for active_sample in active_samples]
-
-    new_samples = list(set(active_sample_ids) - set(samples_in_latest_analysis))
-
-    deleted_samples = list(set(samples_in_latest_analysis) - set(active_sample_ids))
-
-    inputs = []
-
-    # Get all sequence metadata for the list of processed samples
-    sequences_data = seqapi.get_sequences_by_sample_ids(request_body=new_samples)
-
-    new_sample_gvcfs = aapi.get_latest_gvcfs_for_samples(new_samples)
-
-    for new_gvcf in new_sample_gvcfs:
-        sample_id = new_gvcf.get('sample_ids')[0]
-        current_seq_data = next(
-            seq_data
-            for seq_data in sequences_data
-            if seq_data['sample_id'] == sample_id
-        )
-        sample_information = {
-            's': sample_id,
-            'population': 'EUR',
-            'gvcf': new_gvcf.get('output'),
-            'r_contamination': current_seq_data.get('meta').get('raw_data.FREEMIX'),
-            'r_chimera': current_seq_data.get('meta').get('raw_data.PCT_CHIMERAS'),
-            'r_duplication': current_seq_data.get('meta').get(
-                'raw_data.PERCENT_DUPLICATION'
-            ),
-            'median_insert_size': current_seq_data.get('meta').get(
-                'raw_data.MEDIAN_INSERT_SIZE'
-            ),
-            'operation': 'add',
-        }
-
-        inputs.append(sample_information)
-
-    for sample in deleted_samples:
-        sample_information = {
-            's': sample,
-            'population': None,
-            'gvcf': None,
-            'r_contamination': None,
-            'r_chimera': None,
-            'r_duplication': None,
-            'median_insert_size': None,
-            'operation': 'delete',
-        }
-        inputs.append(sample_information)
-
-    df = pd.DataFrame(inputs)
-
-    return df
-
-
-def find_inputs(
-    input_buckets: List[str],
-    input_metadata_buckets: Optional[List[str]] = None,
-) -> pd.DataFrame:  # pylint disable=too-many-branches
-    """
-    Read the inputs assuming a standard CPG storage structure.
-    :param input_buckets: buckets to find GVCFs
-    :param input_metadata_buckets: buckets to find CSV metadata files
-    :return: a dataframe with the following structure:
-        s (key)
-        population
-        gvcf
-        r_contamination
-        r_chimera
-        r_duplication
-        median_insert_size
-    """
-    gvcf_paths: List[str] = []
-    for ib in input_buckets:
-        cmd = f'gsutil ls \'{ib}/*.g.vcf.gz\''
-        gvcf_paths.extend(
-            line.strip()
-            for line in subprocess.check_output(cmd, shell=True).decode().split()
-        )
-
-    local_tmp_dir = tempfile.mkdtemp()
-
-    if input_metadata_buckets:
-        qc_csvs: List[str] = []
-        for ib in input_metadata_buckets:
-            cmd = f'gsutil ls \'{ib}/*.csv\''
-            qc_csvs.extend(
-                line.strip()
-                for line in subprocess.check_output(cmd, shell=True).decode().split()
-            )
-
-        df: pd.DataFrame = None
-        # sample.id,sample.sample_name,sample.flowcell_lane,sample.library_id,sample.platform,sample.centre,sample.reference_genome,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
-        # 613,TOB1529,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_H04,KCCG,hg38,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
-        # 609,TOB1653,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_F03,KCCG,hg38,0.0060100100,F(-1),0.024802,0.165634,452.0,33.0
-        # 604,TOB1764,ILLUMINA,HVTV7DSXY.1-2-3-4,LP9000037-NTP_B02,KCCG,hg38,0.0078874400,F(-1),0.01684,0.116911,413.0,43.0
-        # 633,TOB1532,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_C05,KCCG,hg38,0.0121946000,F(-1),0.024425,0.151094,453.0,37.0
-        columns = {
-            'sample.sample_name': 's',
-            'raw_data.FREEMIX': 'r_contamination',
-            'raw_data.PCT_CHIMERAS': 'r_chimera',
-            'raw_data.PERCENT_DUPLICATION': 'r_duplication',
-            'raw_data.MEDIAN_INSERT_SIZE': 'median_insert_size',
-        }
-        for qc_csv in qc_csvs:
-            local_qc_csv_path = join(local_tmp_dir, basename(qc_csv))
-            subprocess.run(
-                f'gsutil cp {qc_csv} {local_qc_csv_path}', check=False, shell=True
-            )
-            single_df = pd.read_csv(local_qc_csv_path)
-            single_df = single_df.rename(columns=columns)[columns.values()]
-            single_df['population'] = 'EUR'
-            single_df['gvcf'] = ''
-            single_df = single_df.set_index('s', drop=False)
-            df = (
-                single_df
-                if df is None
-                else (pd.concat([df, single_df], ignore_index=False).drop_duplicates())
-            )
-        sample_names = list(df['s'])
-    else:
-        sample_names = [basename(gp).replace('.g.vcf.gz', '') for gp in gvcf_paths]
-        df = pd.DataFrame(
-            data=dict(
-                s=sample_names,
-                population='EUR',
-                gvcf=gvcf_paths,
-                r_contamination=pd.NA,
-                r_chimera=pd.NA,
-                r_duplication=pd.NA,
-                median_insert_size=pd.NA,
-            )
-        ).set_index('s', drop=False)
-
-    shutil.rmtree(local_tmp_dir)
-
-    # Checking 1-to-1 match of sample names to GVCFs
-    for sn in sample_names:
-        matching_gvcfs = [gp for gp in gvcf_paths if sn in gp]
-        if len(matching_gvcfs) > 1:
-            logging.warning(
-                f'Multiple GVCFs found for the sample {sn}:' f'{matching_gvcfs}'
-            )
-        elif len(matching_gvcfs) == 0:
-            logging.warning(f'No GVCFs found for the sample {sn}')
-
-    # Checking 1-to-1 match of GVCFs to sample names, and filling a dict
-    for gp in gvcf_paths:
-        matching_sn = [sn for sn in sample_names if sn in gp]
-        if len(matching_sn) > 1:
-            logging.warning(
-                f'Multiple samples found for the GVCF {gp}:' f'{matching_sn}'
-            )
-        elif len(matching_sn) == 0:
-            logging.warning(f'No samples found for the GVCF {gp}')
-        else:
-            df.loc[matching_sn[0], ['gvcf']] = gp
-    df = df[df.gvcf.notnull()]
-
-    # Adding truth samples
-    # df['truth'] = False
-    # for truth_sample in TRUTH_GVCFS.values():
-    #     df.loc[truth_sample['s'], ['s', 'gvcf', 'truth']] = [
-    #         truth_sample['s'],
-    #         truth_sample['gvcf'],
-    #         True,
-    #     ]
-
-    return df
 
 
 def get_validation_callback(
@@ -409,6 +204,7 @@ def get_mt(
     meta_ht: hl.Table = None,
     add_meta: bool = False,
     release_only: bool = False,
+    passing_sites_only: bool = False,
 ) -> hl.MatrixTable:
     """
     Wrapper function to get data with desired filtering and metadata annotations
@@ -424,9 +220,17 @@ def get_mt(
     :param add_meta: whether to add metadata to MT in 'meta' column
     :param release_only: whether to filter the MT to only samples available for
         release (can only be used if metadata is present)
+    :param passing_sites_only: whether to filter the MT to only variants with
+        nothing in the filter field (e.g. passing soft filters)
     :return: MatrixTable with chosen annotations and filters
     """
     mt = hl.read_matrix_table(mt_path)
+
+    if passing_sites_only:
+        try:
+            mt = mt.filter_rows(mt.filters.length() == 0)
+        except AttributeError:
+            pass
 
     if hard_filtered_samples_to_remove_ht is not None:
         mt = mt.filter_cols(
@@ -451,6 +255,7 @@ def get_mt(
             & hl.any(lambda a: hl.is_indel(mt.alleles[0], a), mt.alleles[1:])
             & hl.any(lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:]),
         )
+        # Will use GT instead of LGT
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
     return mt
@@ -502,7 +307,3 @@ def get_filter_cutoffs(
             filter_cutoffs_d = yaml.load(f)
 
     return filter_cutoffs_d
-
-
-if __name__ == '__main__':
-    find_inputs_from_db('tob-wgs')
