@@ -20,40 +20,40 @@ Imports reference datasets (e.g., Clinvar annotations, methylation and CpG annot
 
 ```sh
 input:
-    "gs://gnomad-public/resources/grch38/purcell_5k_intervals/purcell5k.interval_list"
-    "gs://gnomad-public/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz"
-    "gs://gnomad-public/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_nosomaticdel_noCENorHET7.bed"
-    "gs://gnomad-public/resources/grch38/syndip/full.38.20180222.vcf.gz"
-    "gs://gnomad-public/resources/grch38/syndip/syndip.b38_20180222.bed"
-    "gs://gnomad-public/resources/grch38/clinvar/clinvar_20190923.vcf.gz"
-    "gs://gnomad-public/resources/grch38/dbsnp/dbsnp_b154_grch38_all_GCF_000001405.38_20200514.vcf.bgz"
-    "gs://gnomad-public/resources/grch38/dbsnp/dbsnp_b154_grch38_all_GCF_000001405.38_20200514.vcf.header"
-    "gs://gnomad-public/resources/grch38/dbsnp/dbsnp_b151_grch38_all_20180418.vcf.bgz"
-    "gs://gnomad-public/resources/grch38/dbsnp/dbsnp_b151_grch38_all_20180418.vcf.header"
+    "gs://gnomad-public-requester-pays/resources/grch38/purcell_5k_intervals/purcell5k.interval_list"
+    "gs://gnomad-public-requester-pays/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz"
+    "gs://gnomad-public-requester-pays/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_nosomaticdel_noCENorHET7.bed"
+    "gs://gnomad-public-requester-pays/resources/grch38/syndip/full.38.20180222.vcf.gz"
+    "gs://gnomad-public-requester-pays/resources/grch38/syndip/syndip.b38_20180222.bed"
+    "gs://gnomad-public-requester-pays/resources/grch38/clinvar/clinvar_20190923.vcf.gz"
+    "gs://gnomad-public-requester-pays/resources/grch38/dbsnp/dbsnp_b154_grch38_all_GCF_000001405.38_20200514.vcf.bgz"
+    "gs://gnomad-public-requester-pays/resources/grch38/dbsnp/dbsnp_b154_grch38_all_GCF_000001405.38_20200514.vcf.header"
+    "gs://gnomad-public-requester-pays/resources/grch38/dbsnp/dbsnp_b151_grch38_all_20180418.vcf.bgz"
+    "gs://gnomad-public-requester-pays/resources/grch38/dbsnp/dbsnp_b151_grch38_all_20180418.vcf.header"
     "gs://genomics-public-data/resources/broad/hg38/v0/hapmap_3.3.hg38.vcf.gz"
     "gs://genomics-public-data/resources/broad/hg38/v0/1000G_omni2.5.hg38.vcf.gz"
     "gs://genomics-public-data/resources/broad/hg38/v0/1000G_phase1.snps.high_confidence.hg38.vcf.gz"
     "gs://genomics-public-data/resources/broad/hg38/v0/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz"
-    "gs://gnomad-public/resources/grch38/lcr_intervals/LCRFromHengHg38.txt"
-    "gs://gnomad-public/resources/grch38/seg_dup_intervals/GRCh38_segdups.bed"
-    "gs://gnomad-public/resources/grch38/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.bed"
+    "gs://gnomad-public-requester-pays/resources/grch38/lcr_intervals/LCRFromHengHg38.txt"
+    "gs://gnomad-public-requester-pays/resources/grch38/seg_dup_intervals/GRCh38_segdups.bed"
+    "gs://gnomad-public-requester-pays/resources/grch38/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.bed"
 
 output:
-    "gs://gnomad-public/resources/grch38/purcell_5k_intervals/purcell5k.ht"
-    "gs://gnomad-public/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.mt"
-    "gs://gnomad-public/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_nosomaticdel_noCENorHET7_hc_regions.ht"
-    "gs://gnomad-public/resources/grch38/syndip/syndip.b38_20180222.mt"
-    "gs://gnomad-public/resources/grch38/syndip/syndip_b38_20180222_hc_regions.ht"
-    "gs://gnomad-public/resources/grch38/clinvar/clinvar_20190923.ht"
-    "gs://gnomad-public/resources/grch38/dbsnp/dbsnp_b154_grch38_all_20200514.ht"
-    "gs://gnomad-public/resources/grch38/dbsnp/dbsnp_b151_grch38_all_20180418.ht"
-    "gs://gnomad-public/resources/grch38/hapmap/hapmap_3.3.hg38.ht"
-    "gs://gnomad-public/resources/grch38/kgp/1000G_omni2.5.hg38.ht"
-    "gs://gnomad-public/resources/grch38/kgp/1000G_phase1.snps.high_confidence.hg38.ht"
-    "gs://gnomad-public/resources/grch38/mills/Mills_and_1000G_gold_standard.indels.hg38.ht"
-    "gs://gnomad-public/resources/grch38/lcr_intervals/LCRFromHengHg38.ht"
-    "gs://gnomad-public/resources/grch38/seg_dup_intervals/GRCh38_segdups.ht"
-    "gs://gnomad-public/resources/grch38/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht"
+    "gs://gnomad-public-requester-pays/resources/grch38/purcell_5k_intervals/purcell5k.ht"
+    "gs://gnomad-public-requester-pays/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.mt"
+    "gs://gnomad-public-requester-pays/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_nosomaticdel_noCENorHET7_hc_regions.ht"
+    "gs://gnomad-public-requester-pays/resources/grch38/syndip/syndip.b38_20180222.mt"
+    "gs://gnomad-public-requester-pays/resources/grch38/syndip/syndip_b38_20180222_hc_regions.ht"
+    "gs://gnomad-public-requester-pays/resources/grch38/clinvar/clinvar_20190923.ht"
+    "gs://gnomad-public-requester-pays/resources/grch38/dbsnp/dbsnp_b154_grch38_all_20200514.ht"
+    "gs://gnomad-public-requester-pays/resources/grch38/dbsnp/dbsnp_b151_grch38_all_20180418.ht"
+    "gs://gnomad-public-requester-pays/resources/grch38/hapmap/hapmap_3.3.hg38.ht"
+    "gs://gnomad-public-requester-pays/resources/grch38/kgp/1000G_omni2.5.hg38.ht"
+    "gs://gnomad-public-requester-pays/resources/grch38/kgp/1000G_phase1.snps.high_confidence.hg38.ht"
+    "gs://gnomad-public-requester-pays/resources/grch38/mills/Mills_and_1000G_gold_standard.indels.hg38.ht"
+    "gs://gnomad-public-requester-pays/resources/grch38/lcr_intervals/LCRFromHengHg38.ht"
+    "gs://gnomad-public-requester-pays/resources/grch38/seg_dup_intervals/GRCh38_segdups.ht"
+    "gs://gnomad-public-requester-pays/resources/grch38/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht"
 ```
 
 ### `load_coverage.py`
@@ -76,7 +76,7 @@ output:
    --aggregate_coverage_platforms
    "gs://gnomad/coverage/hail-0.2/coverage/genomes/mt/gnomad.genomes.coverage.groupped.mt"
    --export_coverage
-   "gs://gnomad-public/release/2.1/coverage/genomes/gnomad.genomes.r2.1.coverage.tsv.bgz"
+   "gs://gnomad-public-requester-pays/release/2.1/coverage/genomes/gnomad.genomes.r2.1.coverage.tsv.bgz"
 ```
 
 ## Sample QC

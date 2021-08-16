@@ -10,7 +10,6 @@ from typing import Optional
 import hail as hl
 import click
 
-from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.utils.filtering import add_filters_expr
 from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
@@ -157,7 +156,8 @@ def main(
     else:
         ht = hl.read_table(score_bin_ht_path)
         if FILTER_CENTROMERE_TELOMERE:
-            ht = ht.filter(~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]))
+            tel_cent_ht = hl.read_table(utils.TEL_AND_CENT_HT_PATH)
+            ht = ht.filter(~hl.is_defined(tel_cent_ht[ht.locus]))
 
         info_ht = hl.read_table(info_split_ht_path)
         ht = ht.filter(~info_ht[ht.key].AS_lowqual)

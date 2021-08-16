@@ -7,15 +7,22 @@ import logging
 import sys
 import time
 import hashlib
+from dataclasses import dataclass
 from os.path import isdir, isfile, exists, join, basename
-from typing import Any, Callable, List, Dict, Optional
+from typing import Any, Callable, List, Dict, Optional, Tuple
 import shutil
 import yaml
-
 import pandas as pd
 import hail as hl
 import click
 from google.cloud import storage
+from hailtop.batch import Batch
+from hailtop.batch.job import Job
+from sample_metadata import (
+    AnalysisApi,
+    AnalysisType,
+    AnalysisStatus,
+)
 from joint_calling import _version, get_package_path
 
 logger = logging.getLogger('joint-calling')
@@ -23,6 +30,8 @@ logger.setLevel('INFO')
 
 
 DEFAULT_REF = 'GRCh38'
+
+REF_BUCKET = 'gs://cpg-reference/hg38/v1'
 
 DATAPROC_PACKAGES = [
     'joint-calling',
@@ -36,16 +45,24 @@ DATAPROC_PACKAGES = [
 ]
 
 DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
+
+AR_REPO = 'australia-southeast1-docker.pkg.dev/cpg-common/images'
 GATK_VERSION = '4.2.0.0'
-GATK_DOCKER = (
-    f'australia-southeast1-docker.pkg.dev/cpg-common/images/gatk:{GATK_VERSION}'
-)
+GATK_IMAGE = f'{AR_REPO}/gatk:{GATK_VERSION}'
 # GnarlyGenotyper is in Beta and crashes with NullPointerException when using the
 # official GATK docker, that's why we're using a separate image for it:
-GNARLY_DOCKER = 'australia-southeast1-docker.pkg.dev/cpg-common/images/gnarly_genotyper:hail_ukbb_300K'
-BCFTOOLS_DOCKER = (
-    'australia-southeast1-docker.pkg.dev/cpg-common/images/bcftools:1.10.2--h4f4756c_2'
+GNARLY_IMAGE = f'{AR_REPO}/gnarly_genotyper:hail_ukbb_300K'
+BCFTOOLS_IMAGE = f'{AR_REPO}/bcftools:1.10.2--h4f4756c_2'
+SM_IMAGE = f'{AR_REPO}/sm-api:2.0.3'
+
+TEL_AND_CENT_HT_PATH = join(
+    REF_BUCKET, 'gnomad/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht'
 )
+LCR_INTERVALS_HT_PATH = join(REF_BUCKET, 'gnomad/lcr_intervals/LCRFromHengHg38.ht')
+SEG_DUP_INTERVALS_HT_PATH = join(
+    REF_BUCKET, 'gnomad/seg_dup_intervals/GRCh38_segdups.ht'
+)
+CLINVAR_HT_PATH = join(REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
 
 
 def init_hail(name: str, local_tmp_dir: str = None):
@@ -65,6 +82,113 @@ def init_hail(name: str, local_tmp_dir: str = None):
     hl.init(default_reference=DEFAULT_REF, log=hl_log)
     logger.info(f'Running joint-calling version {_version.__version__}')
     return local_tmp_dir
+
+
+@dataclass
+class Analysis:
+    """
+    Represents the analysis DB entry
+    """
+
+    id: str
+    type: AnalysisType
+    status: AnalysisStatus
+    output: Optional[str]
+    sample_ids: List[str]
+
+    @staticmethod
+    def from_db(**kwargs):
+        """
+        Convert from db keys, mainly converting id to id_
+        """
+        analysis_type = kwargs.pop('type', None)
+        status = kwargs.pop('status', None)
+        sample_ids = kwargs['sample_ids']
+        output = kwargs.pop('output', [])
+        return Analysis(
+            id=kwargs.pop('id'),
+            type=AnalysisType(analysis_type),
+            status=AnalysisStatus(status),
+            sample_ids=list(set(sorted(sample_ids))),
+            output=output,
+        )
+
+
+def get_latest_complete_analysis(
+    analysis_project: str,
+) -> Dict[Tuple[str, Tuple], Analysis]:
+    """
+    Returns a dictionary that maps a tuple (analysis type, sample ids) to the
+    lastest complete analysis record (represented by a AnalysisModel object)
+    """
+    aapi = AnalysisApi()
+    latest_by_type_and_sids = dict()
+    for a_type in ['cram', 'gvcf', 'joint-calling']:
+        for a_data in aapi.get_latest_complete_analyses_by_type(
+            project=analysis_project,
+            analysis_type=a_type,
+        ):
+            a: Analysis = Analysis.from_db(**a_data)
+            latest_by_type_and_sids[(a_type, tuple(a.sample_ids))] = a
+    return latest_by_type_and_sids
+
+
+def make_sm_in_progress_job(
+    b: Batch, analyais_type: str, analysis_project: str, analysis_id: str
+) -> Job:
+    """
+    Creates a job that updates the sample metadata server entry analysis status
+    to in-progress
+    """
+    return make_sm_update_status_job(
+        b, analyais_type, 'in-progress', analysis_project, analysis_id
+    )
+
+
+def make_sm_completed_job(
+    b: Batch, analyais_type: str, sm_db_name: str, analysis_id: str
+) -> Job:
+    """
+    Creates a job that updates the sample metadata server entry analysis status
+    to completed
+    """
+    return make_sm_update_status_job(
+        b, analyais_type, 'completed', sm_db_name, analysis_id
+    )
+
+
+def make_sm_update_status_job(
+    b: Batch, analysis_type: str, status: str, sm_db_name: str, analysis_id: str
+) -> Job:
+    """
+    Creates a job that updates the sample metadata server entry analysis status.
+    """
+    assert status in ['in-progress', 'failed', 'completed', 'queued']
+    j = b.new_job(f'SM: update {analysis_type} to {status}')
+    j.image(SM_IMAGE)
+    j.command(
+        f"""
+set -o pipefail
+set -ex
+
+export GOOGLE_APPLICATION_CREDENTIALS=/gsa-key/key.json
+gcloud -q auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
+export SM_DEV_DB_PROJECT={sm_db_name}
+export SM_ENVIRONMENT=PRODUCTION
+
+cat <<EOT >> update.py
+from sample_metadata.api import AnalysisApi
+from sample_metadata import AnalysisUpdateModel
+aapi = AnalysisApi()
+aapi.update_analysis_status(
+    analysis_id='{analysis_id}',
+    analysis_update_model=AnalysisUpdateModel(status='{status}'),
+)
+EOT
+python update.py
+    """
+    )
+    return j
 
 
 def find_inputs(

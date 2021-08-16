@@ -20,6 +20,7 @@ import pandas as pd
 import hailtop.batch as hb
 from hailtop.batch.job import Job
 from analysis_runner import dataproc
+from sample_metadata import AnalysisApi, AnalysisModel
 
 from joint_calling import utils
 from joint_calling.variant_qc import add_variant_qc_jobs
@@ -29,9 +30,8 @@ logger.setLevel('INFO')
 
 
 @click.command()
-@click.option('--callset', '--dataset', 'callset_name', type=str, required=True)
-@click.option('--version', 'callset_version', type=str, required=True)
-@click.option('--batch', 'callset_batches', type=str, multiple=True)
+@click.option('--dataset-version', 'dataset_version', type=str, required=True)
+@click.option('--batch', 'dataset_batches', type=str, multiple=True)
 @click.option(
     '--from',
     'input_namespace',
@@ -43,6 +43,26 @@ logger.setLevel('INFO')
     'output_namespace',
     type=click.Choice(['main', 'test', 'tmp']),
     help='The bucket namespace to write the results to',
+)
+@click.option(
+    '--project',
+    'output_projects',
+    multiple=True,
+    default=['tob-wgs'],
+    help='Only create reports for the project(s). Can be multiple. '
+    'The name will be suffixed with the dataset version (set by --version)',
+)
+@click.option(
+    '--analysis-project',
+    'analysis_project',
+    default='tob-wgs',
+    help='Overrides the SM project name to write analysis entries to',
+)
+@click.option(
+    '--test-limit-input-to-project',
+    'test_input_projects',
+    multiple=True,
+    help='Only read samples that belong to these project(s). Can be multiple.',
 )
 @click.option(
     '--existing-mt',
@@ -90,11 +110,13 @@ logger.setLevel('INFO')
 @click.option('--run-vqsr/--skip-vqsr', 'run_vqsr', is_flag=True, default=True)
 @click.option('--run-rf/--skip-rf', 'run_rf', is_flag=True, default=False)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
-    callset_name: str,
-    callset_version: str,
-    callset_batches: List[str],
+    dataset_version: str,
+    dataset_batches: List[str],
     input_namespace: str,
     output_namespace: str,
+    analysis_project: str,
+    test_input_projects: Optional[List[str]],  # pylint: disable=unused-argument
+    output_projects: Optional[List[str]],  # pylint: disable=unused-argument
     existing_mt_path: str,
     ped_file: str,
     skip_input_meta: bool,
@@ -115,9 +137,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     logger.info(f'Enable random forest: {run_rf}')
     logger.info(f'Enable VQSR: {run_vqsr}')
 
-    billing_project = os.getenv('HAIL_BILLING_PROJECT') or callset_name
+    billing_project = os.getenv('HAIL_BILLING_PROJECT') or analysis_project
 
-    if not callset_batches:
+    if not dataset_batches:
         raise click.BadParameter(
             'Please, specify batch numbers with --batch '
             '(can put multiple times, e.g. --batch batch1 --batch batch2)'
@@ -128,9 +150,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     else:
         tmp_bucket_suffix = 'main-tmp'
 
-    work_bucket = (
-        f'gs://cpg-{callset_name}-{tmp_bucket_suffix}/joint-calling/{callset_version}'
-    )
+    work_bucket = f'gs://cpg-{analysis_project}-{tmp_bucket_suffix}/joint-calling/{dataset_version}'
     hail_bucket = os.environ.get('HAIL_BUCKET')
     if not hail_bucket or keep_scratch or reuse_scratch_run_id:
         # Scratch files are large, so we want to use the temporary bucket for them
@@ -144,9 +164,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         bucket=hail_bucket.replace('gs://', ''),
     )
     b = hb.Batch(
-        f'Joint calling: {callset_name}'
-        f', version: {callset_version}'
-        f', batches: {", ".join(callset_batches)}'
+        f'Joint calling: {analysis_project}'
+        f', version: {dataset_version}'
+        f', projects: {output_projects}'
+        + (f', limit input projects to {output_projects}' if output_projects else '')
+        + f', batches: {", ".join(dataset_batches)}'
         f', from: {input_namespace}'
         f', to: {output_namespace}',
         backend=backend,
@@ -162,17 +184,15 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         output_metadata_suffix = 'test-tmp'
         web_bucket_suffix = 'test-tmp'
 
-    output_metadata_bucket = f'gs://cpg-{callset_name}-{output_metadata_suffix}/joint-calling/{callset_version}'
-    web_bucket = (
-        f'gs://cpg-{callset_name}-{web_bucket_suffix}/joint-calling/{callset_version}'
-    )
-    mt_output_bucket = f'gs://cpg-{callset_name}-{output_suffix}/mt'
+    output_metadata_bucket = f'gs://cpg-{analysis_project}-{output_metadata_suffix}/joint-calling/{dataset_version}'
+    web_bucket = f'gs://cpg-{analysis_project}-{web_bucket_suffix}/joint-calling/{dataset_version}'
+    mt_output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}/mt'
     combiner_bucket = f'{work_bucket}/combiner'
     sample_qc_bucket = f'{work_bucket}/sample_qc'
 
-    raw_combined_mt_path = f'{combiner_bucket}/{callset_version}-raw.mt'
-    filtered_combined_mt_path = f'{mt_output_bucket}/{callset_version}.mt'
-    filtered_combined_nonref_mt_path = f'{mt_output_bucket}/{callset_version}-nonref.mt'
+    raw_combined_mt_path = f'{combiner_bucket}/{dataset_version}-raw.mt'
+    filtered_combined_mt_path = f'{mt_output_bucket}/{dataset_version}.mt'
+    filtered_combined_nonref_mt_path = f'{mt_output_bucket}/{dataset_version}-nonref.mt'
 
     local_tmp_dir = tempfile.mkdtemp()
     readme_local_fpath = join(local_tmp_dir, 'README.txt')
@@ -191,13 +211,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     samples_df, samples_csv_path, pre_combiner_jobs = _add_pre_combiner_jobs(
         b=b,
-        input_gvcfs_bucket=f'gs://cpg-{callset_name}-{input_namespace}/gvcf',
-        input_metadata_bucket=f'gs://cpg-{callset_name}-{input_namespace}-metadata'
+        input_gvcfs_bucket=f'gs://cpg-{analysis_project}-{input_namespace}/gvcf',
+        input_metadata_bucket=f'gs://cpg-{analysis_project}-{input_namespace}-metadata'
         if not skip_input_meta
         else None,
         work_bucket=join(work_bucket, 'pre-combine'),
         output_bucket=combiner_bucket,
-        callset_batches=callset_batches,
+        callset_batches=dataset_batches,
         overwrite=overwrite,
     )
 
@@ -231,7 +251,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         samples_csv_path=samples_csv_path,
         sample_qc_bucket=sample_qc_bucket,
         output_metadata_bucket=output_metadata_bucket,
-        callset_name=callset_name,
+        analysis_project=analysis_project,
         input_namespace=input_namespace,
         filter_cutoffs_path=filter_cutoffs_path,
         scripts_dir=scripts_dir,
@@ -275,9 +295,35 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
                 job_name='Making final MT',
             )
         else:
-            b.new_job('Making final MT [reuse]')
+            var_qc_job = b.new_job('Making final MT [reuse]')
     else:
-        b.new_job('Var QC [skip]')
+        var_qc_job = b.new_job('Var QC [skip]')
+
+    if analysis_project:
+        # Interacting with the sample metadata server.
+        aapi = AnalysisApi()
+        # 1. Create a "queued" analysis
+        am = AnalysisModel(
+            type='joint-calling',
+            output=filtered_combined_nonref_mt_path,
+            status='queued',
+            sample_ids=samples_df.s,
+        )
+        aid = aapi.create_new_analysis(project=analysis_project, analysis_model=am)
+        # 2. Queue a job that updates the status to "in-progress"
+        sm_in_progress_j = utils.make_sm_in_progress_job(
+            b, 'joint-calling', analysis_project, aid
+        )
+        # 2. Queue a job that updates the status to "completed"
+        sm_completed_j = utils.make_sm_completed_job(
+            b, 'joint-calling', analysis_project, aid
+        )
+        # Set up dependencies
+        combiner_job.depends_on(sm_in_progress_j)
+        if pre_combiner_jobs:
+            sm_in_progress_j.depends_on(*pre_combiner_jobs)
+        sm_completed_j.depends_on(var_qc_job)
+        logger.info(f'Queueing {am.type} with analysis ID: {aid}')
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
 
@@ -288,7 +334,7 @@ def _add_sample_qc_jobs(
     samples_csv_path: str,
     sample_qc_bucket: str,
     output_metadata_bucket: str,
-    callset_name: str,
+    analysis_project: str,
     input_namespace: str,
     filter_cutoffs_path: Optional[str],
     scripts_dir: str,
@@ -327,7 +373,7 @@ def _add_sample_qc_jobs(
     if overwrite or any(
         not utils.file_exists(fp) for fp in [hard_filter_ht_path, meta_ht_path]
     ):
-        age_csv = f'gs://cpg-{callset_name}-{input_namespace}-metadata/age.csv'
+        age_csv = f'gs://cpg-{analysis_project}-{input_namespace}-metadata/age.csv'
         if utils.file_exists(age_csv):
             age_csv_param = f'--age-csv {age_csv} '
         else:
@@ -375,6 +421,7 @@ def _add_pre_combiner_jobs(
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
+
     :param input_gvcfs_bucket: bucket with GVCFs batches as subfolders
     :param input_metadata_bucket: bucket with metadata batches as subfolders
     :param work_bucket: bucket to write intermediate files to
@@ -421,6 +468,7 @@ def _add_pre_combiner_jobs(
             b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
             for gvcf in list(samples_df.gvcf)
         ]
+
         subset_gvcf_jobs = _add_prep_gvcfs_for_combiner_steps(
             b=b,
             gvcfs=gvcfs,
@@ -447,17 +495,10 @@ def _add_prep_gvcfs_for_combiner_steps(
     overwrite: bool,
     reuse_scratch_run_id: Optional[str] = None,
     hail_bucket: Optional[str] = None,
+    depends_on: Optional[List[Job]] = None,
 ) -> List[Job]:
     """
     Add steps required to prepare GVCFs from combining
-    :param b:
-    :param gvcfs:
-    :param samples_df: pandas dataframe with metadata and raw GVCF paths
-    :param output_gvcf_bucket: bucket to write the combiner-ready GVCFs to
-    :param overwrite: overwrite existing intemridate files
-    :param reuse_scratch_run_id: ID of a Batch run to reuse the intermediate files
-    :param hail_bucket: bucket to find the previous Batch run intermediate files
-    :return: list of Batch jobs
     """
 
     # If we want to re-use the intermediate files from a previous run,
@@ -482,7 +523,7 @@ def _add_prep_gvcfs_for_combiner_steps(
             }
         )
         if (not overwrite and found_gvcf_path and utils.file_exists(found_gvcf_path))
-        else _add_reblock_gvcfs_step(b, input_gvcf).output_gvcf
+        else _add_reblock_gvcfs_step(b, input_gvcf, depends_on=depends_on).output_gvcf
         for found_gvcf_path, input_gvcf in zip(found_reblocked_gvcf_paths, gvcfs)
     ]
 
@@ -493,6 +534,7 @@ def _add_prep_gvcfs_for_combiner_steps(
             input_gvcf=input_gvcf,
             output_gvcf_path=output_gvcf_path,
             noalt_regions=noalt_regions,
+            depends_on=depends_on,
         )
         if not utils.file_exists(output_gvcf_path) or overwrite
         else b.new_job('SubsetToNoalt [reuse]')
@@ -509,13 +551,14 @@ def _add_prep_gvcfs_for_combiner_steps(
 def _add_reblock_gvcfs_step(
     b: hb.Batch,
     input_gvcf: hb.ResourceGroup,
+    depends_on: Optional[List[Job]] = None,
 ) -> Job:
     """
     Runs ReblockGVCF to annotate with allele-specific VCF INFO fields
     required for recalibration
     """
     j = b.new_job('ReblockGVCF')
-    j.image(utils.GATK_DOCKER)
+    j.image(utils.GATK_IMAGE)
     mem_gb = 8
     j.memory(f'{mem_gb}G')
     j.storage(f'30G')
@@ -525,6 +568,8 @@ def _add_reblock_gvcfs_step(
             'g.vcf.gz.tbi': '{root}.g.vcf.gz.tbi',
         }
     )
+    if depends_on:
+        j.depends_on(*depends_on)
 
     j.command(
         f"""
@@ -543,6 +588,7 @@ def _add_subset_noalt_step(
     input_gvcf: hb.ResourceGroup,
     output_gvcf_path: str,
     noalt_regions: hb.ResourceFile,
+    depends_on: Optional[List[Job]] = None,
 ) -> Job:
     """
     1. Subset GVCF to main chromosomes to avoid downstream errors
@@ -560,6 +606,8 @@ def _add_subset_noalt_step(
             'g.vcf.gz.tbi': '{root}.g.vcf.gz.tbi',
         }
     )
+    if depends_on:
+        j.depends_on(*depends_on)
     j.command(
         f"""set -e
 

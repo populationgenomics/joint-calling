@@ -11,7 +11,6 @@ from pprint import pformat
 import click
 import hail as hl
 
-from gnomad.resources.grch38.reference_data import clinvar, telomeres_and_centromeres
 from gnomad.utils.filtering import filter_low_conf_regions, filter_to_clinvar_pathogenic
 from gnomad.variant_qc.evaluation import (
     compute_binned_truth_sample_concordance,
@@ -196,11 +195,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     truth_gvcfs = dict(
         syndip=dict(
             s='syndip',
-            gvcf='gs://gnomad-public/resources/grch38/syndip/full.38.20180222.vcf.gz',
+            gvcf='gs://gnomad-public-requester-pays/resources/grch38/syndip/full.38.20180222.vcf.gz',
         ),
         NA12878=dict(
             s='NA12878',
-            gvcf='gs://gnomad-public/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',
+            gvcf='gs://gnomad-public-requester-pays/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',
         ),
     )
 
@@ -308,16 +307,14 @@ def _truth_concordance(
         ht = truth_dict[truth_sample]['ht']
         ht = ht.filter(
             ~info_ht[ht.key].AS_lowqual
-            & ~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus])
+            & ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT_PATH)[ht.locus])
         )
 
         logger.info('Filtering out low confidence regions and segdups...')
-        ht = filter_low_conf_regions(
-            ht,
-            filter_lcr=True,
-            filter_decoy=False,  # Set if having decoy path
-            filter_segdup=True,
-        )
+        lcr = hl.read_table(utils.LCR_INTERVALS_HT_PATH)
+        segdup = hl.read_table(utils.SEG_DUP_INTERVALS_HT_PATH)
+        ht = ht.filter(hl.is_missing(lcr[mt.locus]))
+        ht = ht.filter(hl.is_missing(segdup[mt.locus]))
 
         logger.info(
             'Loading HT containing RF or VQSR scores annotated with a bin based '
@@ -386,7 +383,7 @@ def create_bin_ht(
 
     ht = ht.filter(
         ~info_split_ht[ht.key].AS_lowqual
-        & ~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus])
+        & ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT_PATH)[ht.locus])
     )
     ht_non_lcr = filter_low_conf_regions(
         ht,
@@ -432,7 +429,9 @@ def create_aggregated_bin_ht(
     ht = ht.annotate_globals(bin_variant_counts=bin_variant_counts)
 
     # Load ClinVar pathogenic data
-    clinvar_pathogenic_ht = filter_to_clinvar_pathogenic(clinvar.ht())
+    clinvar_pathogenic_ht = filter_to_clinvar_pathogenic(
+        hl.read_table(utils.CLINVAR_HT_PATH)
+    )
     ht = ht.annotate(clinvar_path=hl.is_defined(clinvar_pathogenic_ht[ht.key]))
 
     logger.info(f'Creating grouped bin table...')

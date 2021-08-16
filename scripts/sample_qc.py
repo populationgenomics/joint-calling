@@ -13,13 +13,11 @@ import click
 import hail as hl
 import pandas as pd
 
-from gnomad.resources.grch38 import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.sample_qc.pipeline import annotate_sex
 from gnomad.utils.annotations import bi_allelic_expr
 from gnomad.utils.filtering import (
     filter_to_autosomes,
-    filter_low_conf_regions,
     add_filters_expr,
 )
 from gnomad.utils.sparse_mt import filter_ref_blocks
@@ -308,13 +306,8 @@ def _compute_hail_sample_qc(
     mt = filter_ref_blocks(mt)
 
     # Remove centromeres and telomeres incase they were included and any reference blocks
-    mt = filter_low_conf_regions(
-        mt,
-        filter_lcr=False,
-        filter_decoy=False,
-        filter_segdup=False,
-        filter_telomeres_and_centromeres=True,
-    )
+    tel_cent_ht = hl.read_table(utils.TEL_AND_CENT_HT_PATH)
+    mt = mt.filter_rows(hl.is_missing(tel_cent_ht[mt.locus]))
 
     sample_qc_ht = compute_stratified_sample_qc(
         mt,
@@ -403,7 +396,7 @@ def _infer_sex(
 
     ht = annotate_sex(
         mt,
-        excluded_intervals=telomeres_and_centromeres.ht(),
+        excluded_intervals=hl.read_table(utils.TEL_AND_CENT_HT_PATH),
         included_intervals=target_regions,
         gt_expr='LGT',
     )
