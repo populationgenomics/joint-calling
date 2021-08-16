@@ -12,6 +12,7 @@ https://github.com/populationgenomics/analysis-runner (see helper script `driver
 import os
 import subprocess
 import tempfile
+import traceback
 from os.path import join, dirname, abspath, basename
 from typing import List, Optional, Tuple
 import logging
@@ -299,16 +300,16 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     else:
         var_qc_job = b.new_job('Var QC [skip]')
 
-    if analysis_project:
-        # Interacting with the sample metadata server.
-        aapi = AnalysisApi()
-        # 1. Create a "queued" analysis
-        am = AnalysisModel(
-            type='joint-calling',
-            output=filtered_combined_nonref_mt_path,
-            status='queued',
-            sample_ids=samples_df.s,
-        )
+    # Interacting with the sample metadata server.
+    aapi = AnalysisApi()
+    # 1. Create a "queued" analysis
+    am = AnalysisModel(
+        type='joint-calling',
+        output=filtered_combined_nonref_mt_path,
+        status='queued',
+        sample_ids=samples_df.s,
+    )
+    try:
         aid = aapi.create_new_analysis(project=analysis_project, analysis_model=am)
         # 2. Queue a job that updates the status to "in-progress"
         sm_in_progress_j = utils.make_sm_in_progress_job(
@@ -324,6 +325,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             sm_in_progress_j.depends_on(*pre_combiner_jobs)
         sm_completed_j.depends_on(var_qc_job)
         logger.info(f'Queueing {am.type} with analysis ID: {aid}')
+    except Exception:  # pylint: disable=broad-except
+        print(traceback.format_exc())
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
 
