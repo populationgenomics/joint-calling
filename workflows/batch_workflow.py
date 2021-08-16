@@ -25,6 +25,7 @@ from sample_metadata import AnalysisApi, AnalysisModel
 
 from joint_calling import utils
 from joint_calling.variant_qc import add_variant_qc_jobs
+from joint_calling import sm_utils
 
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
@@ -312,11 +313,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     try:
         aid = aapi.create_new_analysis(project=analysis_project, analysis_model=am)
         # 2. Queue a job that updates the status to "in-progress"
-        sm_in_progress_j = utils.make_sm_in_progress_job(
+        sm_in_progress_j = sm_utils.make_sm_in_progress_job(
             b, 'joint-calling', analysis_project, aid
         )
         # 2. Queue a job that updates the status to "completed"
-        sm_completed_j = utils.make_sm_completed_job(
+        sm_completed_j = sm_utils.make_sm_completed_job(
             b, 'joint-calling', analysis_project, aid
         )
         # Set up dependencies
@@ -328,7 +329,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     except Exception:  # pylint: disable=broad-except
         print(traceback.format_exc())
 
-    b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch)
+    b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch, wait=False)
 
 
 def _add_sample_qc_jobs(
@@ -464,7 +465,9 @@ def _add_pre_combiner_jobs(
                 input_gvcf_buckets.append(join(input_gvcfs_bucket, cb))
                 if input_metadata_bucket:
                     input_metadata_buckets.append(join(input_metadata_bucket, cb))
-            samples_df = utils.find_inputs(input_gvcf_buckets, input_metadata_buckets)
+            samples_df = sm_utils.find_inputs(
+                input_gvcf_buckets, input_metadata_buckets
+            )
 
         samples_df = samples_df[pd.notnull(samples_df.s)]
         gvcfs = [
