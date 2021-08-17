@@ -28,10 +28,9 @@ test_to_tmp:
 	--output-dir "joint-calling/test-to-tmp" \
 	--description "Joint calling test-to-temporary" \
 	--access-level test \
-	workflows/batch_workflow.py \
+	batch_workflow.py \
 	--scatter-count $(SCATTER_COUNT_TEST) \
 	--namespace tmp \
-	--batch batch1 \
 	--analysis-project $(ANALYSIS_PROJECT) \
 	--input-project tob-wgs-test \
 	--output-version ${TEST_VERSION} \
@@ -45,7 +44,7 @@ test_to_test:
 	--output-dir "joint-calling/test-to-test" \
 	--description "Joint calling test-to-test" \
 	--access-level test \
-	workflows/batch_workflow.py \
+	batch_workflow.py \
 	--scatter-count $(SCATTER_COUNT_TEST) \
 	--namespace test \
 	--input-project tob-wgs-test \
@@ -62,7 +61,7 @@ main_to_main:
 	--output-dir "joint-calling/main-to-main" \
 	--description "Joint calling main-to-main" \
 	--access-level full \
-	workflows/batch_workflow.py \
+	batch_workflow.py \
 	--scatter-count $(SCATTER_COUNT_PROD) \
 	--namespace main \
 	--input-project tob-wgs \

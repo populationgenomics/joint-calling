@@ -102,14 +102,11 @@ logger.setLevel('INFO')
 @click.option('--run-vqsr/--skip-vqsr', 'run_vqsr', is_flag=True, default=True)
 @click.option('--run-rf/--skip-rf', 'run_rf', is_flag=True, default=False)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
-    dataset_version: str,
-    dataset_batches: List[str],
-    input_namespace: str,
-    input_projects: List[str],  # pylint: disable=unused-argument
-    output_projects: Optional[List[str]],  # pylint: disable=unused-argument
     output_namespace: str,
     analysis_project: str,
-    existing_mt_path: str,
+    input_projects: List[str],  # pylint: disable=unused-argument
+    output_version: str,
+    output_projects: Optional[List[str]],  # pylint: disable=unused-argument
     ped_file: str,
     filter_cutoffs_path: str,
     keep_scratch: bool,
@@ -130,18 +127,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     billing_project = os.getenv('HAIL_BILLING_PROJECT') or analysis_project
 
-    if not dataset_batches:
-        raise click.BadParameter(
-            'Please, specify batch numbers with --batch '
-            '(can put multiple times, e.g. --batch batch1 --batch batch2)'
-        )
-
     if output_namespace in ['test', 'tmp']:
         tmp_bucket_suffix = 'test-tmp'
     else:
         tmp_bucket_suffix = 'main-tmp'
 
-    work_bucket = f'gs://cpg-{analysis_project}-{tmp_bucket_suffix}/joint-calling/{dataset_version}'
+    work_bucket = f'gs://cpg-{analysis_project}-{tmp_bucket_suffix}/joint-calling/{output_version}'
     hail_bucket = os.environ.get('HAIL_BUCKET')
     if not hail_bucket or keep_scratch or reuse_scratch_run_id:
         # Scratch files are large, so we want to use the temporary bucket for them
@@ -156,15 +147,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     )
     b = hb.Batch(
         f'Joint calling: {analysis_project}'
-        f', version: {dataset_version}'
+        f', version: {output_version}'
         f', projects: {output_projects}'
         + (f', limit input projects to {output_projects}' if output_projects else '')
-        + f', batches: {", ".join(dataset_batches)}'
-        f', from: {input_namespace}'
-        f', to: {output_namespace}',
+        + f', namespace: {output_namespace}',
         backend=backend,
     )
-    scripts_dir = abspath(join(dirname(__file__), '..', 'scripts'))
+    scripts_dir = abspath(join(dirname(__file__), 'scripts'))
 
     if output_namespace in ['test', 'main']:
         output_suffix = output_namespace
@@ -175,15 +164,15 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         output_metadata_suffix = 'test-tmp'
         web_bucket_suffix = 'test-tmp'
 
-    output_metadata_bucket = f'gs://cpg-{analysis_project}-{output_metadata_suffix}/joint-calling/{dataset_version}'
-    web_bucket = f'gs://cpg-{analysis_project}-{web_bucket_suffix}/joint-calling/{dataset_version}'
+    output_metadata_bucket = f'gs://cpg-{analysis_project}-{output_metadata_suffix}/joint-calling/{output_version}'
+    web_bucket = f'gs://cpg-{analysis_project}-{web_bucket_suffix}/joint-calling/{output_version}'
     mt_output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}/mt'
     combiner_bucket = f'{work_bucket}/combiner'
     sample_qc_bucket = f'{work_bucket}/sample_qc'
 
-    raw_combined_mt_path = f'{combiner_bucket}/{dataset_version}-raw.mt'
-    filtered_combined_mt_path = f'{mt_output_bucket}/{dataset_version}.mt'
-    filtered_combined_nonref_mt_path = f'{mt_output_bucket}/{dataset_version}-nonref.mt'
+    raw_combined_mt_path = f'{combiner_bucket}/{output_version}-raw.mt'
+    filtered_combined_mt_path = f'{mt_output_bucket}/{output_version}.mt'
+    filtered_combined_nonref_mt_path = f'{mt_output_bucket}/{output_version}-nonref.mt'
 
     local_tmp_dir = tempfile.mkdtemp()
     readme_local_fpath = join(local_tmp_dir, 'README.txt')
@@ -215,9 +204,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'{scripts_dir}/combine_gvcfs.py '
             f'--meta-csv {samples_csv_path} '
             f'--out-mt {raw_combined_mt_path} '
-            f'--bucket {combiner_bucket}/work '
-            + (f'--existing-mt {existing_mt_path} ' if existing_mt_path else '')
-            + f'--hail-billing {billing_project} '
+            f'--bucket {combiner_bucket}/work ' + f'--hail-billing {billing_project} '
             f'--n-partitions {scatter_count * 25}',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
@@ -239,14 +226,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         samples_csv_path=samples_csv_path,
         sample_qc_bucket=sample_qc_bucket,
         output_metadata_bucket=output_metadata_bucket,
-        analysis_project=analysis_project,
-        input_namespace=input_namespace,
         filter_cutoffs_path=filter_cutoffs_path,
         scripts_dir=scripts_dir,
         overwrite=overwrite,
         scatter_count=scatter_count,
         depends_on=[combiner_job],
         billing_project=billing_project,
+        age_csv_path=f'gs://cpg-{analysis_project}-main-metadata/age.csv',
     )
 
     if run_rf or run_vqsr:
@@ -324,8 +310,7 @@ def _add_sample_qc_jobs(
     samples_csv_path: str,
     sample_qc_bucket: str,
     output_metadata_bucket: str,
-    analysis_project: str,
-    input_namespace: str,
+    age_csv_path: str,
     filter_cutoffs_path: Optional[str],
     scripts_dir: str,
     overwrite: bool,
@@ -359,9 +344,8 @@ def _add_sample_qc_jobs(
     meta_tsv_path = join(output_metadata_bucket, 'meta.tsv')
     relatedness_ht_path = join(output_metadata_bucket, 'relatedness.ht')
     if any(not can_reuse(fp, overwrite) for fp in [hard_filter_ht_path, meta_ht_path]):
-        age_csv = f'gs://cpg-{analysis_project}-{input_namespace}-metadata/age.csv'
-        if utils.file_exists(age_csv):
-            age_csv_param = f'--age-csv {age_csv} '
+        if utils.file_exists(age_csv_path):
+            age_csv_param = f'--age-csv {age_csv_path} '
         else:
             age_csv_param = ''
 
