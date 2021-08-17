@@ -11,6 +11,7 @@ from hailtop.batch.job import Job
 from analysis_runner import dataproc
 
 from joint_calling import utils
+from joint_calling.utils import can_reuse
 
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
@@ -183,7 +184,7 @@ def make_vqsr_jobs(
     huge_disk = 100 if is_small_callset else (500 if not is_huge_callset else 2000)
 
     combined_vcf_path = join(work_bucket, 'input.vcf.gz')
-    if overwrite or not utils.file_exists(combined_vcf_path):
+    if not can_reuse(combined_vcf_path, overwrite):
         mt_to_vcf_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/mt_to_vcf.py --overwrite '
