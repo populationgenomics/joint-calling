@@ -153,7 +153,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         + f', namespace: {output_namespace}',
         backend=backend,
     )
-    scripts_dir = abspath(join(dirname(__file__), '..', 'scripts'))
+    scripts_dir = abspath(join(dirname(__file__), 'scripts'))
 
     if output_namespace in ['test', 'main']:
         output_suffix = output_namespace
