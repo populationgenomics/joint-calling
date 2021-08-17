@@ -78,7 +78,6 @@ logger.setLevel('INFO')
     type=str,
     callback=utils.get_validation_callback(ext='ped', must_exist=True),
 )
-@click.option('--skip-input-meta', 'skip_input_meta', is_flag=True)
 @click.option(
     '--filter-cutoffs-file',
     'filter_cutoffs_path',
@@ -120,7 +119,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     analysis_project: str,
     existing_mt_path: str,
     ped_file: str,
-    skip_input_meta: bool,
     filter_cutoffs_path: str,
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
@@ -212,13 +210,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     samples_df, samples_csv_path, pre_combiner_jobs = _add_pre_combiner_jobs(
         b=b,
-        input_gvcfs_bucket=f'gs://cpg-{analysis_project}-{input_namespace}/gvcf',
-        input_metadata_bucket=f'gs://cpg-{analysis_project}-{input_namespace}-metadata'
-        if not skip_input_meta
-        else None,
         work_bucket=join(work_bucket, 'pre-combine'),
         output_bucket=combiner_bucket,
-        callset_batches=dataset_batches,
         overwrite=overwrite,
         input_projects=input_projects,
         analysis_project=analysis_project,
@@ -417,11 +410,8 @@ def _add_sample_qc_jobs(
 
 def _add_pre_combiner_jobs(
     b: hb.Batch,
-    input_gvcfs_bucket: str,
-    input_metadata_bucket: Optional[str],
     work_bucket: str,
     output_bucket: str,
-    callset_batches: List[str],
     overwrite: bool,
     input_projects: List[str],
     analysis_project: str,
@@ -458,21 +448,16 @@ def _add_pre_combiner_jobs(
         samples_df = samples_df[pd.notnull(samples_df.s)]
     else:
         if not overwrite and utils.file_exists(input_samples_csv_path):
+            logger.info(f'Reading existing inputs CSV {input_samples_csv_path}')
             samples_df = pd.read_csv(input_samples_csv_path, sep='\t').set_index(
                 's', drop=False
             )
-        elif input_projects:
-            samples_df = sm_utils.find_inputs_from_db(input_projects, analysis_project)
         else:
-            input_gvcf_buckets = []
-            input_metadata_buckets = []
-            for cb in callset_batches:
-                input_gvcf_buckets.append(join(input_gvcfs_bucket, cb))
-                if input_metadata_bucket:
-                    input_metadata_buckets.append(join(input_metadata_bucket, cb))
-            samples_df = sm_utils.find_inputs(
-                input_gvcf_buckets, input_metadata_buckets
+            logger.info(
+                f'Reading data from the projects: {input_projects} '
+                f'from the SM server'
             )
+            samples_df = sm_utils.find_inputs_from_db(input_projects, analysis_project)
 
         samples_df = samples_df[pd.notnull(samples_df.s)]
         gvcfs = [
