@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Hail Batch workflow to perform joint calling, sample QC, and variant QC with VQSR and 
 random forest methods on a WGS germline callset.
@@ -33,26 +35,13 @@ logger.setLevel('INFO')
 
 
 @click.command()
-@click.option('--dataset-version', 'dataset_version', type=str, required=True)
-@click.option('--batch', 'dataset_batches', type=str, multiple=True)
+# @click.option('--dataset-version', 'dataset_version', type=str, required=True)
 @click.option(
-    '--from',
-    'input_namespace',
-    type=click.Choice(['main', 'test']),
-    help='The bucket namespace to read the inputs from',
-)
-@click.option(
-    '--to',
+    '-n',
+    '--namespace',
     'output_namespace',
     type=click.Choice(['main', 'test', 'tmp']),
     help='The bucket namespace to write the results to',
-)
-@click.option(
-    '--output-project',
-    'output_projects',
-    multiple=True,
-    help='Only create reports for the project(s). Can be multiple. '
-    'The name will be suffixed with the dataset version (set by --version)',
 )
 @click.option(
     '--analysis-project',
@@ -66,11 +55,13 @@ logger.setLevel('INFO')
     multiple=True,
     help='Only read samples that belong to these project(s). Can be multiple.',
 )
+@click.option('--output-version', 'output_version', type=str, required=True)
 @click.option(
-    '--existing-mt',
-    'existing_mt_path',
-    callback=utils.get_validation_callback(ext='mt', must_exist=True),
-    help='Path to an existing sparse matrix table to combine with the new data',
+    '--output-project',
+    'output_projects',
+    multiple=True,
+    help='Only create reports for the project(s). Can be multiple. '
+    'The name will be suffixed with the dataset version (set by --version)',
 )
 @click.option(
     '--ped-file',
