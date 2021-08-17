@@ -140,6 +140,25 @@ def file_exists(path: str) -> bool:
     return os.path.exists(path)
 
 
+def can_reuse(fpath: Optional[str], overwrite: bool, silent=False) -> bool:
+    """
+    Checks if the file `fpath` exists and we are not overwriting
+    """
+    if not fpath:
+        return False
+    if not file_exists(fpath):
+        return False
+
+    if overwrite:
+        if not silent:
+            logger.info(f'File {fpath} exists and will be overwritten')
+        return False
+    else:
+        if not silent:
+            logger.info(f'Reusing existing {fpath}. Use --overwrite to overwrite')
+        return True
+
+
 def gs_cache_file(fpath: str, local_tmp_dir: str) -> str:
     """
     :param fpath: local or a `gs://` path. If the latter, the file

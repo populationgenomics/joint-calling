@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Hail Batch workflow to perform joint calling, sample QC, and variant QC with VQSR and 
 random forest methods on a WGS germline callset.
@@ -24,6 +26,7 @@ from analysis_runner import dataproc
 from sample_metadata import AnalysisApi, AnalysisModel
 
 from joint_calling import utils
+from joint_calling.utils import can_reuse
 from joint_calling.variant_qc import add_variant_qc_jobs
 from joint_calling import sm_utils
 
@@ -32,27 +35,13 @@ logger.setLevel('INFO')
 
 
 @click.command()
-@click.option('--dataset-version', 'dataset_version', type=str, required=True)
-@click.option('--batch', 'dataset_batches', type=str, multiple=True)
+# @click.option('--dataset-version', 'dataset_version', type=str, required=True)
 @click.option(
-    '--from',
-    'input_namespace',
-    type=click.Choice(['main', 'test']),
-    help='The bucket namespace to read the inputs from',
-)
-@click.option(
-    '--to',
+    '-n',
+    '--namespace',
     'output_namespace',
     type=click.Choice(['main', 'test', 'tmp']),
     help='The bucket namespace to write the results to',
-)
-@click.option(
-    '--project',
-    'output_projects',
-    multiple=True,
-    default=['tob-wgs'],
-    help='Only create reports for the project(s). Can be multiple. '
-    'The name will be suffixed with the dataset version (set by --version)',
 )
 @click.option(
     '--analysis-project',
@@ -61,16 +50,18 @@ logger.setLevel('INFO')
     help='Overrides the SM project name to write analysis entries to',
 )
 @click.option(
-    '--test-limit-input-to-project',
-    'test_input_projects',
+    '--input-project',
+    'input_projects',
     multiple=True,
     help='Only read samples that belong to these project(s). Can be multiple.',
 )
+@click.option('--output-version', 'output_version', type=str, required=True)
 @click.option(
-    '--existing-mt',
-    'existing_mt_path',
-    callback=utils.get_validation_callback(ext='mt', must_exist=True),
-    help='Path to an existing sparse matrix table to combine with the new data',
+    '--output-project',
+    'output_projects',
+    multiple=True,
+    help='Only create reports for the project(s). Can be multiple. '
+    'The name will be suffixed with the dataset version (set by --version)',
 )
 @click.option(
     '--ped-file',
@@ -79,7 +70,6 @@ logger.setLevel('INFO')
     type=str,
     callback=utils.get_validation_callback(ext='ped', must_exist=True),
 )
-@click.option('--skip-input-meta', 'skip_input_meta', is_flag=True)
 @click.option(
     '--filter-cutoffs-file',
     'filter_cutoffs_path',
@@ -115,13 +105,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     dataset_version: str,
     dataset_batches: List[str],
     input_namespace: str,
+    input_projects: List[str],  # pylint: disable=unused-argument
+    output_projects: Optional[List[str]],  # pylint: disable=unused-argument
     output_namespace: str,
     analysis_project: str,
-    test_input_projects: Optional[List[str]],  # pylint: disable=unused-argument
-    output_projects: Optional[List[str]],  # pylint: disable=unused-argument
     existing_mt_path: str,
     ped_file: str,
-    skip_input_meta: bool,
     filter_cutoffs_path: str,
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
@@ -213,17 +202,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     samples_df, samples_csv_path, pre_combiner_jobs = _add_pre_combiner_jobs(
         b=b,
-        input_gvcfs_bucket=f'gs://cpg-{analysis_project}-{input_namespace}/gvcf',
-        input_metadata_bucket=f'gs://cpg-{analysis_project}-{input_namespace}-metadata'
-        if not skip_input_meta
-        else None,
         work_bucket=join(work_bucket, 'pre-combine'),
         output_bucket=combiner_bucket,
-        callset_batches=dataset_batches,
         overwrite=overwrite,
+        input_projects=input_projects,
+        analysis_project=analysis_project,
     )
 
-    if overwrite or not utils.file_exists(raw_combined_mt_path):
+    if not can_reuse(raw_combined_mt_path, overwrite):
         combiner_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/combine_gvcfs.py '
@@ -281,7 +267,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             vqsr_params_d=filter_cutoffs_d['vqsr'],
             scatter_count=scatter_count,
         )
-        if overwrite or not utils.file_exists(filtered_combined_mt_path):
+        if not can_reuse(filtered_combined_mt_path, overwrite):
             var_qc_job = dataproc.hail_dataproc_job(
                 b,
                 f'{scripts_dir}/make_finalised_mt.py --overwrite '
@@ -351,9 +337,7 @@ def _add_sample_qc_jobs(
 
     info_ht_path = join(sample_qc_bucket, 'info.ht')
     info_split_ht_path = join(sample_qc_bucket, 'info-split.ht')
-    if overwrite or any(
-        not utils.file_exists(fp) for fp in [info_ht_path, info_split_ht_path]
-    ):
+    if any(not can_reuse(fp, overwrite) for fp in [info_ht_path, info_split_ht_path]):
         generate_info_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/generate_info_ht.py --overwrite '
@@ -374,9 +358,7 @@ def _add_sample_qc_jobs(
     meta_ht_path = join(output_metadata_bucket, 'meta.ht')
     meta_tsv_path = join(output_metadata_bucket, 'meta.tsv')
     relatedness_ht_path = join(output_metadata_bucket, 'relatedness.ht')
-    if overwrite or any(
-        not utils.file_exists(fp) for fp in [hard_filter_ht_path, meta_ht_path]
-    ):
+    if any(not can_reuse(fp, overwrite) for fp in [hard_filter_ht_path, meta_ht_path]):
         age_csv = f'gs://cpg-{analysis_project}-{input_namespace}-metadata/age.csv'
         if utils.file_exists(age_csv):
             age_csv_param = f'--age-csv {age_csv} '
@@ -416,12 +398,11 @@ def _add_sample_qc_jobs(
 
 def _add_pre_combiner_jobs(
     b: hb.Batch,
-    input_gvcfs_bucket: str,
-    input_metadata_bucket: Optional[str],
     work_bucket: str,
     output_bucket: str,
-    callset_batches: List[str],
     overwrite: bool,
+    input_projects: List[str],
+    analysis_project: str,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
@@ -448,26 +429,26 @@ def _add_pre_combiner_jobs(
     # jobs to do the pre-processing.
     combiner_ready_samples_csv_path = join(output_bucket, 'samples.csv')
     subset_gvcf_jobs = []
-    if not overwrite and utils.file_exists(combiner_ready_samples_csv_path):
+    if can_reuse(combiner_ready_samples_csv_path, overwrite):
+        logger.info(
+            f'Reading existing combiner-read inputs CSV {combiner_ready_samples_csv_path}'
+        )
         samples_df = pd.read_csv(combiner_ready_samples_csv_path, sep='\t').set_index(
             's', drop=False
         )
         samples_df = samples_df[pd.notnull(samples_df.s)]
     else:
-        if not overwrite and utils.file_exists(input_samples_csv_path):
+        if can_reuse(input_samples_csv_path, overwrite):
+            logger.info(f'Reading existing inputs CSV {input_samples_csv_path}')
             samples_df = pd.read_csv(input_samples_csv_path, sep='\t').set_index(
                 's', drop=False
             )
         else:
-            input_gvcf_buckets = []
-            input_metadata_buckets = []
-            for cb in callset_batches:
-                input_gvcf_buckets.append(join(input_gvcfs_bucket, cb))
-                if input_metadata_bucket:
-                    input_metadata_buckets.append(join(input_metadata_bucket, cb))
-            samples_df = sm_utils.find_inputs(
-                input_gvcf_buckets, input_metadata_buckets
+            logger.info(
+                f'Reading data from the projects: {input_projects} '
+                f'from the SM server'
             )
+            samples_df = sm_utils.find_inputs_from_db(input_projects, analysis_project)
 
         samples_df = samples_df[pd.notnull(samples_df.s)]
         gvcfs = [
@@ -525,10 +506,10 @@ def _add_prep_gvcfs_for_combiner_steps(
         b.read_input_group(
             **{
                 'vcf.gz': found_gvcf_path,
-                'vcf.gz.tbi': found_gvcf_path + '.tbi',
+                'vcf.gz.tbi': f'{found_gvcf_path}.tbi',
             }
         )
-        if (not overwrite and found_gvcf_path and utils.file_exists(found_gvcf_path))
+        if (found_gvcf_path and can_reuse(found_gvcf_path, overwrite))
         else _add_reblock_gvcfs_step(b, input_gvcf, depends_on=depends_on).output_gvcf
         for found_gvcf_path, input_gvcf in zip(found_reblocked_gvcf_paths, gvcfs)
     ]
@@ -542,7 +523,7 @@ def _add_prep_gvcfs_for_combiner_steps(
             noalt_regions=noalt_regions,
             depends_on=depends_on,
         )
-        if not utils.file_exists(output_gvcf_path) or overwrite
+        if not can_reuse(output_gvcf_path, overwrite)
         else b.new_job('SubsetToNoalt [reuse]')
         for input_gvcf, output_gvcf_path in [
             (gvcf, join(output_gvcf_bucket, f'{sample}.g.vcf.gz'))

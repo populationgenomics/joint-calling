@@ -17,7 +17,7 @@ import hail as hl
 from hail.experimental.vcf_combiner import vcf_combiner
 
 from joint_calling.utils import get_validation_callback
-from joint_calling import utils, sm_utils
+from joint_calling import utils
 from joint_calling import _version
 
 logger = logging.getLogger('combine_gvcfs')
@@ -30,12 +30,11 @@ TARGET_RECORDS = 25_000
 
 @click.command()
 @click.version_option(_version.__version__)
-@click.option('--bucket-with-vcfs', 'vcf_buckets', multiple=True)
-@click.option('--bucket-with-metadata', 'metadata_buckets', multiple=True)
 @click.option(
     '--meta-csv',
     'meta_csv_path',
-    help='Previously prepared meta CSV path. Don\'t attempt to find GVCFs or QC CSV files.',
+    required=True,
+    help='Sample data CSV path',
 )
 @click.option(
     '--out-mt',
@@ -85,8 +84,6 @@ TARGET_RECORDS = 25_000
     help='Number of partitions for the output matrix table',
 )
 def main(
-    vcf_buckets: List[str],
-    metadata_buckets: List[str],
     meta_csv_path: str,
     out_mt_path: str,
     existing_mt_path: str,
@@ -100,14 +97,12 @@ def main(
 
     logger.info(f'Combining GVCFs')
 
-    if meta_csv_path:
-        local_meta_csv_path = join(local_tmp_dir, basename(meta_csv_path))
-        subprocess.run(
-            f'gsutil cp {meta_csv_path} {local_meta_csv_path}', check=False, shell=True
-        )
-        new_samples_df = pd.read_table(local_meta_csv_path)
-    else:
-        new_samples_df = sm_utils.find_inputs(vcf_buckets, metadata_buckets)
+    assert utils.file_exists(meta_csv_path)
+    local_meta_csv_path = join(local_tmp_dir, basename(meta_csv_path))
+    subprocess.run(
+        f'gsutil cp {meta_csv_path} {local_meta_csv_path}', check=False, shell=True
+    )
+    new_samples_df = pd.read_table(local_meta_csv_path)
 
     new_mt_path = os.path.join(work_bucket, 'new.mt')
     combine_gvcfs(
