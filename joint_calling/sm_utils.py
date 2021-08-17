@@ -168,7 +168,10 @@ python update.py
     return j
 
 
-def find_inputs_from_db(project):
+def find_inputs_from_db(
+    input_projects: List[str],
+    analysis_project: str,
+) -> pd.DataFram:
     """
     Determine inputs from SM DB
     """
@@ -178,7 +181,7 @@ def find_inputs_from_db(project):
 
     # Get samples in latest analysis
     latest_analysis = aapi.get_latest_complete_analyses_by_type(
-        analysis_type='joint-calling', project=project
+        analysis_type='joint-calling', project=analysis_project
     )
     latest_analysis_sample_ids = [
         analysis['sample_ids'] for analysis in latest_analysis
@@ -189,7 +192,7 @@ def find_inputs_from_db(project):
 
     active_samples = sapi.get_samples(
         body_get_samples_by_criteria_api_v1_sample_post={
-            'project_ids': [project],
+            'project_ids': input_projects,
             'active': True,
         }
     )

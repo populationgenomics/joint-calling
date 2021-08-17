@@ -47,10 +47,9 @@ logger.setLevel('INFO')
     help='The bucket namespace to write the results to',
 )
 @click.option(
-    '--project',
+    '--output-project',
     'output_projects',
     multiple=True,
-    default=['tob-wgs'],
     help='Only create reports for the project(s). Can be multiple. '
     'The name will be suffixed with the dataset version (set by --version)',
 )
@@ -61,8 +60,8 @@ logger.setLevel('INFO')
     help='Overrides the SM project name to write analysis entries to',
 )
 @click.option(
-    '--test-limit-input-to-project',
-    'test_input_projects',
+    '--input-project',
+    'input_projects',
     multiple=True,
     help='Only read samples that belong to these project(s). Can be multiple.',
 )
@@ -115,10 +114,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     dataset_version: str,
     dataset_batches: List[str],
     input_namespace: str,
+    input_projects: List[str],  # pylint: disable=unused-argument
+    output_projects: Optional[List[str]],  # pylint: disable=unused-argument
     output_namespace: str,
     analysis_project: str,
-    test_input_projects: Optional[List[str]],  # pylint: disable=unused-argument
-    output_projects: Optional[List[str]],  # pylint: disable=unused-argument
     existing_mt_path: str,
     ped_file: str,
     skip_input_meta: bool,
@@ -221,6 +220,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         output_bucket=combiner_bucket,
         callset_batches=dataset_batches,
         overwrite=overwrite,
+        input_projects=input_projects,
+        analysis_project=analysis_project,
     )
 
     if overwrite or not utils.file_exists(raw_combined_mt_path):
@@ -422,6 +423,8 @@ def _add_pre_combiner_jobs(
     output_bucket: str,
     callset_batches: List[str],
     overwrite: bool,
+    input_projects: List[str],
+    analysis_project: str,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
@@ -458,6 +461,8 @@ def _add_pre_combiner_jobs(
             samples_df = pd.read_csv(input_samples_csv_path, sep='\t').set_index(
                 's', drop=False
             )
+        elif input_projects:
+            samples_df = sm_utils.find_inputs_from_db(input_projects, analysis_project)
         else:
             input_gvcf_buckets = []
             input_metadata_buckets = []
