@@ -171,7 +171,7 @@ python update.py
 def find_inputs_from_db(
     input_projects: List[str],
     analysis_project: str,
-) -> pd.DataFram:
+) -> pd.DataFrame:
     """
     Determine inputs from SM DB
     """
