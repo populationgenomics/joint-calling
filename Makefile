@@ -31,7 +31,6 @@ test_to_tmp:
 	workflows/batch_workflow.py \
 	--scatter-count $(SCATTER_COUNT_TEST) \
 	--namespace tmp \
-	--batch batch1 \
 	--analysis-project $(ANALYSIS_PROJECT) \
 	--input-project tob-wgs-test \
 	--output-version ${TEST_VERSION} \
