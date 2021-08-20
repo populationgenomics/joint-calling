@@ -20,45 +20,10 @@ from sample_metadata import (
     SequenceApi,
     SampleApi,
 )
+import utils
 
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
-
-
-DEFAULT_REF = 'GRCh38'
-
-REF_BUCKET = 'gs://cpg-reference/hg38/v1'
-
-DATAPROC_PACKAGES = [
-    'joint-calling',
-    'click',
-    'cpg-gnomad',
-    'google',
-    'slackclient',
-    'fsspec',
-    'sklearn',
-    'gcloud',
-]
-
-DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
-
-AR_REPO = 'australia-southeast1-docker.pkg.dev/cpg-common/images'
-GATK_VERSION = '4.2.0.0'
-GATK_IMAGE = f'{AR_REPO}/gatk:{GATK_VERSION}'
-# GnarlyGenotyper is in Beta and crashes with NullPointerException when using the
-# official GATK docker, that's why we're using a separate image for it:
-GNARLY_IMAGE = f'{AR_REPO}/gnarly_genotyper:hail_ukbb_300K'
-BCFTOOLS_IMAGE = f'{AR_REPO}/bcftools:1.10.2--h4f4756c_2'
-SM_IMAGE = f'{AR_REPO}/sm-api:2.0.3'
-
-TEL_AND_CENT_HT_PATH = join(
-    REF_BUCKET, 'gnomad/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht'
-)
-LCR_INTERVALS_HT_PATH = join(REF_BUCKET, 'gnomad/lcr_intervals/LCRFromHengHg38.ht')
-SEG_DUP_INTERVALS_HT_PATH = join(
-    REF_BUCKET, 'gnomad/seg_dup_intervals/GRCh38_segdups.ht'
-)
-CLINVAR_HT_PATH = join(REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
 
 
 @dataclass
@@ -142,7 +107,7 @@ def make_sm_update_status_job(
     """
     assert status in ['in-progress', 'failed', 'completed', 'queued']
     j = b.new_job(f'SM: update {analysis_type} to {status}')
-    j.image(SM_IMAGE)
+    j.image(utils.SM_IMAGE)
     j.command(
         f"""
 set -o pipefail
@@ -247,7 +212,6 @@ def find_inputs_from_db(
         inputs.append(sample_information)
 
     df = pd.DataFrame(inputs)
-
     return df
 
 

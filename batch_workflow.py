@@ -29,9 +29,11 @@ from joint_calling import utils
 from joint_calling.utils import can_reuse
 from joint_calling.variant_qc import add_variant_qc_jobs
 from joint_calling import sm_utils
+from joint_calling.joint_genotyping import make_joint_genotype_jobs
 
-logger = logging.getLogger('joint-calling')
-logger.setLevel('INFO')
+logger = logging.getLogger(__file__)
+logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
+logger.setLevel(logging.INFO)
 
 
 @click.command()
@@ -62,6 +64,13 @@ logger.setLevel('INFO')
     multiple=True,
     help='Only create reports for the project(s). Can be multiple. '
     'The name will be suffixed with the dataset version (set by --version)',
+)
+@click.option(
+    '--use-gnarly-genotyper',
+    'use_gnarly_genotyper',
+    is_flag=True,
+    help='Whether to use a GenomicsDB and Gnarly genotyper to merge GVCFs instead of '
+    'the Hail combiner',
 )
 @click.option(
     '--ped-file',
@@ -107,6 +116,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     input_projects: List[str],  # pylint: disable=unused-argument
     output_version: str,
     output_projects: Optional[List[str]],  # pylint: disable=unused-argument
+    use_gnarly_genotyper: bool,
     ped_file: str,
     filter_cutoffs_path: str,
     keep_scratch: bool,
@@ -198,22 +208,40 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         analysis_project=analysis_project,
     )
 
-    if not can_reuse(raw_combined_mt_path, overwrite):
-        combiner_job = dataproc.hail_dataproc_job(
-            b,
-            f'{scripts_dir}/combine_gvcfs.py '
-            f'--meta-csv {samples_csv_path} '
-            f'--out-mt {raw_combined_mt_path} '
-            f'--bucket {combiner_bucket}/work ' + f'--hail-billing {billing_project} '
-            f'--n-partitions {scatter_count * 25}',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=pre_combiner_jobs,
-            job_name='Combine GVCFs',
-        )
+    if use_gnarly_genotyper:
+        combiner_job = b.new_job('Not implemented')
+        # combiner_job, vcf_path = make_joint_genotype_jobs(
+        #     b=b,
+        #     genomicsdb_bucket=join(work_bucket, 'genomicsdbs'),
+        #     samples_df=samples_df,
+        #     reference=reference,
+        #     dbsnp=utils.DBSNP_VCF,
+        #     out_bucket=out_bucket,
+        #     tmp_bucket=out_bucket,
+        #     local_tmp_dir=local_tmp_dir,
+        #     overwrite=overwrite,
+        #     analysis_project=analysis_project,
+        #     completed_analysis=jc_analysis,
+        #     depends_on=gvcf_jobs,
+        # )
     else:
-        combiner_job = b.new_job('Combine GVCFs [reuse]')
+        if not can_reuse(raw_combined_mt_path, overwrite):
+            combiner_job = dataproc.hail_dataproc_job(
+                b,
+                f'{scripts_dir}/combine_gvcfs.py '
+                f'--meta-csv {samples_csv_path} '
+                f'--out-mt {raw_combined_mt_path} '
+                f'--bucket {combiner_bucket}/work '
+                f'--hail-billing {billing_project} '
+                f'--n-partitions {scatter_count * 25}',
+                max_age='8h',
+                packages=utils.DATAPROC_PACKAGES,
+                num_secondary_workers=scatter_count,
+                depends_on=pre_combiner_jobs,
+                job_name='Combine GVCFs',
+            )
+        else:
+            combiner_job = b.new_job('Combine GVCFs [reuse]')
 
     (
         sample_qc_job,
@@ -391,13 +419,8 @@ def _add_pre_combiner_jobs(
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
 
-    :param input_gvcfs_bucket: bucket with GVCFs batches as subfolders
-    :param input_metadata_bucket: bucket with metadata batches as subfolders
     :param work_bucket: bucket to write intermediate files to
     :param output_bucket: bucket to write the GVCF combiner inputs to
-    :param callset_batches: list of the dataset batches identifiers
-    (where "batch" refers to just a set of sampels, and not to be confused with
-    Hail Batch service)
     :param overwrite: ignore existing intermediate files
     :return: a Tuple of: a pandas dataframe with the sample metadata, a CSV file
     corresponding to that dataframe, and a list of jobs to wait for before
@@ -439,7 +462,6 @@ def _add_pre_combiner_jobs(
             b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
             for gvcf in list(samples_df.gvcf)
         ]
-
         subset_gvcf_jobs = _add_prep_gvcfs_for_combiner_steps(
             b=b,
             gvcfs=gvcfs,
@@ -515,6 +537,7 @@ def _add_prep_gvcfs_for_combiner_steps(
         ]
     ]
     for sn in samples_df.s:
+        assert sn
         samples_df.loc[sn, ['gvcf']] = join(output_gvcf_bucket, sn + '.g.vcf.gz')
     return subset_gvcf_jobs
 

@@ -55,6 +55,9 @@ SEG_DUP_INTERVALS_HT_PATH = join(
 )
 CLINVAR_HT_PATH = join(REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
 
+NUMBER_OF_HAPLOTYPE_CALLER_INTERVALS = 50
+NUMBER_OF_GENOMICS_DB_INTERVALS = 50
+
 
 def init_hail(name: str, local_tmp_dir: str = None):
     """
