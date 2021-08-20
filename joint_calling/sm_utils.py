@@ -150,7 +150,7 @@ def find_inputs_from_db(
     latest_analysis_sample_ids = [
         analysis['sample_ids'] for analysis in latest_analysis
     ]
-    samples_in_latest_analysis = [
+    sample_ids_in_latest_analysis = [
         sample_id for sublist in latest_analysis_sample_ids for sample_id in sublist
     ]
 
@@ -160,18 +160,19 @@ def find_inputs_from_db(
             'active': True,
         }
     )
-    active_sample_ids = [active_sample['id'] for active_sample in active_samples]
-
-    new_samples = list(set(active_sample_ids) - set(samples_in_latest_analysis))
-
-    deleted_samples = list(set(samples_in_latest_analysis) - set(active_sample_ids))
+    active_samples_by_id = {s['id']: s for s in active_samples}
+    active_sample_ids = set(active_samples_by_id.keys())
+    new_sample_ids = list(set(active_sample_ids) - set(sample_ids_in_latest_analysis))
+    deleted_sample_ids = list(
+        set(sample_ids_in_latest_analysis) - set(active_sample_ids)
+    )
 
     inputs = []
 
     # Get all sequence metadata for the list of processed samples
-    sequences_data = seqapi.get_sequences_by_sample_ids(request_body=new_samples)
+    sequences_data = seqapi.get_sequences_by_sample_ids(request_body=new_sample_ids)
 
-    new_sample_gvcfs = aapi.get_latest_gvcfs_for_samples(new_samples)
+    new_sample_gvcfs = aapi.get_latest_gvcfs_for_samples(new_sample_ids)
 
     for new_gvcf in new_sample_gvcfs:
         sample_id = new_gvcf.get('sample_ids')[0]
@@ -214,6 +215,8 @@ def find_inputs_from_db(
                     f'gs://cpg-{proj}-main',
                     f'gs://cpg-{proj}-test',
                 )
+        external_id = active_samples_by_id[sample_id]['external_id']
+        gvcf_path = gvcf_path.replace(sample_id, external_id)
         sample_information = {
             's': sample_id,
             'population': 'EUR',
@@ -231,7 +234,7 @@ def find_inputs_from_db(
 
         inputs.append(sample_information)
 
-    for sample in deleted_samples:
+    for sample in deleted_sample_ids:
         sample_information = {
             's': sample,
             'population': None,
