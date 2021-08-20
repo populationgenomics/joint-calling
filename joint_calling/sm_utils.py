@@ -216,6 +216,8 @@ def find_inputs_from_db(
                     f'gs://cpg-{proj}-main',
                     f'gs://cpg-{proj}-test',
                 )
+                if not utils.file_exists(gvcf_path):
+                    continue
         external_id = active_samples_by_id[sample_id]['external_id']
         gvcf_path = gvcf_path.replace(sample_id, external_id)
         sample_information = {
