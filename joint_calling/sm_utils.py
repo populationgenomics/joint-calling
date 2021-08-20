@@ -183,6 +183,18 @@ def find_inputs_from_db(
             if seq_data['sample_id'] == sample_id
         )
         gvcf_path = new_gvcf.get('output')
+        if is_test:
+            if '/batch1/' not in gvcf_path:
+                continue
+            for proj in input_projects:
+                gvcf_path = gvcf_path.replace(
+                    f'gs://cpg-{proj}-main',
+                    f'gs://cpg-{proj}-test',
+                )
+                if not utils.file_exists(gvcf_path):
+                    continue
+            logger.info(f'Using {gvcf_path} for a test run')
+
         if not gvcf_path:
             logger.warning(
                 f'GVCF analysis for sample ID {sample_id} does not have '
@@ -207,17 +219,6 @@ def find_inputs_from_db(
                 f'does not have a corresponding tbi index: {gvcf_path}.tbi'
             )
             continue
-        if is_test:
-            if '/batch1/' not in gvcf_path:
-                continue
-            logger.info(f'Using {gvcf_path} for a test run')
-            for proj in input_projects:
-                gvcf_path = gvcf_path.replace(
-                    f'gs://cpg-{proj}-main',
-                    f'gs://cpg-{proj}-test',
-                )
-                if not utils.file_exists(gvcf_path):
-                    continue
         external_id = active_samples_by_id[sample_id]['external_id']
         gvcf_path = gvcf_path.replace(sample_id, external_id)
         sample_information = {
