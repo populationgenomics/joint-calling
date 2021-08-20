@@ -22,8 +22,9 @@ from sample_metadata import (
 )
 from joint_calling import utils
 
-logger = logging.getLogger('joint-calling')
-logger.setLevel('INFO')
+logger = logging.getLogger(__file__)
+logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
+logger.setLevel(logging.INFO)
 
 
 @dataclass
