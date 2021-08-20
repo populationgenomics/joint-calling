@@ -206,6 +206,9 @@ def find_inputs_from_db(
             )
             continue
         if is_test:
+            if '/batch1/' not in gvcf_path:
+                continue
+            logger.info(f'Using {gvcf_path} for a test run')
             for proj in input_projects:
                 gvcf_path = gvcf_path.replace(
                     f'gs://cpg-{proj}-main',
