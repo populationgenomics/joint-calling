@@ -20,7 +20,7 @@ from sample_metadata import (
     SequenceApi,
     SampleApi,
 )
-import joint_calling.utils
+from joint_calling import utils
 
 logger = logging.getLogger('joint-calling')
 logger.setLevel('INFO')
