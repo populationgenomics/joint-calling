@@ -26,7 +26,7 @@ test_to_tmp:
 	analysis-runner \
 	--dataset $(ANALYSIS_PROJECT) \
 	--output-dir "joint-calling/test-to-tmp" \
-	--description "Joint calling test-to-temporary" \
+	--description "Joint calling test-to-tmp" \
 	--access-level test \
 	batch_workflow.py \
 	--scatter-count $(SCATTER_COUNT_TEST) \

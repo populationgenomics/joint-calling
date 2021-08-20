@@ -29,7 +29,6 @@ from joint_calling import utils
 from joint_calling.utils import can_reuse
 from joint_calling.variant_qc import add_variant_qc_jobs
 from joint_calling import sm_utils
-from joint_calling.joint_genotyping import make_joint_genotype_jobs
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -206,6 +205,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         overwrite=overwrite,
         input_projects=input_projects,
         analysis_project=analysis_project,
+        is_test=output_namespace in ['test', 'tmp'],
     )
 
     if use_gnarly_genotyper:
@@ -415,6 +415,7 @@ def _add_pre_combiner_jobs(
     overwrite: bool,
     input_projects: List[str],
     analysis_project: str,
+    is_test: bool,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
@@ -422,6 +423,7 @@ def _add_pre_combiner_jobs(
     :param work_bucket: bucket to write intermediate files to
     :param output_bucket: bucket to write the GVCF combiner inputs to
     :param overwrite: ignore existing intermediate files
+    :param is_test: read gvcfs from a test bucket instead of main
     :return: a Tuple of: a pandas dataframe with the sample metadata, a CSV file
     corresponding to that dataframe, and a list of jobs to wait for before
     submitting the combiner job
@@ -455,7 +457,11 @@ def _add_pre_combiner_jobs(
                 f'Reading data from the projects: {input_projects} '
                 f'from the SM server'
             )
-            samples_df = sm_utils.find_inputs_from_db(input_projects, analysis_project)
+            samples_df = sm_utils.find_inputs_from_db(
+                input_projects,
+                analysis_project,
+                is_test=is_test,
+            )
 
         samples_df = samples_df[pd.notnull(samples_df.s)]
         gvcfs = [

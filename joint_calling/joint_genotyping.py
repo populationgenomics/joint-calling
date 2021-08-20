@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# pylint: skip-file
+# type: ignore
+# flake8: noqa
 
 """
 Functions and batch jobs for joint-genotyping

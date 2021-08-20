@@ -134,8 +134,7 @@ python update.py
 
 
 def find_inputs_from_db(
-    input_projects: List[str],
-    analysis_project: str,
+    input_projects: List[str], analysis_project: str, is_test: bool = False
 ) -> pd.DataFrame:
     """
     Determine inputs from SM DB
@@ -181,10 +180,41 @@ def find_inputs_from_db(
             for seq_data in sequences_data
             if seq_data['sample_id'] == sample_id
         )
+        gvcf_path = new_gvcf.get('output')
+        if not gvcf_path:
+            logger.warning(
+                f'GVCF analysis for sample ID {sample_id} does not have '
+                f'an "output" field'
+            )
+            continue
+        if not gvcf_path.endswith('.g.vcf.gz'):
+            logger.warning(
+                f'GVCF analysis for sample ID {sample_id} "output" field '
+                f'is not a GVCF'
+            )
+            continue
+        if not utils.file_exists(gvcf_path):
+            logger.warning(
+                f'GVCF analysis for sample ID {sample_id} "output" field '
+                f'does not exist: {gvcf_path}'
+            )
+            continue
+        if not utils.file_exists(gvcf_path + '.tbi'):
+            logger.warning(
+                f'GVCF analysis for sample ID {sample_id} "output" field '
+                f'does not have a corresponding tbi index: {gvcf_path}.tbi'
+            )
+            continue
+        if is_test:
+            for proj in input_projects:
+                gvcf_path = gvcf_path.replace(
+                    f'gs://cpg-{proj}-main',
+                    f'gs://cpg-{proj}-test',
+                )
         sample_information = {
             's': sample_id,
             'population': 'EUR',
-            'gvcf': new_gvcf.get('output'),
+            'gvcf': gvcf_path,
             'r_contamination': current_seq_data.get('meta').get('raw_data.FREEMIX'),
             'r_chimera': current_seq_data.get('meta').get('raw_data.PCT_CHIMERAS'),
             'r_duplication': current_seq_data.get('meta').get(
