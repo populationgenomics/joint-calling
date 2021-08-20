@@ -194,6 +194,8 @@ def find_inputs_from_db(
                 if not utils.file_exists(gvcf_path):
                     continue
             logger.info(f'Using {gvcf_path} for a test run')
+            external_id = active_samples_by_id[sample_id]['external_id']
+            gvcf_path = gvcf_path.replace(sample_id, external_id)
 
         if not gvcf_path:
             logger.warning(
@@ -209,7 +211,7 @@ def find_inputs_from_db(
             continue
         if not utils.file_exists(gvcf_path):
             logger.warning(
-                f'GVCF analysis for sample ID {sample_id} "output" field '
+                f'GVCF analysis for sample ID {sample_id} "output" file '
                 f'does not exist: {gvcf_path}'
             )
             continue
@@ -219,8 +221,6 @@ def find_inputs_from_db(
                 f'does not have a corresponding tbi index: {gvcf_path}.tbi'
             )
             continue
-        external_id = active_samples_by_id[sample_id]['external_id']
-        gvcf_path = gvcf_path.replace(sample_id, external_id)
         sample_information = {
             's': sample_id,
             'population': 'EUR',
