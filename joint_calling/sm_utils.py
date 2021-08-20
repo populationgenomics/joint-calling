@@ -193,9 +193,9 @@ def find_inputs_from_db(
                 )
                 if not utils.file_exists(gvcf_path):
                     continue
-            logger.info(f'Using {gvcf_path} for a test run')
             external_id = active_samples_by_id[sample_id]['external_id']
             gvcf_path = gvcf_path.replace(sample_id, external_id)
+            logger.info(f'Using {gvcf_path} for a test run')
 
         if not gvcf_path:
             logger.warning(

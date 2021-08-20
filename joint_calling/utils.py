@@ -46,6 +46,7 @@ GNARLY_IMAGE = f'{AR_REPO}/gnarly_genotyper:hail_ukbb_300K'
 BCFTOOLS_IMAGE = f'{AR_REPO}/bcftools:1.10.2--h4f4756c_2'
 SM_IMAGE = f'{AR_REPO}/sm-api:2.0.3'
 
+NOALT_REGIONS = join(REF_BUCKET, 'noalt.bed')
 TEL_AND_CENT_HT_PATH = join(
     REF_BUCKET, 'gnomad/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht'
 )

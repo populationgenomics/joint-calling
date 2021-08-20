@@ -437,7 +437,7 @@ def _add_pre_combiner_jobs(
     # file exists, we assume the samples are pre-processed; otherwise, we add Batch
     # jobs to do the pre-processing.
     combiner_ready_samples_csv_path = join(output_bucket, 'samples.csv')
-    subset_gvcf_jobs = []
+    subset_gvcf_jobs: List[Job] = []
     if can_reuse(combiner_ready_samples_csv_path, overwrite):
         logger.info(
             f'Reading existing combiner-read inputs CSV {combiner_ready_samples_csv_path}'
@@ -462,18 +462,15 @@ def _add_pre_combiner_jobs(
                 analysis_project,
                 is_test=is_test,
             )
+            samples_df.to_csv(
+                input_samples_csv_path, index=False, sep='\t', na_rep='NA'
+            )
 
         samples_df = samples_df[pd.notnull(samples_df.s)]
-        gvcfs = [
-            b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
-            for gvcf in list(samples_df.gvcf)
-        ]
-        subset_gvcf_jobs = _add_prep_gvcfs_for_combiner_steps(
+        subset_gvcf_jobs, samples_df = _add_prep_gvcfs_for_combiner_steps(
             b=b,
-            gvcfs=gvcfs,
             samples_df=samples_df,
             output_gvcf_bucket=join(output_bucket, 'gvcf'),
-            overwrite=overwrite,
         )
         samples_df.to_csv(
             combiner_ready_samples_csv_path, index=False, sep='\t', na_rep='NA'
@@ -488,64 +485,40 @@ def _add_pre_combiner_jobs(
 
 def _add_prep_gvcfs_for_combiner_steps(
     b,
-    gvcfs,
     samples_df: pd.DataFrame,
     output_gvcf_bucket: str,
-    overwrite: bool,
-    reuse_scratch_run_id: Optional[str] = None,
-    hail_bucket: Optional[str] = None,
     depends_on: Optional[List[Job]] = None,
-) -> List[Job]:
+) -> Tuple[List[Job], pd.DataFrame]:
     """
     Add steps required to prepare GVCFs from combining
     """
+    noalt_regions = b.read_input(utils.NOALT_REGIONS)
 
-    # If we want to re-use the intermediate files from a previous run,
-    # find them using the Batch run ID of a previous run with --keep-scratch enabled.
-    found_reblocked_gvcf_paths = [
-        join(
-            str(hail_bucket),
-            'batch',
-            reuse_scratch_run_id,
-            str(job_num),
-            'output_gvcf.g.vcf.gz',
+    jobs = []
+    logger.info(f'Samples DF: {samples_df}')
+    for s_id, gvcf_path in zip(samples_df.s, samples_df.gvcf):
+        logger.info(
+            f'Adding reblock and subset jobs for sample {s_id}, gvcf {gvcf_path}'
         )
-        if reuse_scratch_run_id
-        else None
-        for job_num in range(1, 1 + len(gvcfs))
-    ]
-    reblocked_gvcfs = [
-        b.read_input_group(
-            **{
-                'vcf.gz': found_gvcf_path,
-                'vcf.gz.tbi': f'{found_gvcf_path}.tbi',
-            }
+        gvcf = b.read_input_group(
+            **{'g.vcf.gz': gvcf_path, 'g.vcf.gz.tbi': gvcf_path + '.tbi'}
         )
-        if (found_gvcf_path and can_reuse(found_gvcf_path, overwrite))
-        else _add_reblock_gvcfs_step(b, input_gvcf, depends_on=depends_on).output_gvcf
-        for found_gvcf_path, input_gvcf in zip(found_reblocked_gvcf_paths, gvcfs)
-    ]
-
-    noalt_regions = b.read_input('gs://cpg-reference/hg38/v0/noalt.bed')
-    subset_gvcf_jobs = [
-        _add_subset_noalt_step(
-            b,
-            input_gvcf=input_gvcf,
-            output_gvcf_path=output_gvcf_path,
-            noalt_regions=noalt_regions,
-            depends_on=depends_on,
+        reblock_j = _add_reblock_gvcfs_step(b, gvcf, depends_on=depends_on)
+        output_gvcf_path = join(output_gvcf_bucket, f'{s_id}.g.vcf.gz')
+        jobs.append(
+            _add_subset_noalt_step(
+                b,
+                input_gvcf=reblock_j.output_gvcf,
+                output_gvcf_path=output_gvcf_path,
+                noalt_regions=noalt_regions,
+                depends_on=depends_on,
+            )
         )
-        if not can_reuse(output_gvcf_path, overwrite)
-        else b.new_job('SubsetToNoalt [reuse]')
-        for input_gvcf, output_gvcf_path in [
-            (gvcf, join(output_gvcf_bucket, f'{sample}.g.vcf.gz'))
-            for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)
-        ]
-    ]
-    for sn in samples_df.s:
-        assert sn
-        samples_df.loc[sn, ['gvcf']] = join(output_gvcf_bucket, sn + '.g.vcf.gz')
-    return subset_gvcf_jobs
+        assert s_id
+        samples_df.loc[s_id, ['gvcf']] = output_gvcf_path
+        logger.info(f'Updating sample {s_id} gvcf to {output_gvcf_path}')
+    logger.info(f'Updated sample DF: {samples_df}')
+    return jobs, samples_df
 
 
 def _add_reblock_gvcfs_step(
