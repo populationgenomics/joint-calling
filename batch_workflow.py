@@ -496,7 +496,9 @@ def _add_prep_gvcfs_for_combiner_steps(
 
     jobs = []
     logger.info(f'Samples DF: {samples_df}')
-    for s_id, gvcf_path in zip(samples_df.s, samples_df.gvcf):
+    for s_id, external_id, gvcf_path in zip(
+        samples_df.s, samples_df.external_id, samples_df.gvcf
+    ):
         logger.info(
             f'Adding reblock and subset jobs for sample {s_id}, gvcf {gvcf_path}'
         )
@@ -512,6 +514,8 @@ def _add_prep_gvcfs_for_combiner_steps(
                 output_gvcf_path=output_gvcf_path,
                 noalt_regions=noalt_regions,
                 depends_on=depends_on,
+                external_sample_id=external_id,
+                internal_sample_id=s_id,
             )
         )
         assert s_id
@@ -561,12 +565,15 @@ def _add_subset_noalt_step(
     input_gvcf: hb.ResourceGroup,
     output_gvcf_path: str,
     noalt_regions: hb.ResourceFile,
+    external_sample_id: str,
+    internal_sample_id: str,
     depends_on: Optional[List[Job]] = None,
 ) -> Job:
     """
     1. Subset GVCF to main chromosomes to avoid downstream errors
     2. Removes the DS INFO field that is added to some HGDP GVCFs to avoid errors
        from Hail about mismatched INFO annotations
+    3. Renames sample name from external_sample_id to internal_sample_id
     """
     j = b.new_job('SubsetToNoalt')
     j.image('quay.io/biocontainers/bcftools:1.10.2--h4f4756c_2')
@@ -584,12 +591,10 @@ def _add_subset_noalt_step(
     j.command(
         f"""set -e
 
-    bcftools view \\
-        {input_gvcf['g.vcf.gz']} \\
-        -T {noalt_regions} \\
+    bcftools view {input_gvcf['g.vcf.gz']} -T {noalt_regions} \\
         | bcftools annotate -x INFO/DS \\
-        -o {j.output_gvcf['g.vcf.gz']} \\
-        -Oz
+        | bcftools reheader -s <(echo "{external_sample_id} {internal_sample_id}") \\
+        | bcftools view -Oz -o {j.output_gvcf['g.vcf.gz']}
 
     bcftools index --tbi {j.output_gvcf['g.vcf.gz']}
         """
