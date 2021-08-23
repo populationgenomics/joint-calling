@@ -173,16 +173,17 @@ def find_inputs_from_db(
     # Get all sequence metadata for the list of processed samples
     sequences_data = seqapi.get_sequences_by_sample_ids(request_body=new_sample_ids)
 
-    new_sample_gvcfs = aapi.get_latest_gvcfs_for_samples(new_sample_ids)
+    new_sample_gvcf_analyses = aapi.get_latest_gvcfs_for_samples(new_sample_ids)
 
-    for new_gvcf in new_sample_gvcfs:
-        sample_id = new_gvcf.get('sample_ids')[0]
+    for new_gvcf_analysis in new_sample_gvcf_analyses:
+        sample_id = new_gvcf_analysis.get('sample_ids')[0]
         current_seq_data = next(
             seq_data
             for seq_data in sequences_data
             if seq_data['sample_id'] == sample_id
         )
-        gvcf_path = new_gvcf.get('output')
+        gvcf_path = new_gvcf_analysis.get('output')
+        external_id = active_samples_by_id[sample_id]['external_id']
         if is_test:
             if '/batch1/' not in gvcf_path:
                 continue
@@ -193,7 +194,6 @@ def find_inputs_from_db(
                 )
                 if not utils.file_exists(gvcf_path):
                     continue
-            external_id = active_samples_by_id[sample_id]['external_id']
             gvcf_path = gvcf_path.replace(sample_id, external_id)
             logger.info(f'Using {gvcf_path} for a test run')
 
@@ -223,6 +223,7 @@ def find_inputs_from_db(
             continue
         sample_information = {
             's': sample_id,
+            'external_id': external_id,
             'population': 'EUR',
             'gvcf': gvcf_path,
             'r_contamination': current_seq_data.get('meta').get('raw_data.FREEMIX'),
@@ -241,6 +242,7 @@ def find_inputs_from_db(
     for sample_id in deleted_sample_ids:
         sample_information = {
             's': sample_id,
+            'external_id': None,
             'population': None,
             'gvcf': None,
             'r_contamination': None,
