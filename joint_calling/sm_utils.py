@@ -238,9 +238,9 @@ def find_inputs_from_db(
 
         inputs.append(sample_information)
 
-    for sample in deleted_sample_ids:
+    for sample_id in deleted_sample_ids:
         sample_information = {
-            's': sample,
+            's': sample_id,
             'population': None,
             'gvcf': None,
             'r_contamination': None,
@@ -251,7 +251,7 @@ def find_inputs_from_db(
         }
         inputs.append(sample_information)
 
-    df = pd.DataFrame(inputs)
+    df = pd.DataFrame(inputs).set_index('s', drop=False)
     return df
 
 

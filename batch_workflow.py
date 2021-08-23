@@ -432,24 +432,24 @@ def _add_pre_combiner_jobs(
     # File with the pointers to GVCFs to process along with metdata.
     # If it doesn't exist, we trigger a utuils.find_inputs(combiner_bucket) function
     # to find the GVCFs and the metadata given the requested batch ids.
-    input_samples_csv_path = join(work_bucket, 'samples.csv')
+    input_samples_tsv_path = join(work_bucket, 'samples.tsv')
     # Raw GVCFs need pre-processing before passing to the combiner. If the following
     # file exists, we assume the samples are pre-processed; otherwise, we add Batch
     # jobs to do the pre-processing.
-    combiner_ready_samples_csv_path = join(output_bucket, 'samples.csv')
+    combiner_ready_samples_tsv_path = join(output_bucket, 'samples.tsv')
     subset_gvcf_jobs: List[Job] = []
-    if can_reuse(combiner_ready_samples_csv_path, overwrite):
+    if can_reuse(combiner_ready_samples_tsv_path, overwrite):
         logger.info(
-            f'Reading existing combiner-read inputs CSV {combiner_ready_samples_csv_path}'
+            f'Reading existing combiner-read inputs TSV {combiner_ready_samples_tsv_path}'
         )
-        samples_df = pd.read_csv(combiner_ready_samples_csv_path, sep='\t').set_index(
+        samples_df = pd.read_csv(combiner_ready_samples_tsv_path, sep='\t').set_index(
             's', drop=False
         )
         samples_df = samples_df[pd.notnull(samples_df.s)]
     else:
-        if can_reuse(input_samples_csv_path, overwrite):
-            logger.info(f'Reading existing inputs CSV {input_samples_csv_path}')
-            samples_df = pd.read_csv(input_samples_csv_path, sep='\t').set_index(
+        if can_reuse(input_samples_tsv_path, overwrite):
+            logger.info(f'Reading existing inputs TSV {input_samples_tsv_path}')
+            samples_df = pd.read_csv(input_samples_tsv_path, sep='\t').set_index(
                 's', drop=False
             )
         else:
@@ -463,7 +463,7 @@ def _add_pre_combiner_jobs(
                 is_test=is_test,
             )
             samples_df.to_csv(
-                input_samples_csv_path, index=False, sep='\t', na_rep='NA'
+                input_samples_tsv_path, index=False, sep='\t', na_rep='NA'
             )
 
         samples_df = samples_df[pd.notnull(samples_df.s)]
@@ -473,14 +473,14 @@ def _add_pre_combiner_jobs(
             output_gvcf_bucket=join(output_bucket, 'gvcf'),
         )
         samples_df.to_csv(
-            combiner_ready_samples_csv_path, index=False, sep='\t', na_rep='NA'
+            combiner_ready_samples_tsv_path, index=False, sep='\t', na_rep='NA'
         )
         logger.info(
             f'Saved metadata with updated GVCFs to '
-            f'{combiner_ready_samples_csv_path}'
+            f'{combiner_ready_samples_tsv_path}'
         )
 
-    return samples_df, combiner_ready_samples_csv_path, subset_gvcf_jobs
+    return samples_df, combiner_ready_samples_tsv_path, subset_gvcf_jobs
 
 
 def _add_prep_gvcfs_for_combiner_steps(
