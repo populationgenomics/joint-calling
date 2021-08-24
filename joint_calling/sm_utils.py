@@ -20,45 +20,11 @@ from sample_metadata import (
     SequenceApi,
     SampleApi,
 )
+from joint_calling import utils
 
-logger = logging.getLogger('joint-calling')
-logger.setLevel('INFO')
-
-
-DEFAULT_REF = 'GRCh38'
-
-REF_BUCKET = 'gs://cpg-reference/hg38/v1'
-
-DATAPROC_PACKAGES = [
-    'joint-calling',
-    'click',
-    'cpg-gnomad',
-    'google',
-    'slackclient',
-    'fsspec',
-    'sklearn',
-    'gcloud',
-]
-
-DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
-
-AR_REPO = 'australia-southeast1-docker.pkg.dev/cpg-common/images'
-GATK_VERSION = '4.2.0.0'
-GATK_IMAGE = f'{AR_REPO}/gatk:{GATK_VERSION}'
-# GnarlyGenotyper is in Beta and crashes with NullPointerException when using the
-# official GATK docker, that's why we're using a separate image for it:
-GNARLY_IMAGE = f'{AR_REPO}/gnarly_genotyper:hail_ukbb_300K'
-BCFTOOLS_IMAGE = f'{AR_REPO}/bcftools:1.10.2--h4f4756c_2'
-SM_IMAGE = f'{AR_REPO}/sm-api:2.0.3'
-
-TEL_AND_CENT_HT_PATH = join(
-    REF_BUCKET, 'gnomad/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht'
-)
-LCR_INTERVALS_HT_PATH = join(REF_BUCKET, 'gnomad/lcr_intervals/LCRFromHengHg38.ht')
-SEG_DUP_INTERVALS_HT_PATH = join(
-    REF_BUCKET, 'gnomad/seg_dup_intervals/GRCh38_segdups.ht'
-)
-CLINVAR_HT_PATH = join(REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
+logger = logging.getLogger(__file__)
+logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
+logger.setLevel(logging.INFO)
 
 
 @dataclass
@@ -142,7 +108,7 @@ def make_sm_update_status_job(
     """
     assert status in ['in-progress', 'failed', 'completed', 'queued']
     j = b.new_job(f'SM: update {analysis_type} to {status}')
-    j.image(SM_IMAGE)
+    j.image(utils.SM_IMAGE)
     j.command(
         f"""
 set -o pipefail
@@ -169,8 +135,7 @@ python update.py
 
 
 def find_inputs_from_db(
-    input_projects: List[str],
-    analysis_project: str,
+    input_projects: List[str], analysis_project: str, is_test: bool = False
 ) -> pd.DataFrame:
     """
     Determine inputs from SM DB
@@ -186,7 +151,7 @@ def find_inputs_from_db(
     latest_analysis_sample_ids = [
         analysis['sample_ids'] for analysis in latest_analysis
     ]
-    samples_in_latest_analysis = [
+    sample_ids_in_latest_analysis = [
         sample_id for sublist in latest_analysis_sample_ids for sample_id in sublist
     ]
 
@@ -196,30 +161,71 @@ def find_inputs_from_db(
             'active': True,
         }
     )
-    active_sample_ids = [active_sample['id'] for active_sample in active_samples]
-
-    new_samples = list(set(active_sample_ids) - set(samples_in_latest_analysis))
-
-    deleted_samples = list(set(samples_in_latest_analysis) - set(active_sample_ids))
+    active_samples_by_id = {s['id']: s for s in active_samples}
+    active_sample_ids = set(active_samples_by_id.keys())
+    new_sample_ids = list(set(active_sample_ids) - set(sample_ids_in_latest_analysis))
+    deleted_sample_ids = list(
+        set(sample_ids_in_latest_analysis) - set(active_sample_ids)
+    )
 
     inputs = []
 
     # Get all sequence metadata for the list of processed samples
-    sequences_data = seqapi.get_sequences_by_sample_ids(request_body=new_samples)
+    sequences_data = seqapi.get_sequences_by_sample_ids(request_body=new_sample_ids)
 
-    new_sample_gvcfs = aapi.get_latest_gvcfs_for_samples(new_samples)
+    new_sample_gvcf_analyses = aapi.get_latest_gvcfs_for_samples(new_sample_ids)
 
-    for new_gvcf in new_sample_gvcfs:
-        sample_id = new_gvcf.get('sample_ids')[0]
+    for new_gvcf_analysis in new_sample_gvcf_analyses:
+        sample_id = new_gvcf_analysis.get('sample_ids')[0]
         current_seq_data = next(
             seq_data
             for seq_data in sequences_data
             if seq_data['sample_id'] == sample_id
         )
+        gvcf_path = new_gvcf_analysis.get('output')
+        external_id = active_samples_by_id[sample_id]['external_id']
+        if is_test:
+            if '/batch1/' not in gvcf_path:
+                continue
+            for proj in input_projects:
+                gvcf_path = gvcf_path.replace(
+                    f'gs://cpg-{proj}-main',
+                    f'gs://cpg-{proj}-test',
+                )
+                if not utils.file_exists(gvcf_path):
+                    continue
+            gvcf_path = gvcf_path.replace(sample_id, external_id)
+            logger.info(f'Using {gvcf_path} for a test run')
+
+        if not gvcf_path:
+            logger.warning(
+                f'GVCF analysis for sample ID {sample_id} does not have '
+                f'an "output" field'
+            )
+            continue
+        if not gvcf_path.endswith('.g.vcf.gz'):
+            logger.warning(
+                f'GVCF analysis for sample ID {sample_id} "output" field '
+                f'is not a GVCF'
+            )
+            continue
+        if not utils.file_exists(gvcf_path):
+            logger.warning(
+                f'GVCF analysis for sample ID {sample_id} "output" file '
+                f'does not exist: {gvcf_path}'
+            )
+            continue
+        if not utils.file_exists(gvcf_path + '.tbi'):
+            logger.warning(
+                f'GVCF analysis for sample ID {sample_id} "output" field '
+                f'does not have a corresponding tbi index: {gvcf_path}.tbi'
+            )
+            continue
         sample_information = {
             's': sample_id,
+            'external_id': external_id,
             'population': 'EUR',
-            'gvcf': new_gvcf.get('output'),
+            'gvcf': gvcf_path,
             'r_contamination': current_seq_data.get('meta').get('raw_data.FREEMIX'),
             'r_chimera': current_seq_data.get('meta').get('raw_data.PCT_CHIMERAS'),
             'r_duplication': current_seq_data.get('meta').get(
@@ -233,9 +239,10 @@ def find_inputs_from_db(
 
         inputs.append(sample_information)
 
-    for sample in deleted_samples:
+    for sample_id in deleted_sample_ids:
         sample_information = {
-            's': sample,
+            's': sample_id,
+            'external_id': None,
             'population': None,
             'gvcf': None,
             'r_contamination': None,
@@ -246,8 +253,7 @@ def find_inputs_from_db(
         }
         inputs.append(sample_information)
 
-    df = pd.DataFrame(inputs)
-
+    df = pd.DataFrame(inputs).set_index('s', drop=False)
     return df
 
 

@@ -30,8 +30,9 @@ from joint_calling.utils import can_reuse
 from joint_calling.variant_qc import add_variant_qc_jobs
 from joint_calling import sm_utils
 
-logger = logging.getLogger('joint-calling')
-logger.setLevel('INFO')
+logger = logging.getLogger(__file__)
+logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
+logger.setLevel(logging.INFO)
 
 
 @click.command()
@@ -62,6 +63,13 @@ logger.setLevel('INFO')
     multiple=True,
     help='Only create reports for the project(s). Can be multiple. '
     'The name will be suffixed with the dataset version (set by --version)',
+)
+@click.option(
+    '--use-gnarly-genotyper',
+    'use_gnarly_genotyper',
+    is_flag=True,
+    help='Whether to use a GenomicsDB and Gnarly genotyper to merge GVCFs instead of '
+    'the Hail combiner',
 )
 @click.option(
     '--ped-file',
@@ -107,6 +115,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     input_projects: List[str],  # pylint: disable=unused-argument
     output_version: str,
     output_projects: Optional[List[str]],  # pylint: disable=unused-argument
+    use_gnarly_genotyper: bool,
     ped_file: str,
     filter_cutoffs_path: str,
     keep_scratch: bool,
@@ -196,24 +205,43 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         overwrite=overwrite,
         input_projects=input_projects,
         analysis_project=analysis_project,
+        is_test=output_namespace in ['test', 'tmp'],
     )
 
-    if not can_reuse(raw_combined_mt_path, overwrite):
-        combiner_job = dataproc.hail_dataproc_job(
-            b,
-            f'{scripts_dir}/combine_gvcfs.py '
-            f'--meta-csv {samples_csv_path} '
-            f'--out-mt {raw_combined_mt_path} '
-            f'--bucket {combiner_bucket}/work ' + f'--hail-billing {billing_project} '
-            f'--n-partitions {scatter_count * 25}',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=pre_combiner_jobs,
-            job_name='Combine GVCFs',
-        )
+    if use_gnarly_genotyper:
+        combiner_job = b.new_job('Not implemented')
+        # combiner_job, vcf_path = make_joint_genotype_jobs(
+        #     b=b,
+        #     genomicsdb_bucket=join(work_bucket, 'genomicsdbs'),
+        #     samples_df=samples_df,
+        #     reference=reference,
+        #     dbsnp=utils.DBSNP_VCF,
+        #     out_bucket=out_bucket,
+        #     tmp_bucket=out_bucket,
+        #     local_tmp_dir=local_tmp_dir,
+        #     overwrite=overwrite,
+        #     analysis_project=analysis_project,
+        #     completed_analysis=jc_analysis,
+        #     depends_on=gvcf_jobs,
+        # )
     else:
-        combiner_job = b.new_job('Combine GVCFs [reuse]')
+        if not can_reuse(raw_combined_mt_path, overwrite):
+            combiner_job = dataproc.hail_dataproc_job(
+                b,
+                f'{scripts_dir}/combine_gvcfs.py '
+                f'--meta-csv {samples_csv_path} '
+                f'--out-mt {raw_combined_mt_path} '
+                f'--bucket {combiner_bucket}/work '
+                f'--hail-billing {billing_project} '
+                f'--n-partitions {scatter_count * 25}',
+                max_age='8h',
+                packages=utils.DATAPROC_PACKAGES,
+                num_secondary_workers=scatter_count,
+                depends_on=pre_combiner_jobs,
+                job_name='Combine GVCFs',
+            )
+        else:
+            combiner_job = b.new_job('Combine GVCFs [reuse]')
 
     (
         sample_qc_job,
@@ -387,18 +415,15 @@ def _add_pre_combiner_jobs(
     overwrite: bool,
     input_projects: List[str],
     analysis_project: str,
+    is_test: bool,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
 
-    :param input_gvcfs_bucket: bucket with GVCFs batches as subfolders
-    :param input_metadata_bucket: bucket with metadata batches as subfolders
     :param work_bucket: bucket to write intermediate files to
     :param output_bucket: bucket to write the GVCF combiner inputs to
-    :param callset_batches: list of the dataset batches identifiers
-    (where "batch" refers to just a set of sampels, and not to be confused with
-    Hail Batch service)
     :param overwrite: ignore existing intermediate files
+    :param is_test: read gvcfs from a test bucket instead of main
     :return: a Tuple of: a pandas dataframe with the sample metadata, a CSV file
     corresponding to that dataframe, and a list of jobs to wait for before
     submitting the combiner job
@@ -407,24 +432,24 @@ def _add_pre_combiner_jobs(
     # File with the pointers to GVCFs to process along with metdata.
     # If it doesn't exist, we trigger a utuils.find_inputs(combiner_bucket) function
     # to find the GVCFs and the metadata given the requested batch ids.
-    input_samples_csv_path = join(work_bucket, 'samples.csv')
+    input_samples_tsv_path = join(work_bucket, 'samples.tsv')
     # Raw GVCFs need pre-processing before passing to the combiner. If the following
     # file exists, we assume the samples are pre-processed; otherwise, we add Batch
     # jobs to do the pre-processing.
-    combiner_ready_samples_csv_path = join(output_bucket, 'samples.csv')
-    subset_gvcf_jobs = []
-    if can_reuse(combiner_ready_samples_csv_path, overwrite):
+    combiner_ready_samples_tsv_path = join(output_bucket, 'samples.tsv')
+    subset_gvcf_jobs: List[Job] = []
+    if can_reuse(combiner_ready_samples_tsv_path, overwrite):
         logger.info(
-            f'Reading existing combiner-read inputs CSV {combiner_ready_samples_csv_path}'
+            f'Reading existing combiner-read inputs TSV {combiner_ready_samples_tsv_path}'
         )
-        samples_df = pd.read_csv(combiner_ready_samples_csv_path, sep='\t').set_index(
+        samples_df = pd.read_csv(combiner_ready_samples_tsv_path, sep='\t').set_index(
             's', drop=False
         )
         samples_df = samples_df[pd.notnull(samples_df.s)]
     else:
-        if can_reuse(input_samples_csv_path, overwrite):
-            logger.info(f'Reading existing inputs CSV {input_samples_csv_path}')
-            samples_df = pd.read_csv(input_samples_csv_path, sep='\t').set_index(
+        if can_reuse(input_samples_tsv_path, overwrite):
+            logger.info(f'Reading existing inputs TSV {input_samples_tsv_path}')
+            samples_df = pd.read_csv(input_samples_tsv_path, sep='\t').set_index(
                 's', drop=False
             )
         else:
@@ -432,91 +457,72 @@ def _add_pre_combiner_jobs(
                 f'Reading data from the projects: {input_projects} '
                 f'from the SM server'
             )
-            samples_df = sm_utils.find_inputs_from_db(input_projects, analysis_project)
+            samples_df = sm_utils.find_inputs_from_db(
+                input_projects,
+                analysis_project,
+                is_test=is_test,
+            )
+            samples_df.to_csv(
+                input_samples_tsv_path, index=False, sep='\t', na_rep='NA'
+            )
 
         samples_df = samples_df[pd.notnull(samples_df.s)]
-        gvcfs = [
-            b.read_input_group(**{'g.vcf.gz': gvcf, 'g.vcf.gz.tbi': gvcf + '.tbi'})
-            for gvcf in list(samples_df.gvcf)
-        ]
-
-        subset_gvcf_jobs = _add_prep_gvcfs_for_combiner_steps(
+        subset_gvcf_jobs, samples_df = _add_prep_gvcfs_for_combiner_steps(
             b=b,
-            gvcfs=gvcfs,
             samples_df=samples_df,
             output_gvcf_bucket=join(output_bucket, 'gvcf'),
-            overwrite=overwrite,
         )
         samples_df.to_csv(
-            combiner_ready_samples_csv_path, index=False, sep='\t', na_rep='NA'
+            combiner_ready_samples_tsv_path, index=False, sep='\t', na_rep='NA'
         )
         logger.info(
             f'Saved metadata with updated GVCFs to '
-            f'{combiner_ready_samples_csv_path}'
+            f'{combiner_ready_samples_tsv_path}'
         )
 
-    return samples_df, combiner_ready_samples_csv_path, subset_gvcf_jobs
+    return samples_df, combiner_ready_samples_tsv_path, subset_gvcf_jobs
 
 
 def _add_prep_gvcfs_for_combiner_steps(
     b,
-    gvcfs,
     samples_df: pd.DataFrame,
     output_gvcf_bucket: str,
-    overwrite: bool,
-    reuse_scratch_run_id: Optional[str] = None,
-    hail_bucket: Optional[str] = None,
     depends_on: Optional[List[Job]] = None,
-) -> List[Job]:
+) -> Tuple[List[Job], pd.DataFrame]:
     """
     Add steps required to prepare GVCFs from combining
     """
+    noalt_regions = b.read_input(utils.NOALT_REGIONS)
 
-    # If we want to re-use the intermediate files from a previous run,
-    # find them using the Batch run ID of a previous run with --keep-scratch enabled.
-    found_reblocked_gvcf_paths = [
-        join(
-            str(hail_bucket),
-            'batch',
-            reuse_scratch_run_id,
-            str(job_num),
-            'output_gvcf.g.vcf.gz',
+    jobs = []
+    logger.info(f'Samples DF: {samples_df}')
+    for s_id, external_id, gvcf_path in zip(
+        samples_df.s, samples_df.external_id, samples_df.gvcf
+    ):
+        logger.info(
+            f'Adding reblock and subset jobs for sample {s_id}, gvcf {gvcf_path}'
         )
-        if reuse_scratch_run_id
-        else None
-        for job_num in range(1, 1 + len(gvcfs))
-    ]
-    reblocked_gvcfs = [
-        b.read_input_group(
-            **{
-                'vcf.gz': found_gvcf_path,
-                'vcf.gz.tbi': f'{found_gvcf_path}.tbi',
-            }
+        gvcf = b.read_input_group(
+            **{'g.vcf.gz': gvcf_path, 'g.vcf.gz.tbi': gvcf_path + '.tbi'}
         )
-        if (found_gvcf_path and can_reuse(found_gvcf_path, overwrite))
-        else _add_reblock_gvcfs_step(b, input_gvcf, depends_on=depends_on).output_gvcf
-        for found_gvcf_path, input_gvcf in zip(found_reblocked_gvcf_paths, gvcfs)
-    ]
-
-    noalt_regions = b.read_input('gs://cpg-reference/hg38/v0/noalt.bed')
-    subset_gvcf_jobs = [
-        _add_subset_noalt_step(
-            b,
-            input_gvcf=input_gvcf,
-            output_gvcf_path=output_gvcf_path,
-            noalt_regions=noalt_regions,
-            depends_on=depends_on,
+        reblock_j = _add_reblock_gvcfs_step(b, gvcf, depends_on=depends_on)
+        output_gvcf_path = join(output_gvcf_bucket, f'{s_id}.g.vcf.gz')
+        jobs.append(
+            _add_subset_noalt_step(
+                b,
+                input_gvcf=reblock_j.output_gvcf,
+                output_gvcf_path=output_gvcf_path,
+                noalt_regions=noalt_regions,
+                depends_on=depends_on,
+                external_sample_id=external_id,
+                internal_sample_id=s_id,
+            )
         )
-        if not can_reuse(output_gvcf_path, overwrite)
-        else b.new_job('SubsetToNoalt [reuse]')
-        for input_gvcf, output_gvcf_path in [
-            (gvcf, join(output_gvcf_bucket, f'{sample}.g.vcf.gz'))
-            for sample, gvcf in zip(list(samples_df.s), reblocked_gvcfs)
-        ]
-    ]
-    for sn in samples_df.s:
-        samples_df.loc[sn, ['gvcf']] = join(output_gvcf_bucket, sn + '.g.vcf.gz')
-    return subset_gvcf_jobs
+        assert s_id
+        samples_df.loc[s_id, ['gvcf']] = output_gvcf_path
+        logger.info(f'Updating sample {s_id} gvcf to {output_gvcf_path}')
+    logger.info(f'Updated sample DF: {samples_df}')
+    return jobs, samples_df
 
 
 def _add_reblock_gvcfs_step(
@@ -559,12 +565,15 @@ def _add_subset_noalt_step(
     input_gvcf: hb.ResourceGroup,
     output_gvcf_path: str,
     noalt_regions: hb.ResourceFile,
+    external_sample_id: str,
+    internal_sample_id: str,
     depends_on: Optional[List[Job]] = None,
 ) -> Job:
     """
     1. Subset GVCF to main chromosomes to avoid downstream errors
     2. Removes the DS INFO field that is added to some HGDP GVCFs to avoid errors
        from Hail about mismatched INFO annotations
+    3. Renames sample name from external_sample_id to internal_sample_id
     """
     j = b.new_job('SubsetToNoalt')
     j.image('quay.io/biocontainers/bcftools:1.10.2--h4f4756c_2')
@@ -582,12 +591,10 @@ def _add_subset_noalt_step(
     j.command(
         f"""set -e
 
-    bcftools view \\
-        {input_gvcf['g.vcf.gz']} \\
-        -T {noalt_regions} \\
+    bcftools view {input_gvcf['g.vcf.gz']} -T {noalt_regions} \\
         | bcftools annotate -x INFO/DS \\
-        -o {j.output_gvcf['g.vcf.gz']} \\
-        -Oz
+        | bcftools reheader -s <(echo "{external_sample_id} {internal_sample_id}") \\
+        | bcftools view -Oz -o {j.output_gvcf['g.vcf.gz']}
 
     bcftools index --tbi {j.output_gvcf['g.vcf.gz']}
         """

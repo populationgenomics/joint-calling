@@ -46,6 +46,7 @@ GNARLY_IMAGE = f'{AR_REPO}/gnarly_genotyper:hail_ukbb_300K'
 BCFTOOLS_IMAGE = f'{AR_REPO}/bcftools:1.10.2--h4f4756c_2'
 SM_IMAGE = f'{AR_REPO}/sm-api:2.0.3'
 
+NOALT_REGIONS = join(REF_BUCKET, 'noalt.bed')
 TEL_AND_CENT_HT_PATH = join(
     REF_BUCKET, 'gnomad/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht'
 )
@@ -54,6 +55,9 @@ SEG_DUP_INTERVALS_HT_PATH = join(
     REF_BUCKET, 'gnomad/seg_dup_intervals/GRCh38_segdups.ht'
 )
 CLINVAR_HT_PATH = join(REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
+
+NUMBER_OF_HAPLOTYPE_CALLER_INTERVALS = 50
+NUMBER_OF_GENOMICS_DB_INTERVALS = 50
 
 
 def init_hail(name: str, local_tmp_dir: str = None):

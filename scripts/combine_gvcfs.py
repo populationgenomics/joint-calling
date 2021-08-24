@@ -107,6 +107,7 @@ def main(
     new_mt_path = os.path.join(work_bucket, 'new.mt')
     combine_gvcfs(
         gvcf_paths=list(new_samples_df.gvcf),
+        sample_names=list(new_samples_df.s),
         out_mt_path=new_mt_path,
         work_bucket=work_bucket,
         overwrite=True,
@@ -163,13 +164,18 @@ def _combine_with_the_existing_mt(
 
 
 def combine_gvcfs(
-    gvcf_paths: List[str], out_mt_path: str, work_bucket: str, overwrite: bool = True
+    gvcf_paths: List[str],
+    sample_names: List[str],
+    out_mt_path: str,
+    work_bucket: str,
+    overwrite: bool = True,
 ):
     """
     Combine a set of GVCFs in one go
     """
     hl.experimental.run_combiner(
         gvcf_paths,
+        sample_names=sample_names,
         out_file=out_mt_path,
         reference_genome=utils.DEFAULT_REF,
         use_genome_default_intervals=True,

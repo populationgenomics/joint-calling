@@ -249,6 +249,16 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         overwrite=overwrite,
     )
 
+    if age_csv:
+        age_ht = (
+            hl.import_table(age_csv, delimiter=',', types={'age': 'float'})
+            .rename({'TOBIID': 's'})
+            .key_by('s')
+        )
+        input_meta_ht = input_meta_ht.annotate(
+            age=age_ht[input_meta_ht.external_id].age,
+        )
+
     # Combine all intermediate tables together
     _generate_metadata(
         sample_qc_ht=hail_sample_qc_ht,
@@ -263,11 +273,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         out_ht_path=out_meta_ht_path,
         out_tsv_path=out_meta_tsv_path,
         overwrite=overwrite,
-        age_ht=hl.import_table(age_csv, delimiter=',', types={'age': 'float'})
-        .rename({'TOBIID': 's'})
-        .key_by('s')
-        if age_csv
-        else None,
     )
 
 
@@ -418,7 +423,6 @@ def _generate_metadata(
     out_ht_path: str,
     out_tsv_path: str,
     overwrite: bool = False,
-    age_ht: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
     Combine all intermediate tables into a single metadata table
@@ -443,7 +447,6 @@ def _generate_metadata(
         table with related samples, after re-ranking them based
         on population-stratified QC
     :param overwrite: overwrite checkpoints if they exist
-    :param age_ht: optional: Table with a field "age"
     :return: table with relevant fields from input tables,
         annotated with the following row fields:
             'related_after_qc': bool = in `related_samples_to_drop_after_qc_ht`
@@ -482,11 +485,6 @@ def _generate_metadata(
             ),
             related=hl.is_defined(related_samples_to_drop_after_qc_ht[meta_ht.key]),
         )
-
-        if age_ht is not None:
-            meta_ht = meta_ht.annotate(
-                age=age_ht[meta_ht.key].age,
-            )
 
         meta_ht = meta_ht.annotate(
             hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
