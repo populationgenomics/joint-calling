@@ -255,8 +255,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
             .rename({'TOBIID': 's'})
             .key_by('s')
         )
-        sex_ht = sex_ht.annotate(
-            age=age_ht[sex_ht.external_id].age,
+        input_meta_ht = input_meta_ht.annotate(
+            age=age_ht[input_meta_ht.external_id].age,
         )
 
     # Combine all intermediate tables together
