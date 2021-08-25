@@ -313,7 +313,7 @@ def make_vqsr_jobs(
                 indels_tranches=indels_tranches,
                 snps_recalibration=snps_recalibrations[idx],
                 snps_tranches=snps_gathered_tranches,
-                disk_size=medium_disk,
+                disk_size=huge_disk,
                 indel_filter_level=vqsr_params_d['indel_filter_level'],
                 snp_filter_level=vqsr_params_d['snp_filter_level'],
             ).recalibrated_vcf
@@ -349,7 +349,7 @@ def make_vqsr_jobs(
             indels_tranches=indels_tranches,
             snps_recalibration=snps_recalibration,
             snps_tranches=snps_tranches,
-            disk_size=medium_disk,
+            disk_size=huge_disk,
             indel_filter_level=vqsr_params_d['indel_filter_level'],
             snp_filter_level=vqsr_params_d['snp_filter_level'],
         )
@@ -1005,6 +1005,8 @@ def add_apply_recalibration_step(
       -mode INDEL \\
       {f'-L {interval} ' if interval else ''} \\
       --use-allele-specific-annotations
+
+    rm {input_vcf['vcf.gz']} {indels_recalibration} {indels_tranches}
 
     gatk --java-options -Xms5g \\
       ApplyVQSR \\
