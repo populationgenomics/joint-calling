@@ -993,10 +993,16 @@ def add_apply_recalibration_step(
 
     j.command(
         f"""set -euo pipefail
+        
+    df -h; pwd; du -sh $(dirname {j.recalibrated_vcf['vcf.gz']})
+    
+    TMP_DIR=$(dirname {j.recalibrated_vcf['vcf.gz']})/tmp
+    mkdir $TMP_DIR
 
     gatk --java-options -Xms5g \\
       ApplyVQSR \\
-      -O tmp.indel.recalibrated.vcf \\
+      --tmp-dir $TMP_DIR \\
+      -O tmp.indel.recalibrated.vcf.gz \\
       -V {input_vcf['vcf.gz']} \\
       --recal-file {indels_recalibration} \\
       --tranches-file {indels_tranches} \\
@@ -1006,19 +1012,29 @@ def add_apply_recalibration_step(
       {f'-L {interval} ' if interval else ''} \\
       --use-allele-specific-annotations
 
+    df -h; pwd; du -sh $(dirname {j.recalibrated_vcf['vcf.gz']})
+
     rm {input_vcf['vcf.gz']} {indels_recalibration} {indels_tranches}
+    rm -rf $TMP_DIR
+    mkdir $TMP_DIR
+
+    df -h; pwd; du -sh $(dirname {j.recalibrated_vcf['vcf.gz']})
 
     gatk --java-options -Xms5g \\
       ApplyVQSR \\
+      --tmp-dir $TMP_DIR \\
       -O {j.recalibrated_vcf['vcf.gz']} \\
-      -V tmp.indel.recalibrated.vcf \\
+      -V tmp.indel.recalibrated.vcf.gz \\
       --recal-file {snps_recalibration} \\
       --tranches-file {snps_tranches} \\
       --truth-sensitivity-filter-level {snp_filter_level} \\
       --create-output-variant-index true \\
       -mode SNP \\
       {f'-L {interval} ' if interval else ''} \\
-      --use-allele-specific-annotations"""
+      --use-allele-specific-annotations
+
+    df -h; pwd; du -sh $(dirname {j.recalibrated_vcf['vcf.gz']})
+    """
     )
 
     if output_vcf_path:
