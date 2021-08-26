@@ -386,13 +386,13 @@ def _add_sample_qc_jobs(
         else:
             filter_cutoffs_param = ''
 
-        disk = '40G'
+        disk = 40
         if sample_count > 300:
-            disk = '100G'
+            disk = 100
         if sample_count > 2000:
-            disk = '500G'
+            disk = 500
         if sample_count > 10000:
-            disk = '1000G'
+            disk = 1000
         sample_qc_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/sample_qc.py {filter_cutoffs_param} --overwrite '
