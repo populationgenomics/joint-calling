@@ -260,6 +260,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         scatter_count=scatter_count,
         depends_on=[combiner_job],
         billing_project=billing_project,
+        sample_count=len(samples_df),
         age_csv_path=f'gs://cpg-{analysis_project}-main-metadata/age.csv',
     )
 
@@ -343,6 +344,7 @@ def _add_sample_qc_jobs(
     scripts_dir: str,
     overwrite: bool,
     scatter_count: int,
+    sample_count: int,
     depends_on: Optional[List[Job]] = None,
     billing_project: Optional[str] = None,
     label='Sample QC',
@@ -384,6 +386,13 @@ def _add_sample_qc_jobs(
         else:
             filter_cutoffs_param = ''
 
+        disk = '40G'
+        if sample_count > 300:
+            disk = '100G'
+        if sample_count > 2000:
+            disk = '500G'
+        if sample_count > 10000:
+            disk = '1000G'
         sample_qc_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/sample_qc.py {filter_cutoffs_param} --overwrite '
@@ -400,6 +409,7 @@ def _add_sample_qc_jobs(
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
+            worker_boot_disk_size=disk,
             depends_on=(depends_on or []) + [generate_info_job],
             job_name=label,
         )
