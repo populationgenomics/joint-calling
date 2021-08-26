@@ -408,7 +408,7 @@ def _add_sample_qc_jobs(
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
+            num_workers=scatter_count,
             worker_boot_disk_size=disk,
             depends_on=(depends_on or []) + [generate_info_job],
             job_name=label,

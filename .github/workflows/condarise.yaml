@@ -29,14 +29,14 @@ jobs:
         run: mamba install pip conda-build anaconda-client
 
       - name: Build package
-        run: mamba build conda/${{ package }}
+        run: mamba build conda/${{ env.package }}
 
       # Using local build as we didn't push the tarball to anaconda yet
       # the --use-local flag is not working within an activated env,
       # so using -c file://${CONDA_PREFIX}/... instead
       - name: Install package
         run: |
-          mamba install -c file://${CONDA_PREFIX}/conda-bld/ ${{ package }}
+          mamba install -c file://${CONDA_PREFIX}/conda-bld/ ${{ env.package }}
 
       # Remove old packages to save space on anaconda
       - name: Remove old versions
@@ -48,7 +48,7 @@ jobs:
           show cpg/${{ env.package }} 2>&1 \
           | grep "^   +" | head -n-${KEEP} | sed 's#   \+ ##' \
           | xargs -I '{}' -L1 echo anaconda -t ${{ secrets.ANACONDA_TOKEN }} \
-          remove -f cpg/${{ package }}/{}
+          remove -f cpg/${{ env.package }}/{}
 
       - name: Upload to anaconda package repository
         run: |
