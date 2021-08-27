@@ -438,7 +438,7 @@ def _add_sample_qc_jobs(
             f'{scripts_dir}/sample_qc_write_metadata.py --overwrite '
             f'--qc-bucket {work_bucket} '
             f'{age_csv_param}'
-            f'--hardfiltered-samples-ht {hard_filter_ht_path} '
+            f'--hard-filtered-samples-ht {hard_filter_ht_path} '
             f'--out-meta-ht {meta_ht_path} '
             f'--out-meta-tsv {meta_tsv_path} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
