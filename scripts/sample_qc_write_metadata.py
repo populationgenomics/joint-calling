@@ -1,17 +1,15 @@
 #!/usr/bin/env python
 
 """
-Run sample QC on a MatrixTable, hard filter samples, add soft filter labels,
-and output a sample-level Hail Table
+Write sample QC results in 2 formats: a sample-lebel Hail Table,
+and a TSV file.
 """
 
-from os.path import join, splitext, basename
-import subprocess
+from os.path import join, splitext
 from typing import Optional
 import logging
 import click
 import hail as hl
-import pandas as pd
 
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.sample_qc.pipeline import annotate_sex
@@ -22,64 +20,29 @@ from gnomad.utils.filtering import (
 )
 from gnomad.utils.sparse_mt import filter_ref_blocks
 
-from joint_calling.utils import file_exists, get_validation_callback, get_mt
-from joint_calling import (
-    hard_filtering,
-    pop_strat_qc,
-    utils,
-    _version,
-)
+from joint_calling.utils import file_exists
+from joint_calling import sample_qc as sqc
+from joint_calling import _version, utils
 
-logger = logging.getLogger('joint-calling')
-logger.setLevel('INFO')
 
-GNOMAD_HT = (
-    'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'
-)
+logger = logging.getLogger(__file__)
+logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
+logger.setLevel(logging.INFO)
 
 
 @click.command()
 @click.version_option(_version.__version__)
 @click.option(
-    '--mt',
-    'mt_path',
-    required=True,
-    callback=get_validation_callback(ext='mt', must_exist=True),
-    help='path to the input Matrix Table. '
-    'To generate it, run the `combine_gvcfs` script',
+    '--qc-bucket',
+    'qc_bucket',
+    help='Bucket with the results from sample_qc_calculate.py',
 )
 @click.option(
-    '--meta-csv',
-    'meta_csv_path',
-    required=True,
-    help='path to a CSV with QC and population metadata for the samples '
-    'in the input Matrix Table. The following columns are expected: '
-    's,population,gvcf,freemix,pct_chimeras,'
-    'duplication,median_insert_size,mean_coverage. '
-    'Must be keyed by "s". Samples with non-empty entries in '
-    'the "population" column will be used to train the random forest '
-    'for population inference of remaining samples. Other colums are '
-    'used to apply QC hard filters to samples.',
+    '--age-csv', 'age_csv_path', help='CSV file with 2 columns: `sample` and `age`'
 )
 @click.option(
-    '--age-csv', 'age_csv', help='CSV file with 2 columns: `sample` and `age`'
-)
-@click.option(
-    '--filter-cutoffs-file',
-    'filter_cutoffs_path',
-    help=f'YAML file with filtering cutoffs',
-)
-@click.option(
-    '--info-ht',
-    'info_ht_path',
-    required=True,
-    help='Info Table, genereated by scripts/generate_info_ht.py --out-info-ht'
-    'Needed for mt.info.QD, mt.info.FS, mt.info.MQ',
-)
-@click.option(
-    '--out-hardfiltered-samples-ht',
-    'out_hardfiltered_samples_ht_path',
-    required=True,
+    '--hard-filtered-samples-ht',
+    'hard_filtered_samples_ht_path',
 )
 @click.option(
     '--out-meta-ht',
@@ -91,35 +54,11 @@ GNOMAD_HT = (
     'out_meta_tsv_path',
 )
 @click.option(
-    '--out-relatedness-ht',
-    'out_relatedness_ht_path',
-)
-@click.option(
-    '--bucket',
-    'work_bucket',
-    required=True,
-    help='path to write intermediate output and checkpoints. '
-    'Can be a Google Storage URL (i.e. start with `gs://`).',
-)
-@click.option(
-    '--local-tmp-dir',
-    'local_tmp_dir',
-    help='local directory for temporary files and Hail logs (must be local).',
-)
-@click.option(
     '--overwrite/--reuse',
     'overwrite',
     is_flag=True,
     help='if an intermediate or a final file exists, skip running the code '
     'that generates it.',
-)
-@click.option(
-    '--n-pcs', 'n_pcs', default=30, help='number of PCs to compute for ancestry PCA.'
-)
-@click.option(
-    '--target-bed',
-    'target_bed',
-    help='for exomes, target regions in a BED file format.',
 )
 @click.option(
     '--hail-billing',
@@ -128,135 +67,34 @@ GNOMAD_HT = (
     help='Hail billing account ID.',
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
-    mt_path: str,
-    meta_csv_path: str,
-    age_csv: str,
-    filter_cutoffs_path: str,
-    info_ht_path: str,
-    out_hardfiltered_samples_ht_path: str,
+    qc_bucket: str,
+    age_csv_path: str,
+    hard_filtered_samples_ht_path: str,
     out_meta_ht_path: str,
     out_meta_tsv_path: str,
-    out_relatedness_ht_path: str,
-    work_bucket: str,
-    local_tmp_dir: str,
     overwrite: bool,
-    n_pcs: int,
-    target_bed: str,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
-    local_tmp_dir = utils.init_hail('sample_qc', local_tmp_dir)
-
-    mt = get_mt(mt_path, passing_sites_only=True)
-    mt_split = get_mt(mt_path, split=True, passing_sites_only=True)
-
-    local_meta_csv_path = join(local_tmp_dir, basename(meta_csv_path))
-    subprocess.run(
-        f'gsutil cp {meta_csv_path} {local_meta_csv_path}', check=False, shell=True
-    )
-    df = pd.read_table(local_meta_csv_path)
-    input_meta_ht = hl.Table.from_pandas(df).key_by('s')
-
-    cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
-
-    # `hail_sample_qc_ht` row fields: sample_qc, bi_allelic_sample_qc
-    hail_sample_qc_ht = _compute_hail_sample_qc(mt_split, work_bucket, overwrite)
-
-    # Calculate separately the number of non-gnomAD SNPs
-    nongnomad_snps_ht = _snps_not_in_gnomad(mt_split, work_bucket, overwrite)
-
-    # `sex_ht` row fields: is_female, chr20_mean_dp, sex_karyotype
-    sex_ht = _infer_sex(
-        mt,
-        work_bucket,
-        overwrite,
-        target_regions=hl.import_bed(target_bed) if target_bed else None,
+    input_metadata_ht = hl.read_table(join(qc_bucket, sqc.INPUT_METADATA_HT_NAME))
+    hail_sample_qc_ht = hl.read_table(join(qc_bucket, sqc.HAIL_SAMPLE_QC_HT_NAME))
+    nongnomad_snps_ht = hl.read_table(join(qc_bucket, sqc.NONGNOMAD_SNPS_HT_NAME))
+    sex_ht = hl.read_table(join(qc_bucket, sqc.SEX_HT_NAME))
+    pop_ht = hl.read_table(join(qc_bucket, sqc.POP_HT_NAME))
+    regressed_metrics_ht = hl.read_table(join(qc_bucket, sqc.REGRESSED_METRICS_HT_NAME))
+    related_samples_to_drop_ht = hl.read_table(
+        join(qc_bucket, sqc.RELATED_SAMPLES_TO_DROP_HT_NAME)
     )
 
-    # `hard_filtered_samples_ht` row fields: hard_filters;
-    # also includes only failed samples
-    hard_filtered_samples_ht = hard_filtering.compute_hard_filters(
-        mt,
-        input_meta_ht,
-        sex_ht,
-        hail_sample_qc_ht,
-        cutoffs_d=cutoffs_d['hardfiltering'],
-        out_ht_path=out_hardfiltered_samples_ht_path,
-        overwrite=overwrite,
-    )
+    hard_filtered_samples_ht = hl.read_table(hard_filtered_samples_ht_path)
 
-    # Subset the matrix table to the variants suitable for PCA
-    # (for both relateness and population analysis)
-    for_pca_mt = pop_strat_qc.make_mt_for_pca(
-        mt, hl.read_table(info_ht_path), work_bucket, overwrite
-    )
-
-    relatedness_ht = pop_strat_qc.compute_relatedness(
-        for_pca_mt=for_pca_mt,
-        work_bucket=work_bucket,
-        out_ht_path=out_relatedness_ht_path,
-        overwrite=overwrite,
-    )
-
-    # We don't want to include related samples into the
-    # ancestry PCA analysis
-    intermediate_related_samples_to_drop_ht = pop_strat_qc.flag_related_samples(
-        hard_filtered_samples_ht=hard_filtered_samples_ht,
-        sex_ht=sex_ht,
-        relatedness_ht=relatedness_ht,
-        regressed_metrics_ht=None,
-        work_bucket=work_bucket,
-        kin_threshold=cutoffs_d['pca']['max_kin'],
-        overwrite=overwrite,
-    )
-
-    pop_pca_scores_ht = pop_strat_qc.run_pca_ancestry_analysis(
-        for_pca_mt=for_pca_mt,
-        sample_to_drop_ht=intermediate_related_samples_to_drop_ht,
-        work_bucket=work_bucket,
-        n_pcs=n_pcs,
-        overwrite=overwrite,
-    )
-
-    # Using calculated PCA scores as well as training samples with known
-    # `population` tag, to assign population tags to remaining samples
-    pop_ht = pop_strat_qc.assign_pops(
-        pop_pca_scores_ht,
-        input_meta_ht,
-        work_bucket=work_bucket,
-        min_prob=cutoffs_d['pca']['min_pop_prob'],
-        n_pcs=n_pcs,
-        overwrite=overwrite,
-    )
-
-    # Re-computing QC metrics per population and annotating failing samples
-    regressed_metrics_ht = pop_strat_qc.apply_regressed_filters(
-        hail_sample_qc_ht,
-        pop_pca_scores_ht,
-        work_bucket=work_bucket,
-        overwrite=overwrite,
-    )
-
-    # Re-calculating the maximum set of unrelated samples now that
-    # we have metrics adjusted for population, so newly QC-failed samples
-    # are excluded
-    final_related_samples_to_drop_ht = pop_strat_qc.flag_related_samples(  # pylint
-        hard_filtered_samples_ht,
-        sex_ht,
-        relatedness_ht,
-        regressed_metrics_ht,
-        work_bucket=work_bucket,
-        kin_threshold=cutoffs_d['pca']['max_kin'],
-        overwrite=overwrite,
-    )
-
-    if age_csv:
+    if age_csv_path:
         age_ht = (
-            hl.import_table(age_csv, delimiter=',', types={'age': 'float'})
+            hl.import_table(age_csv_path, delimiter=',', types={'age': 'float'})
             .rename({'TOBIID': 's'})
             .key_by('s')
         )
-        input_meta_ht = input_meta_ht.annotate(
-            age=age_ht[input_meta_ht.external_id].age,
+        sex_ht = sex_ht.annotate(
+            age=age_ht[sex_ht.external_id].age,
         )
 
     # Combine all intermediate tables together
@@ -264,12 +102,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         sample_qc_ht=hail_sample_qc_ht,
         nongnomad_snps_ht=nongnomad_snps_ht,
         sex_ht=sex_ht,
-        input_meta_ht=input_meta_ht,
+        input_metadata_ht=input_metadata_ht,
         hard_filtered_samples_ht=hard_filtered_samples_ht,
         regressed_metrics_ht=regressed_metrics_ht,
         pop_ht=pop_ht,
-        related_samples_to_drop_before_qc_ht=intermediate_related_samples_to_drop_ht,
-        related_samples_to_drop_after_qc_ht=final_related_samples_to_drop_ht,
+        related_samples_to_drop_after_qc_ht=related_samples_to_drop_ht,
         out_ht_path=out_meta_ht_path,
         out_tsv_path=out_meta_tsv_path,
         overwrite=overwrite,
@@ -339,7 +176,7 @@ def _snps_not_in_gnomad(
     mt: hl.MatrixTable,
     work_bucket: str,
     overwrite: bool,
-    gnomad_path: str = GNOMAD_HT,
+    gnomad_path: str = sqc.GNOMAD_HT_PATH,
 ) -> hl.Table:
     """
     Count the number of variants per sample that do not occur in gnomAD
@@ -414,11 +251,10 @@ def _generate_metadata(
     sample_qc_ht: hl.Table,
     nongnomad_snps_ht: hl.Table,
     sex_ht: hl.Table,
-    input_meta_ht: hl.Table,
+    input_metadata_ht: hl.Table,
     hard_filtered_samples_ht: hl.Table,
     regressed_metrics_ht: hl.Table,
     pop_ht: hl.Table,
-    related_samples_to_drop_before_qc_ht: hl.Table,
     related_samples_to_drop_after_qc_ht: hl.Table,
     out_ht_path: str,
     out_tsv_path: str,
@@ -431,8 +267,8 @@ def _generate_metadata(
     :param nongnomad_snps_ht: table with a `nongnomad_snps` row field
     :param sex_ht: table with the follwing row fields:
         `f_stat`, `n_called`, `expected_homs`, `observed_homs`
-    :param input_meta_ht: table with stats from the input metadata
-        (includes Picard-tools stats)
+    :param input_metadata_ht: table with stats from the input metadata
+        (includes Picard-tools stats and assigned population tags)
     :param hard_filtered_samples_ht: table with a `hard_filters` field
     :param regressed_metrics_ht: table with global fields
         `lms`, `qc_metrics_stats`;
@@ -441,8 +277,6 @@ def _generate_metadata(
         and a `qc_metrics_filters` row field.
     :param pop_ht: table with the following row fields:
         `pop`, `prob_CEU`, `pca_scores`, `training_pop`.
-    :param related_samples_to_drop_before_qc_ht:
-        table with related samples, calculated before stratified QC
     :param related_samples_to_drop_after_qc_ht:
         table with related samples, after re-ranking them based
         on population-stratified QC
@@ -479,10 +313,7 @@ def _generate_metadata(
             **hard_filtered_samples_ht[meta_ht.key],
             **regressed_metrics_ht[meta_ht.key],
             **pop_ht[meta_ht.key],
-            **input_meta_ht[meta_ht.key],
-            related_before_qc=hl.is_defined(
-                related_samples_to_drop_before_qc_ht[meta_ht.key]
-            ),
+            **input_metadata_ht[meta_ht.key],
             related=hl.is_defined(related_samples_to_drop_after_qc_ht[meta_ht.key]),
         )
 
