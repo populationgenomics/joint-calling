@@ -408,7 +408,7 @@ def _add_sample_qc_jobs(
             f'--mt {mt_path} '
             f'--meta-csv {samples_csv_path} '
             f'--info-ht {info_ht_path} '
-            f'--out-hardfiltered-samples-ht {hard_filter_ht_path} '
+            f'--out-hard-filtered-samples-ht {hard_filter_ht_path} '
             f'--out-relatedness-ht {relatedness_ht_path} '
             f'--out-bucket {work_bucket} '
             f'--tmp-bucket {work_bucket}/tmp '
