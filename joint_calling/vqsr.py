@@ -13,8 +13,9 @@ from analysis_runner import dataproc
 from joint_calling import utils
 from joint_calling.utils import can_reuse
 
-logger = logging.getLogger('joint-calling')
-logger.setLevel('INFO')
+logger = logging.getLogger(__file__)
+logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
+logger.setLevel(logging.INFO)
 
 
 SNP_RECALIBRATION_TRANCHE_VALUES = [
