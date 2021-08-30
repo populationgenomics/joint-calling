@@ -50,20 +50,16 @@ logger.setLevel(logging.INFO)
     help=f'YAML file with filtering cutoffs',
 )
 @click.option(
-    '--info-ht',
-    'info_ht_path',
+    '--relatedness-ht',
+    'relatedness_ht_path',
+    callback=utils.get_validation_callback(ext='ht', must_exist=True),
     required=True,
-    help='Info Table, genereated by scripts/generate_info_ht.py --out-info-ht'
-    'Needed for mt.info.QD, mt.info.FS, mt.info.MQ',
 )
 @click.option(
     '--out-hard-filtered-samples-ht',
     'out_hard_filtered_samples_ht_path',
+    callback=utils.get_validation_callback(ext='ht', must_exist=False),
     required=True,
-)
-@click.option(
-    '--out-relatedness-ht',
-    'out_relatedness_ht_path',
 )
 @click.option(
     '--out-bucket', 'out_bucket', required=True, help='bucket location to write results'
@@ -104,9 +100,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     mt_path: str,
     meta_csv_path: str,
     filter_cutoffs_path: str,
-    info_ht_path: str,
+    relatedness_ht_path: str,
     out_hard_filtered_samples_ht_path: str,
-    out_relatedness_ht_path: str,
     out_bucket: str,
     tmp_bucket: str,
     local_tmp_dir: str,
@@ -121,14 +116,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     sex_ht_path = join(out_bucket, sqc.SEX_HT_NAME)
     pop_ht_path = join(out_bucket, sqc.POP_HT_NAME)
     regressed_metrics_ht_path = join(out_bucket, sqc.REGRESSED_METRICS_HT_NAME)
-    related_samples_to_drop_ht_path = join(
-        out_bucket, sqc.RELATED_SAMPLES_TO_DROP_HT_NAME
-    )
 
     local_tmp_dir = utils.init_hail('sample_qc', local_tmp_dir)
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
-    mt_split = utils.get_mt(mt_path, split=True, passing_sites_only=True)
+    mt_split = utils.get_mt(mt_path, passing_sites_only=True, split=True)
+    mt_biall = utils.get_mt(mt_path, passing_sites_only=True, biallelic_snps_only=True)
+    mt_biall = mt_biall.select_entries('END', GT=mt_biall.LGT)
 
     cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
 
@@ -175,28 +169,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         overwrite=overwrite,
     )
 
-    # Subset the matrix table to the variants suitable for PCA
-    # (for both relateness and population analysis)
-    for_pca_mt = sqc.make_mt_for_pca(
-        mt=mt,
-        info_ht=hl.read_table(info_ht_path),
-        work_bucket=tmp_bucket,
-        overwrite=overwrite,
-    )
-
-    relatedness_ht = sqc.compute_relatedness(
-        for_pca_mt=for_pca_mt,
-        tmp_bucket=tmp_bucket,
-        out_ht_path=out_relatedness_ht_path,
-        overwrite=overwrite,
-    )
-
     # We don't want to include related samples into the
     # ancestry PCA analysis
     intermediate_related_samples_to_drop_ht = sqc.flag_related_samples(
         hard_filtered_samples_ht=hard_filtered_samples_ht,
         sex_ht=sex_ht,
-        relatedness_ht=relatedness_ht,
+        relatedness_ht=hl.read_table(relatedness_ht_path),
         regressed_metrics_ht=None,
         tmp_bucket=tmp_bucket,
         kin_threshold=cutoffs_d['pca']['max_kin'],
@@ -204,7 +182,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     )
 
     pop_pca_scores_ht = sqc.run_pca_ancestry_analysis(
-        for_pca_mt=for_pca_mt,
+        mt_biall=mt_biall,
         sample_to_drop_ht=intermediate_related_samples_to_drop_ht,
         tmp_bucket=tmp_bucket,
         n_pcs=n_pcs,
@@ -224,25 +202,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     )
 
     # Re-computing QC metrics per population and annotating failing samples
-    regressed_metrics_ht = sqc.apply_regressed_filters(
+    sqc.apply_regressed_filters(
         sample_qc_ht=hail_sample_qc_ht,
         pop_pca_scores_ht=pop_pca_scores_ht,
         tmp_bucket=tmp_bucket,
         out_ht_path=regressed_metrics_ht_path,
-        overwrite=overwrite,
-    )
-
-    # Re-calculating the maximum set of unrelated samples now that
-    # we have metrics adjusted for population, so newly QC-failed samples
-    # are excluded
-    sqc.flag_related_samples(
-        hard_filtered_samples_ht=hard_filtered_samples_ht,
-        sex_ht=sex_ht,
-        relatedness_ht=relatedness_ht,
-        regressed_metrics_ht=regressed_metrics_ht,
-        tmp_bucket=tmp_bucket,
-        kin_threshold=cutoffs_d['pca']['max_kin'],
-        out_ht_path=related_samples_to_drop_ht_path,
         overwrite=overwrite,
     )
 

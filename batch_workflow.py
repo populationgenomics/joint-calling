@@ -243,12 +243,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         else:
             combiner_job = b.new_job('Combine GVCFs [reuse]')
 
-    (
-        sample_qc_job,
-        info_split_ht_path,
-        hard_filter_ht_path,
-        meta_ht_path,
-    ) = _add_sample_qc_jobs(
+    (sample_qc_job, hard_filter_ht_path, meta_ht_path,) = _add_sample_qc_jobs(
         b=b,
         mt_path=raw_combined_mt_path,
         samples_csv_path=samples_csv_path,
@@ -263,6 +258,25 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         sample_count=len(samples_df),
         age_csv_path=f'gs://cpg-{analysis_project}-main-metadata/age.csv',
     )
+
+    info_ht_path = join(work_bucket, 'info.ht')
+    info_split_ht_path = join(work_bucket, 'info-split.ht')
+    if any(not can_reuse(fp, overwrite) for fp in [info_ht_path, info_split_ht_path]):
+        dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/generate_info_ht.py --overwrite '
+            f'--mt {raw_combined_mt_path} '
+            f'--out-info-ht {info_ht_path} '
+            f'--out-split-info-ht {info_split_ht_path}',
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            # Adding more workers as this is a much longer step
+            num_secondary_workers=scatter_count,
+            depends_on=[combiner_job],
+            job_name='Generate info',
+        )
+    else:
+        b.new_job('Generate info [reuse]')
 
     if run_rf or run_vqsr:
         var_qc_job, vqsr_final_filter_ht = add_variant_qc_jobs(
@@ -348,52 +362,11 @@ def _add_sample_qc_jobs(
     depends_on: Optional[List[Job]] = None,
     billing_project: Optional[str] = None,
     label='Sample QC',
-) -> Tuple[Job, str, str, str]:
-
-    info_ht_path = join(work_bucket, 'info.ht')
-    info_split_ht_path = join(work_bucket, 'info-split.ht')
-    if any(not can_reuse(fp, overwrite) for fp in [info_ht_path, info_split_ht_path]):
-        generate_info_job = dataproc.hail_dataproc_job(
-            b,
-            f'{scripts_dir}/generate_info_ht.py --overwrite '
-            f'--mt {mt_path} '
-            f'--out-info-ht {info_ht_path} '
-            f'--out-split-info-ht {info_split_ht_path}',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            # Adding more workers as this is a much longer step
-            num_secondary_workers=scatter_count,
-            depends_on=depends_on,
-            job_name='Generate info',
-        )
-    else:
-        generate_info_job = b.new_job('Generate info [reuse]')
+) -> Tuple[Job, str, str]:
 
     sample_qc_bucket = work_bucket
-    hard_filter_ht_path = join(sample_qc_bucket, 'hard_filters.ht')
     relatedness_ht_path = join(output_metadata_bucket, 'relatedness.ht')
-    pop_ht_path = join(sample_qc_bucket, 'pop.ht')
-    regressed_metrics_ht_path = join(sample_qc_bucket, 'regress_metrics.ht')
-    related_samples_to_drop_ht_path = join(
-        sample_qc_bucket, 'related_samples_to_drop.ht'
-    )
-    if any(
-        not can_reuse(fp, overwrite)
-        for fp in [
-            hard_filter_ht_path,
-            relatedness_ht_path,
-            pop_ht_path,
-            regressed_metrics_ht_path,
-            related_samples_to_drop_ht_path,
-        ]
-    ):
-        if filter_cutoffs_path:
-            gcs_path = join(work_bucket, 'filter-cutoffs.yaml')
-            subprocess.run(['gsutil', 'cp', filter_cutoffs_path, gcs_path], check=False)
-            filter_cutoffs_param = f'--filter-cutoffs-file {gcs_path}'
-        else:
-            filter_cutoffs_param = ''
-
+    if not can_reuse(relatedness_ht_path, overwrite):
         disk = 40
         if sample_count > 300:
             disk = 100
@@ -401,16 +374,12 @@ def _add_sample_qc_jobs(
             disk = 500
         if sample_count > 10000:
             disk = 1000
-        sample_qc_job = dataproc.hail_dataproc_job(
+        pcrelate_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/sample_qc_calculate.py {filter_cutoffs_param} '
-            f'--overwrite '
-            f'--mt {mt_path} '
-            f'--meta-csv {samples_csv_path} '
-            f'--info-ht {info_ht_path} '
-            f'--out-hard-filtered-samples-ht {hard_filter_ht_path} '
+            f'{scripts_dir}/sample_qc_pcrelate.py '
+            + (f'--overwrite ' if overwrite else '')
+            + f'--mt {mt_path} '
             f'--out-relatedness-ht {relatedness_ht_path} '
-            f'--out-bucket {work_bucket} '
             f'--tmp-bucket {work_bucket}/tmp '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
@@ -420,7 +389,54 @@ def _add_sample_qc_jobs(
             # so we use num_workers instead of num_secondary_workers here
             num_workers=scatter_count,
             worker_boot_disk_size=disk,
-            depends_on=(depends_on or []) + [generate_info_job],
+            depends_on=(depends_on or []),
+            job_name=label,
+        )
+    else:
+        pcrelate_job = b.new_job(f'{label} pcrelate [reuse]')
+
+    if filter_cutoffs_path:
+        gcs_path = join(work_bucket, 'filter-cutoffs.yaml')
+        subprocess.run(['gsutil', 'cp', filter_cutoffs_path, gcs_path], check=False)
+        filter_cutoffs_param = f'--filter-cutoffs-file {gcs_path}'
+    else:
+        filter_cutoffs_param = ''
+
+    hard_filter_ht_path = join(sample_qc_bucket, 'hard_filters.ht')
+    pop_ht_path = join(sample_qc_bucket, 'pop.ht')
+    regressed_metrics_ht_path = join(sample_qc_bucket, 'regress_metrics.ht')
+    if any(
+        not can_reuse(fp, overwrite)
+        for fp in [
+            hard_filter_ht_path,
+            pop_ht_path,
+            regressed_metrics_ht_path,
+        ]
+    ):
+        disk = 40
+        if sample_count > 300:
+            disk = 100
+        if sample_count > 2000:
+            disk = 500
+        if sample_count > 10000:
+            disk = 1000
+        sample_qc_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/sample_qc_calculate.py '
+            + (f'--overwrite ' if overwrite else '')
+            + f'{filter_cutoffs_param} '
+            + f'--mt {mt_path} '
+            f'--meta-csv {samples_csv_path} '
+            f'--relatedness-ht {relatedness_ht_path} '
+            f'--out-hard-filtered-samples-ht {hard_filter_ht_path} '
+            f'--out-bucket {work_bucket} '
+            f'--tmp-bucket {work_bucket}/tmp '
+            + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            max_age='12h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=scatter_count,
+            worker_boot_disk_size=disk,
+            depends_on=(depends_on or []) + [pcrelate_job],
             job_name=label,
         )
     else:
@@ -428,29 +444,39 @@ def _add_sample_qc_jobs(
 
     meta_ht_path = join(output_metadata_bucket, 'meta.ht')
     meta_tsv_path = join(output_metadata_bucket, 'meta.tsv')
-    if any(not can_reuse(fp, overwrite) for fp in [meta_ht_path, meta_tsv_path]):
+    if any(
+        not can_reuse(fp, overwrite)
+        for fp in [
+            meta_ht_path,
+            meta_tsv_path,
+        ]
+    ):
         if utils.file_exists(age_csv_path):
             age_csv_param = f'--age-csv {age_csv_path} '
         else:
             age_csv_param = ''
         metadata_qc_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/sample_qc_write_metadata.py --overwrite '
-            f'--qc-bucket {work_bucket} '
+            f'{scripts_dir}/sample_qc_write_metadata.py '
+            + (f'--overwrite ' if overwrite else '')
+            + f'{filter_cutoffs_param} '
+            + f'--qc-bucket {work_bucket} '
+            f'--tmp-bucket {work_bucket}/tmp '
             f'{age_csv_param}'
             f'--hard-filtered-samples-ht {hard_filter_ht_path} '
+            f'--relatedness-ht {relatedness_ht_path} '
             f'--out-meta-ht {meta_ht_path} '
             f'--out-meta-tsv {meta_tsv_path} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            max_age='4h',
+            max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            depends_on=[sample_qc_job] if sample_qc_job else [],
+            depends_on=[sample_qc_job],
             job_name=f'{label}: write metadata',
         )
     else:
         metadata_qc_job = b.new_job(f'{label}: write metadata [reuse]')
 
-    return metadata_qc_job, info_split_ht_path, hard_filter_ht_path, meta_ht_path
+    return metadata_qc_job, hard_filter_ht_path, meta_ht_path
 
 
 def _add_pre_combiner_jobs(

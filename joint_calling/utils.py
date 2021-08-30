@@ -229,6 +229,7 @@ def get_mt(
     add_meta: bool = False,
     release_only: bool = False,
     passing_sites_only: bool = False,
+    biallelic_snps_only: bool = False,
 ) -> hl.MatrixTable:
     """
     Wrapper function to get data with desired filtering and metadata annotations
@@ -281,6 +282,11 @@ def get_mt(
         )
         # Will use GT instead of LGT
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+
+    if biallelic_snps_only:
+        mt = mt.filter_rows(
+            (hl.len(mt.alleles) == 2) & hl.is_snp(mt.alleles[0], mt.alleles[1])
+        )
 
     return mt
 
