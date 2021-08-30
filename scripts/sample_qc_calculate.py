@@ -225,8 +225,7 @@ def _parse_input_metadata(
     )
     df = pd.read_table(local_csv_path)
     ht = hl.Table.from_pandas(df).key_by('s')
-    ht.write(out_ht_path, overwrite=True)
-    return ht
+    return ht.checkpoint(out_ht_path, overwrite=True)
 
 
 if __name__ == '__main__':

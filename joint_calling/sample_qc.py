@@ -99,8 +99,7 @@ def compute_hail_sample_qc(
         }
     )
     sample_qc_ht = sample_qc_ht.repartition(100)
-    sample_qc_ht.write(out_ht_path, overwrite=True)
-    return sample_qc_ht
+    return sample_qc_ht.checkpoint(out_ht_path, overwrite=True)
 
 
 def snps_not_in_gnomad(
@@ -136,8 +135,7 @@ def snps_not_in_gnomad(
     ht = ht.key_by('locus', 'alleles').anti_join(gnomad)
     # Count non-gnomad variants for each sample
     stats_ht = ht.group_by(ht.s).aggregate(nongnomad_snps=hl.agg.count())
-    stats_ht.write(out_ht_path, overwrite=True)
-    return stats_ht
+    return stats_ht.checkpoint(out_ht_path, overwrite=True)
 
 
 def infer_sex(
@@ -154,7 +152,7 @@ def infer_sex(
     :param out_ht_path: location to write the result to
     :param overwrite: overwrite checkpoints if they exist
     :param target_regions: if exomes, it should correspond to the regions in the panel
-    :return: a Hail Table with the following row fields:
+    :return: a Table with the following row fields:
         'is_female': bool
         'f_stat': float64
         'n_called': int64
@@ -181,8 +179,7 @@ def infer_sex(
         gt_expr='LGT',
     )
 
-    ht.write(out_ht_path, overwrite=True)
-    return ht
+    return ht.checkpoint(out_ht_path, overwrite=True)
 
 
 def run_pca_ancestry_analysis(
@@ -200,7 +197,7 @@ def run_pca_ancestry_analysis(
         previous relatedness analysis. With a `rank` row field
     :param n_pcs: maximum number of principal components
     :param overwrite: overwrite checkpoints if they exist
-    :return: a Hail table `scores_ht` with a row field:
+    :return: a Table with a row field:
         'scores': array<float64>
     """
     logger.info('Running PCA ancestry analysis')
@@ -212,8 +209,7 @@ def run_pca_ancestry_analysis(
     # number of samples
     n_pcs = min(n_pcs, mt_biall.cols().count() - sample_to_drop_ht.count())
     _, scores_ht, _ = run_pca_with_relateds(mt_biall, sample_to_drop_ht, n_pcs=n_pcs)
-    scores_ht.write(scores_ht_path, overwrite=True)
-    return scores_ht
+    return scores_ht.checkpoint(scores_ht_path, overwrite=True)
 
 
 def assign_pops(
@@ -242,7 +238,7 @@ def assign_pops(
     :param n_pcs: Number of PCs to use in the RF
     :param out_ht_path: Path to write the resulting HT table
     :param overwrite: overwrite checkpoints if they exist
-    :return: a table with the following row fields, including `prob_<POP>`
+    :return: a Table with the following row fields, including `prob_<POP>`
         probabily fields for each population label:
         'training_pop': str
         'pca_scores': array<float64>
@@ -312,8 +308,7 @@ def assign_pops(
         with hl.hadoop_open(pop_rf_file, 'wb') as out:
             pickle.dump(pops_rf_model, out)
 
-    pop_ht.write(out_ht_path, overwrite=True)
-    return pop_ht
+    return pop_ht.checkpoint(out_ht_path, overwrite=True)
 
 
 def compute_stratified_qc(
@@ -436,8 +431,7 @@ def flag_related_samples(
         kin_threshold=kin_threshold,
         filtered_samples=filtered_samples,
     )
-    samples_to_drop_ht.write(out_ht_path, overwrite=True)
-    return samples_to_drop_ht
+    return samples_to_drop_ht.checkpoint(out_ht_path, overwrite=True)
 
 
 def _compute_sample_rankings(
@@ -585,8 +579,7 @@ def apply_regressed_filters(
         **stratified_metrics_ht.index_globals()
     )
 
-    residuals_ht.write(out_ht_path, overwrite=True)
-    return residuals_ht
+    return residuals_ht.checkpoint(out_ht_path, overwrite=True)
 
 
 def compute_hard_filters(
@@ -703,5 +696,4 @@ def compute_hard_filters(
     )
     ht = ht.annotate_globals(hard_filter_cutoffs=hl.struct(**cutoffs_d))
     ht = ht.filter(hl.len(ht.hard_filters) > 0)
-    ht.write(out_ht_path, overwrite=True)
-    return ht
+    return ht.checkpoint(out_ht_path, overwrite=True)

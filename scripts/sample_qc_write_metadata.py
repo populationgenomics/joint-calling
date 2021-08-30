@@ -228,7 +228,7 @@ def _generate_metadata(
             high_quality=(hl.len(meta_ht.hard_filters) == 0),
             release=hl.len(meta_ht.release_filters) == 0,
         )
-        meta_ht.write(out_ht_path, overwrite=True)
+        meta_ht = meta_ht.checkpoint(out_ht_path, overwrite=True)
 
     out_tsv_path = out_tsv_path or splitext(out_ht_path)[0] + '.tsv'
     if overwrite or not file_exists(out_tsv_path):

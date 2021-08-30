@@ -119,8 +119,7 @@ def _compute_relatedness(
     # Converting keys for type struct{str} to str to align
     # with the rank_ht `s` key:
     relatedness_ht = relatedness_ht.key_by(i=relatedness_ht.i.s, j=relatedness_ht.j.s)
-    relatedness_ht.write(out_ht_path, overwrite=True)
-    return relatedness_ht
+    return relatedness_ht.checkpoint(out_ht_path, overwrite=True)
 
 
 if __name__ == '__main__':
