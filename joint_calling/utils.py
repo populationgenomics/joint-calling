@@ -247,6 +247,7 @@ def get_mt(
         release (can only be used if metadata is present)
     :param passing_sites_only: whether to filter the MT to only variants with
         nothing in the filter field (e.g. passing soft filters)
+    :param biallelic_snps_only: remove all multiallelic calls and all indels
     :return: MatrixTable with chosen annotations and filters
     """
     mt = hl.read_matrix_table(mt_path)
