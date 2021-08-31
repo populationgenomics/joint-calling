@@ -259,42 +259,22 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         age_csv_path=f'gs://cpg-{analysis_project}-main-metadata/age.csv',
     )
 
-    info_ht_path = join(work_bucket, 'info.ht')
-    info_split_ht_path = join(work_bucket, 'info-split.ht')
-    if any(not can_reuse(fp, overwrite) for fp in [info_ht_path, info_split_ht_path]):
-        dataproc.hail_dataproc_job(
-            b,
-            f'{scripts_dir}/generate_info_ht.py --overwrite '
-            f'--mt {raw_combined_mt_path} '
-            f'--out-info-ht {info_ht_path} '
-            f'--out-split-info-ht {info_split_ht_path}',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            # Adding more workers as this is a much longer step
-            num_secondary_workers=scatter_count,
-            depends_on=[combiner_job],
-            job_name='Generate info',
-        )
-    else:
-        b.new_job('Generate info [reuse]')
-
     if run_rf or run_vqsr:
         var_qc_job, vqsr_final_filter_ht = add_variant_qc_jobs(
             b=b,
             work_bucket=join(work_bucket, 'variant_qc'),
             web_bucket=join(web_bucket, 'variant_qc'),
             raw_combined_mt_path=raw_combined_mt_path,
-            info_split_ht_path=info_split_ht_path,
             hard_filter_ht_path=hard_filter_ht_path,
             meta_ht_path=meta_ht_path,
             samples_df=samples_df,
-            sample_qc_job=sample_qc_job,
             scripts_dir=scripts_dir,
             ped_file=ped_file,
             overwrite=overwrite,
             run_rf=run_rf,
             vqsr_params_d=filter_cutoffs_d['vqsr'],
             scatter_count=scatter_count,
+            depends_on=[sample_qc_job],
         )
         if not can_reuse(filtered_combined_mt_path, overwrite):
             var_qc_job = dataproc.hail_dataproc_job(

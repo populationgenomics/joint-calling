@@ -24,17 +24,16 @@ def add_variant_qc_jobs(
     work_bucket: str,
     web_bucket: str,
     raw_combined_mt_path: str,
-    info_split_ht_path: str,
     hard_filter_ht_path: str,
     meta_ht_path: str,
     samples_df: pd.DataFrame,
-    sample_qc_job: Job,
     scripts_dir: str,
     ped_file: Optional[str],
     overwrite: bool,
     run_rf: bool,
     vqsr_params_d: Dict,
     scatter_count: int,
+    depends_on: Optional[List[Job]] = None,
 ) -> Tuple[Job, str]:
     """
     Add variant QC related hail-query jobs
@@ -47,8 +46,29 @@ def add_variant_qc_jobs(
     qc_ac_ht_path = join(work_bucket, 'qc-ac.ht')
     rf_result_ht_path = None
 
-    if overwrite or any(
-        not utils.file_exists(fp) for fp in [allele_data_ht_path, qc_ac_ht_path]
+    info_ht_path = join(work_bucket, 'info.ht')
+    info_split_ht_path = join(work_bucket, 'info-split.ht')
+    if any(
+        not utils.can_reuse(fp, overwrite) for fp in [info_ht_path, info_split_ht_path]
+    ):
+        info_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/generate_info_ht.py --overwrite '
+            f'--mt {raw_combined_mt_path} '
+            f'--out-info-ht {info_ht_path} '
+            f'--out-split-info-ht {info_split_ht_path}',
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=scatter_count,
+            depends_on=depends_on or [],
+            job_name='Var QC: generate info',
+        )
+    else:
+        info_job = b.new_job('Var QC: generate info [reuse]')
+
+    if any(
+        not utils.can_reuse(fp, overwrite)
+        for fp in [allele_data_ht_path, qc_ac_ht_path]
     ):
         var_qc_anno_job = dataproc.hail_dataproc_job(
             b,
@@ -66,7 +86,7 @@ def add_variant_qc_jobs(
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            depends_on=[sample_qc_job],
+            depends_on=depends_on or [],
             job_name='Var QC: generate annotations',
             vep='GRCh38',
         )
@@ -85,9 +105,8 @@ def add_variant_qc_jobs(
             f'--bucket {work_bucket} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            # Adding more workers as this is a much longer step
             num_secondary_workers=scatter_count,
-            depends_on=[sample_qc_job],
+            depends_on=depends_on or [],
             job_name='Var QC: generate frequencies',
         )
     else:
@@ -110,7 +129,7 @@ def add_variant_qc_jobs(
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            depends_on=[freq_job, var_qc_anno_job],
+            depends_on=[freq_job, var_qc_anno_job, info_job],
             job_name='Var QC: create RF annotations',
         )
     else:
@@ -164,7 +183,7 @@ def add_variant_qc_jobs(
                 gvcf_count=len(samples_df),
                 work_bucket=vqsr_bucket,
                 web_bucket=join(web_bucket, 'vqsr'),
-                depends_on=[sample_qc_job],
+                depends_on=depends_on or [],
                 scripts_dir=scripts_dir,
                 vqsr_params_d=vqsr_params_d,
                 scatter_count=scatter_count,
