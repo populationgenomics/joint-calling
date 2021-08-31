@@ -154,7 +154,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
             if vqsr_filters_split_ht_path
             else None,
         )
-        scores_ht.write(out_bin_ht_path, overwrite=True)
+        scores_ht = scores_ht.checkpoint(out_bin_ht_path, overwrite=True)
     else:
         scores_ht = hl.read_table(out_bin_ht_path)
 

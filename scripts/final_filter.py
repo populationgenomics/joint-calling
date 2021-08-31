@@ -222,7 +222,7 @@ def main(
                 )
             )
 
-        ht.write(out_final_filter_ht_path, True)
+        ht = ht.checkpoint(out_final_filter_ht_path, True)
         ht.summarize()
 
 
