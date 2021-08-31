@@ -121,8 +121,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
     mt_split = utils.get_mt(mt_path, passing_sites_only=True, split=True)
-    mt_biall = utils.get_mt(mt_path, passing_sites_only=True, biallelic_snps_only=True)
-    mt_biall = mt_biall.select_entries('END', GT=mt_biall.LGT)
 
     cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
 
@@ -180,6 +178,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         kin_threshold=cutoffs_d['pca']['max_kin'],
         overwrite=overwrite,
     )
+
+    # For PCA (which includes pc-relate and ancestry PCA), we need to use
+    # biallelic SNPs only:
+    mt_biall = utils.get_mt(mt_path, passing_sites_only=True, biallelic_snps_only=True)
+    # PCA also assumes annotation with GT instead of LGT:
+    mt_biall = mt_biall.select_entries('END', GT=mt_biall.LGT)
 
     pop_pca_scores_ht = sqc.run_pca_ancestry_analysis(
         mt_biall=mt_biall,
