@@ -125,23 +125,43 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     dry_run: bool,
     run_vqsr: bool,
     run_rf: bool,
-):
-    """
-    Drive a Hail Batch workflow that creates and submits jobs. A job usually runs
-    either a Hail Query script from the scripts folder in this repo using a Dataproc
-    cluster; or a GATK command using the GATK or Gnarly image.
-    """
-    logger.info(f'Enable random forest: {run_rf}')
-    logger.info(f'Enable VQSR: {run_vqsr}')
-
-    billing_project = os.getenv('HAIL_BILLING_PROJECT') or analysis_project
-
+):  # pylint: disable=missing-function-docstring
+    # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
         tmp_bucket_suffix = 'test-tmp'
     else:
         tmp_bucket_suffix = 'main-tmp'
 
-    work_bucket = f'gs://cpg-{analysis_project}-{tmp_bucket_suffix}/joint-calling/{output_version}'
+    if output_namespace in ['test', 'main']:
+        output_suffix = output_namespace
+        output_metadata_suffix = f'{output_namespace}-metadata'
+        web_bucket_suffix = f'{output_namespace}-web'
+    else:
+        output_suffix = 'test-tmp'
+        output_metadata_suffix = 'test-tmp'
+        web_bucket_suffix = 'test-tmp'
+
+    ptrn = f'gs://cpg-{analysis_project}-{{suffix}}/joint-calling/{output_version}'
+    work_bucket = ptrn.format(tmp_bucket_suffix)
+    output_metadata_bucket = ptrn.format(output_metadata_suffix)
+    web_bucket = ptrn.format(web_bucket_suffix)
+
+    combiner_bucket = f'{work_bucket}/combiner'
+    sample_qc_bucket = f'{work_bucket}/sample_qc'
+
+    mt_output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}/mt'
+    raw_combined_mt_path = f'{combiner_bucket}/{output_version}-raw.mt'
+    filtered_combined_mt_path = f'{mt_output_bucket}/{output_version}.mt'
+    filtered_combined_nonref_mt_path = f'{mt_output_bucket}/{output_version}-nonref.mt'
+    _create_mt_readme(
+        raw_combined_mt_path,
+        filtered_combined_mt_path,
+        filtered_combined_nonref_mt_path,
+        mt_output_bucket,
+    )
+
+    # Initialize Hail Batch
+    billing_project = os.getenv('HAIL_BILLING_PROJECT') or analysis_project
     hail_bucket = os.environ.get('HAIL_BUCKET')
     if not hail_bucket or keep_scratch or reuse_scratch_run_id:
         # Scratch files are large, so we want to use the temporary bucket for them
@@ -162,39 +182,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         + f', namespace: {output_namespace}',
         backend=backend,
     )
+
+    # Scripts path to pass to dataproc when submitting scripts
     scripts_dir = abspath(join(dirname(__file__), 'scripts'))
-
-    if output_namespace in ['test', 'main']:
-        output_suffix = output_namespace
-        output_metadata_suffix = f'{output_namespace}-metadata'
-        web_bucket_suffix = f'{output_namespace}-web'
-    else:
-        output_suffix = 'test-tmp'
-        output_metadata_suffix = 'test-tmp'
-        web_bucket_suffix = 'test-tmp'
-
-    output_metadata_bucket = f'gs://cpg-{analysis_project}-{output_metadata_suffix}/joint-calling/{output_version}'
-    web_bucket = f'gs://cpg-{analysis_project}-{web_bucket_suffix}/joint-calling/{output_version}'
-    mt_output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}/mt'
-    combiner_bucket = f'{work_bucket}/combiner'
-    sample_qc_bucket = f'{work_bucket}/sample_qc'
-
-    raw_combined_mt_path = f'{combiner_bucket}/{output_version}-raw.mt'
-    filtered_combined_mt_path = f'{mt_output_bucket}/{output_version}.mt'
-    filtered_combined_nonref_mt_path = f'{mt_output_bucket}/{output_version}-nonref.mt'
-
-    local_tmp_dir = tempfile.mkdtemp()
-    readme_local_fpath = join(local_tmp_dir, 'README.txt')
-    readme_gcs_fpath = join(mt_output_bucket, 'README.txt')
-    with open(readme_local_fpath, 'w') as f:
-        f.write(f'Unfiltered:\n{raw_combined_mt_path}')
-        f.write(
-            f'AS-VQSR soft-filtered\n(use `mt.filter_rows(hl.is_missing(mt.filters)` to hard-filter):\n {basename(filtered_combined_mt_path)}'
-        )
-        f.write(
-            f'AS-VQSR soft-filtered, without reference blocks:\n{basename(filtered_combined_nonref_mt_path)}'
-        )
-    subprocess.run(['gsutil', 'cp', readme_local_fpath, readme_gcs_fpath], check=False)
 
     filter_cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
 
@@ -325,6 +315,28 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         print(traceback.format_exc())
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch, wait=False)
+
+
+def _create_mt_readme(
+    raw_combined_mt_path: str,
+    filtered_combined_mt_path: str,
+    filtered_combined_nonref_mt_path: str,
+    mt_output_bucket: str,
+):
+    local_tmp_dir = tempfile.mkdtemp()
+    readme_local_fpath = join(local_tmp_dir, 'README.txt')
+    readme_gcs_fpath = join(mt_output_bucket, 'README.txt')
+    with open(readme_local_fpath, 'w') as f:
+        f.write(f'Unfiltered:\n{raw_combined_mt_path}')
+        f.write(
+            f'AS-VQSR soft-filtered\n(use `mt.filter_rows(hl.is_missing(mt.filters)` '
+            f'to hard-filter):\n {basename(filtered_combined_mt_path)}'
+        )
+        f.write(
+            f'AS-VQSR soft-filtered, without reference blocks:\n'
+            f'{basename(filtered_combined_nonref_mt_path)}'
+        )
+    subprocess.run(['gsutil', 'cp', readme_local_fpath, readme_gcs_fpath], check=False)
 
 
 def _add_sample_qc_jobs(

@@ -57,6 +57,14 @@ SEG_DUP_INTERVALS_HT_PATH = join(
 )
 CLINVAR_HT_PATH = join(REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
 
+GNOMAD_HT_PATH = (
+    'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'
+)
+GNOMAD_HGDP_1KG_MT_PATH = (
+    'gs://gcp-public-data--gnomad/release/3.1/mt/genomes/'
+    'gnomad.genomes.v3.1.hgdp_1kg_subset_dense.mt'
+)
+
 NUMBER_OF_HAPLOTYPE_CALLER_INTERVALS = 50
 NUMBER_OF_GENOMICS_DB_INTERVALS = 50
 

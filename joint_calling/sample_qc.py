@@ -23,11 +23,6 @@ from gnomad.utils.sparse_mt import filter_ref_blocks
 from joint_calling import utils
 
 
-GNOMAD_HT_PATH = (
-    'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'
-)
-
-
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
 logger.setLevel(logging.INFO)
@@ -107,7 +102,7 @@ def snps_not_in_gnomad(
     tmp_bucket: str,
     out_ht_path: Optional[str] = None,
     overwrite: bool = False,
-    gnomad_path: str = GNOMAD_HT_PATH,
+    gnomad_path: str = utils.GNOMAD_HT_PATH,
 ) -> hl.Table:
     """
     Count the number of variants per sample that do not occur in gnomAD

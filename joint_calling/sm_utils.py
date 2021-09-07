@@ -226,6 +226,7 @@ def find_inputs_from_db(
             'external_id': external_id,
             'population': 'EUR',
             'gvcf': gvcf_path,
+            'batch': current_seq_data.get('meta').get('batch'),
             'r_contamination': current_seq_data.get('meta').get('raw_data.FREEMIX'),
             'r_chimera': current_seq_data.get('meta').get('raw_data.PCT_CHIMERAS'),
             'r_duplication': current_seq_data.get('meta').get(
@@ -234,6 +235,10 @@ def find_inputs_from_db(
             'median_insert_size': current_seq_data.get('meta').get(
                 'raw_data.MEDIAN_INSERT_SIZE'
             ),
+            'flowcell_lane': 'sample.flowcell_lane',
+            'library_id': 'sample.library_id',
+            'platform': 'sample.platform',
+            'centre': 'sample.centre',
             'operation': 'add',
         }
 
@@ -249,6 +254,10 @@ def find_inputs_from_db(
             'r_chimera': None,
             'r_duplication': None,
             'median_insert_size': None,
+            'flowcell_lane': None,
+            'library_id': None,
+            'platform': None,
+            'centre': None,
             'operation': 'delete',
         }
         inputs.append(sample_information)
