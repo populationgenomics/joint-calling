@@ -134,16 +134,16 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     if output_namespace in ['test', 'main']:
         output_suffix = output_namespace
-        output_metadata_suffix = f'{output_namespace}-metadata'
+        output_analysis_suffix = f'{output_namespace}-analysis'
         web_bucket_suffix = f'{output_namespace}-web'
     else:
         output_suffix = 'test-tmp'
-        output_metadata_suffix = 'test-tmp'
+        output_analysis_suffix = 'test-tmp'
         web_bucket_suffix = 'test-tmp'
 
     ptrn = f'gs://cpg-{analysis_project}-{{suffix}}/joint-calling/{output_version}'
     work_bucket = ptrn.format(tmp_bucket_suffix)
-    output_metadata_bucket = ptrn.format(output_metadata_suffix)
+    output_analysis_bucket = ptrn.format(output_analysis_suffix)
     web_bucket = ptrn.format(web_bucket_suffix)
 
     combiner_bucket = f'{work_bucket}/combiner'
@@ -233,12 +233,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         else:
             combiner_job = b.new_job('Combine GVCFs [reuse]')
 
-    (sample_qc_job, hard_filter_ht_path, meta_ht_path,) = _add_sample_qc_jobs(
+    sample_qc_job, hard_filter_ht_path, meta_ht_path = _add_sample_qc_jobs(
         b=b,
         mt_path=raw_combined_mt_path,
         samples_csv_path=samples_csv_path,
         work_bucket=sample_qc_bucket,
-        output_metadata_bucket=output_metadata_bucket,
+        output_metadata_bucket=output_analysis_bucket,
         filter_cutoffs_path=filter_cutoffs_path,
         scripts_dir=scripts_dir,
         overwrite=overwrite,
@@ -246,7 +246,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         depends_on=[combiner_job],
         billing_project=billing_project,
         sample_count=len(samples_df),
-        age_csv_path=f'gs://cpg-{analysis_project}-main-metadata/age.csv',
+        age_csv_path=f'gs://cpg-{analysis_project}-main-analysis/metadata/age.csv',
     )
 
     if run_rf or run_vqsr:
