@@ -32,6 +32,13 @@ logger.setLevel(logging.INFO)
     'To generate it, run the `combine_gvcfs` script',
 )
 @click.option(
+    '--pca-hgdp-mt-path',
+    'pca_with_hgdp_mt_path',
+    required=True,
+    callback=utils.get_validation_callback(ext='mt', must_exist=True),
+    help='path to Matrix Table generated with sample_qc_subset_mt_for_pca.py',
+)
+@click.option(
     '--meta-csv',
     'meta_csv_path',
     required=True,
@@ -62,13 +69,25 @@ logger.setLevel(logging.INFO)
     required=True,
 )
 @click.option(
-    '--out-bucket', 'out_bucket', required=True, help='bucket location to write results'
+    '--out-bucket',
+    'out_bucket',
+    required=True,
+    help='bucket location to write script results used downstream in the pipeline '
+    '(usually a protected temporary bucket)',
+)
+@click.option(
+    '--out-analysis-bucket',
+    'out_analysis_bucket',
+    required=True,
+    help='bucket location to write results to be used outside of the pipeline '
+    '(usually a bucket with a read access for all users)',
 )
 @click.option(
     '--tmp-bucket',
     'tmp_bucket',
     required=True,
-    help='path to write temporary intermediate output and checkpoints',
+    help='path to write temporary intermediate files and checkpoints '
+    '(usually a temporary bucket)',
 )
 @click.option(
     '--local-tmp-dir',
@@ -83,7 +102,7 @@ logger.setLevel(logging.INFO)
     'that generates it.',
 )
 @click.option(
-    '--n-pcs', 'n_pcs', default=30, help='number of PCs to compute for ancestry PCA.'
+    '--n-pcs', 'n_pcs', default=20, help='number of PCs to compute for ancestry PCA.'
 )
 @click.option(
     '--target-bed',
@@ -98,11 +117,13 @@ logger.setLevel(logging.INFO)
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_path: str,
+    pca_with_hgdp_mt_path: str,
     meta_csv_path: str,
     filter_cutoffs_path: str,
     relatedness_ht_path: str,
     out_hard_filtered_samples_ht_path: str,
     out_bucket: str,
+    out_analysis_bucket: str,
     tmp_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,
@@ -110,6 +131,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     target_bed: str,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
+    local_tmp_dir = utils.init_hail('sample_qc', local_tmp_dir)
+
     input_metadata_ht_path = join(out_bucket, sqc.INPUT_METADATA_HT_NAME)
     hail_sample_qc_ht_path = join(out_bucket, sqc.HAIL_SAMPLE_QC_HT_NAME)
     nongnomad_snps_ht_path = join(out_bucket, sqc.NONGNOMAD_SNPS_HT_NAME)
@@ -117,7 +140,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     pop_ht_path = join(out_bucket, sqc.POP_HT_NAME)
     regressed_metrics_ht_path = join(out_bucket, sqc.REGRESSED_METRICS_HT_NAME)
 
-    local_tmp_dir = utils.init_hail('sample_qc', local_tmp_dir)
+    eigenvalues_ht_path = join(out_analysis_bucket, sqc.PCA_EIGENVALUES_HT_NAME)
+    scores_ht_path = join(out_analysis_bucket, sqc.PCA_SCORES_HT_NAME)
+    loadings_ht_path = join(out_analysis_bucket, sqc.PCA_LOADINGS_HT_NAME)
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
     mt_split = utils.get_mt(mt_path, passing_sites_only=True, split=True)
@@ -179,25 +204,28 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         overwrite=overwrite,
     )
 
-    # For PCA (which includes pc-relate and ancestry PCA), we need to use
-    # biallelic SNPs only:
-    mt_biall = utils.get_mt(mt_path, passing_sites_only=True, biallelic_snps_only=True)
-    # PCA also assumes annotation with GT instead of LGT:
-    mt_biall = mt_biall.select_entries('END', GT=mt_biall.LGT)
-
+    pca_with_hgdp_mt = hl.read_matrix_table(pca_with_hgdp_mt_path)
+    # Run PCA on all samples, including HGDP and 1KG
     pop_pca_scores_ht = sqc.run_pca_ancestry_analysis(
-        mt_biall=mt_biall,
+        mt=pca_with_hgdp_mt,
         sample_to_drop_ht=intermediate_related_samples_to_drop_ht,
         tmp_bucket=tmp_bucket,
         n_pcs=n_pcs,
+        out_eigenvalues_ht_path=eigenvalues_ht_path,
+        out_scores_ht_path=scores_ht_path,
+        out_loadings_ht_path=loadings_ht_path,
         overwrite=overwrite,
     )
 
+    hgdp_pop_ht = pca_with_hgdp_mt.cols()
+    hgdp_pop_ht = hgdp_pop_ht.annotate(
+        population=hgdp_pop_ht.hgdp_1kg_metadata.population_inference.pop
+    )
     # Using calculated PCA scores as well as training samples with known
     # `population` tag, to assign population tags to remaining samples
     sqc.assign_pops(
         pop_pca_scores_ht=pop_pca_scores_ht,
-        assigned_pop_ht=input_metadata_ht,
+        assigned_pop_ht=hgdp_pop_ht,
         tmp_bucket=tmp_bucket,
         min_prob=cutoffs_d['pca']['min_pop_prob'],
         n_pcs=n_pcs,

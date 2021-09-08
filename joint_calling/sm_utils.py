@@ -224,7 +224,7 @@ def find_inputs_from_db(
         sample_information = {
             's': sample_id,
             'external_id': external_id,
-            'population': 'EUR',
+            'population': None,
             'gvcf': gvcf_path,
             'batch': current_seq_data.get('meta').get('batch'),
             'r_contamination': current_seq_data.get('meta').get('raw_data.FREEMIX'),
@@ -322,7 +322,7 @@ def find_inputs(
             )
             single_df = pd.read_csv(local_qc_csv_path)
             single_df = single_df.rename(columns=columns)[columns.values()]
-            single_df['population'] = 'EUR'
+            single_df['population'] = None
             single_df['gvcf'] = ''
             single_df = single_df.set_index('s', drop=False)
             df = (
@@ -336,7 +336,7 @@ def find_inputs(
         df = pd.DataFrame(
             data=dict(
                 s=sample_names,
-                population='EUR',
+                population=None,
                 gvcf=gvcf_paths,
                 r_contamination=pd.NA,
                 r_chimera=pd.NA,

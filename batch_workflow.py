@@ -238,7 +238,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         mt_path=raw_combined_mt_path,
         samples_csv_path=samples_csv_path,
         work_bucket=sample_qc_bucket,
-        output_metadata_bucket=output_analysis_bucket,
+        out_analysis_bucket=output_analysis_bucket,
         filter_cutoffs_path=filter_cutoffs_path,
         scripts_dir=scripts_dir,
         overwrite=overwrite,
@@ -344,33 +344,48 @@ def _add_sample_qc_jobs(
     mt_path: str,
     samples_csv_path: str,
     work_bucket: str,
-    output_metadata_bucket: str,
+    out_analysis_bucket: str,
     age_csv_path: str,
     filter_cutoffs_path: Optional[str],
     scripts_dir: str,
     overwrite: bool,
     scatter_count: int,
-    sample_count: int,
+    sample_count: int,  # pylint: disable=unused-argument
     depends_on: Optional[List[Job]] = None,
     billing_project: Optional[str] = None,
-    label='Sample QC',
 ) -> Tuple[Job, str, str]:
 
     sample_qc_bucket = work_bucket
-    relatedness_ht_path = join(output_metadata_bucket, 'relatedness.ht')
+
+    pca_mt_path = join(work_bucket, 'mt_subset_for_pca.mt')
+    pca_with_hgdp_mt_path = join(work_bucket, 'mt_subset_for_pca_with_hgdp.mt')
+    if not can_reuse(pca_mt_path, overwrite) and not can_reuse(
+        pca_with_hgdp_mt_path, overwrite
+    ):
+        pcrelate_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/sample_qc_subset_mt_for_pca.py '
+            + (f'--overwrite ' if overwrite else '')
+            + f'--mt {mt_path} '
+            f'--out-mt {pca_mt_path} '
+            f'--out-hgdp-union-mt {pca_with_hgdp_mt_path} '
+            + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=scatter_count,
+            depends_on=(depends_on or []),
+            job_name='Subset MT for PCA',
+        )
+    else:
+        pcrelate_job = b.new_job(f'Subset MT for PCA [reuse]')
+
+    relatedness_ht_path = join(out_analysis_bucket, 'relatedness.ht')
     if not can_reuse(relatedness_ht_path, overwrite):
-        disk = 40
-        if sample_count > 300:
-            disk = 100
-        if sample_count > 2000:
-            disk = 500
-        if sample_count > 10000:
-            disk = 1000
         pcrelate_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/sample_qc_pcrelate.py '
             + (f'--overwrite ' if overwrite else '')
-            + f'--mt {mt_path} '
+            + f'--pca-mt {pca_mt_path} '
             f'--out-relatedness-ht {relatedness_ht_path} '
             f'--tmp-bucket {work_bucket}/tmp '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
@@ -380,12 +395,11 @@ def _add_sample_qc_jobs(
             # (throw SparkException: Job aborted due to stage failure: ShuffleMapStage)
             # so we use num_workers instead of num_secondary_workers here
             num_workers=scatter_count,
-            worker_boot_disk_size=disk,
-            depends_on=(depends_on or []),
-            job_name=label,
+            depends_on=[pcrelate_job],
+            job_name='Run pcrelate',
         )
     else:
-        pcrelate_job = b.new_job(f'{label} pcrelate [reuse]')
+        pcrelate_job = b.new_job(f'Run pcrelate [reuse]')
 
     if filter_cutoffs_path:
         gcs_path = join(work_bucket, 'filter-cutoffs.yaml')
@@ -405,37 +419,31 @@ def _add_sample_qc_jobs(
             regressed_metrics_ht_path,
         ]
     ):
-        disk = 40
-        if sample_count > 300:
-            disk = 100
-        if sample_count > 2000:
-            disk = 500
-        if sample_count > 10000:
-            disk = 1000
         sample_qc_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/sample_qc_calculate.py '
             + (f'--overwrite ' if overwrite else '')
             + f'{filter_cutoffs_param} '
             + f'--mt {mt_path} '
+            f'--pca-hgdp-mt-path {pca_with_hgdp_mt_path} '
             f'--meta-csv {samples_csv_path} '
             f'--relatedness-ht {relatedness_ht_path} '
             f'--out-hard-filtered-samples-ht {hard_filter_ht_path} '
             f'--out-bucket {work_bucket} '
+            f'--out-analysis-bucket {out_analysis_bucket} '
             f'--tmp-bucket {work_bucket}/tmp '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='12h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            worker_boot_disk_size=disk,
             depends_on=(depends_on or []) + [pcrelate_job],
-            job_name=label,
+            job_name='Sample QC',
         )
     else:
-        sample_qc_job = b.new_job(f'{label} [reuse]')
+        sample_qc_job = b.new_job(f'Sample QC [reuse]')
 
-    meta_ht_path = join(output_metadata_bucket, 'meta.ht')
-    meta_tsv_path = join(output_metadata_bucket, 'meta.tsv')
+    meta_ht_path = join(out_analysis_bucket, 'meta.ht')
+    meta_tsv_path = join(out_analysis_bucket, 'meta.tsv')
     if any(
         not can_reuse(fp, overwrite)
         for fp in [
@@ -463,10 +471,10 @@ def _add_sample_qc_jobs(
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             depends_on=[sample_qc_job],
-            job_name=f'{label}: write metadata',
+            job_name=f'Write sample QC metadata',
         )
     else:
-        metadata_qc_job = b.new_job(f'{label}: write metadata [reuse]')
+        metadata_qc_job = b.new_job(f'Write sample QC metadata [reuse]')
 
     return metadata_qc_job, hard_filter_ht_path, meta_ht_path
 

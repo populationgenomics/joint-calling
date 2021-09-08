@@ -36,6 +36,9 @@ SEX_HT_NAME = 'sex.ht'
 POP_HT_NAME = 'pop.ht'
 REGRESSED_METRICS_HT_NAME = 'regressed_metrics.ht'
 RELATED_SAMPLES_TO_DROP_HT_NAME = 'related_samples_to_drop.ht'
+PCA_EIGENVALUES_HT_NAME = 'pca_eigenvalues.ht'
+PCA_SCORES_HT_NAME = 'pca_scores.ht'
+PCA_LOADINGS_HT_NAME = 'pca_loadings.ht'
 
 
 def compute_hail_sample_qc(
@@ -178,38 +181,60 @@ def infer_sex(
 
 
 def run_pca_ancestry_analysis(
-    mt_biall: hl.MatrixTable,
+    mt: hl.MatrixTable,
     sample_to_drop_ht: hl.Table,
     tmp_bucket: str,
     n_pcs: int,
+    out_eigenvalues_ht_path: Optional[str] = None,
+    out_scores_ht_path: Optional[str] = None,
+    out_loadings_ht_path: Optional[str] = None,
     overwrite: bool = False,
 ) -> hl.Table:
     """
-    :param mt_biall: variants usable for PCA analysis
-        of the same type, identifying the pair of samples for each row
+    :param mt: variants usable for PCA analysis, combined with samples
+        with known populations (HGDP, 1KG, etc)
     :param tmp_bucket: bucket path to write checkpoints
     :param sample_to_drop_ht: table with samples to drop based on
         previous relatedness analysis. With a `rank` row field
     :param n_pcs: maximum number of principal components
     :param overwrite: overwrite checkpoints if they exist
+    :param out_eigenvalues_ht_path: path to write PCA eigenvalues
+    :param out_scores_ht_path: path to write PCA scores
+    :param out_loadings_ht_path: path to write PCA loadings
     :return: a Table with a row field:
         'scores': array<float64>
     """
     logger.info('Running PCA ancestry analysis')
-    scores_ht_path = join(tmp_bucket, 'pop_pca_scores.ht')
-    if utils.can_reuse(scores_ht_path, overwrite):
-        return hl.read_table(scores_ht_path)
+    out_scores_ht_path = out_scores_ht_path or join(tmp_bucket, 'pop_pca_scores.ht')
+    if all(
+        not fp or utils.can_reuse(fp, overwrite)
+        for fp in [
+            out_eigenvalues_ht_path,
+            out_scores_ht_path,
+            out_loadings_ht_path,
+        ]
+    ):
+        return hl.read_table(out_scores_ht_path)
 
     # Adjusting the number of principal components not to exceed the
     # number of samples
-    n_pcs = min(n_pcs, mt_biall.cols().count() - sample_to_drop_ht.count())
-    _, scores_ht, _ = run_pca_with_relateds(mt_biall, sample_to_drop_ht, n_pcs=n_pcs)
-    return scores_ht.checkpoint(scores_ht_path, overwrite=True)
+    n_pcs = min(n_pcs, mt.cols().count() - sample_to_drop_ht.count())
+    eigenvalues, scores_ht, loadings_ht = run_pca_with_relateds(
+        mt, sample_to_drop_ht, n_pcs=n_pcs
+    )
+
+    if out_eigenvalues_ht_path:
+        hl.Table.from_pandas(pd.DataFrame(eigenvalues)).export(out_eigenvalues_ht_path)
+    if out_loadings_ht_path:
+        loadings_ht.write(out_loadings_ht_path, overwrite=True)
+    scores_ht.write(out_scores_ht_path, overwrite=True)
+    scores_ht = hl.read_table(out_scores_ht_path)
+    return scores_ht
 
 
 def assign_pops(
     pop_pca_scores_ht: hl.Table,
-    assigned_pop_ht: pd.DataFrame,
+    assigned_pop_ht: hl.Table,
     tmp_bucket: str,
     min_prob: float,
     max_mislabeled_training_samples: int = 50,
