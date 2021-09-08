@@ -535,8 +535,8 @@ def _add_pre_combiner_jobs(
             )
         else:
             logger.info(
-                f'Reading data from the projects: {input_projects} '
-                f'from the SM server'
+                f'Querying samples from the sample-metadata server '
+                f'for the projects: {", ".join(input_projects)}'
             )
             samples_df = sm_utils.find_inputs_from_db(
                 input_projects,

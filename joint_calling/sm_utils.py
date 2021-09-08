@@ -16,8 +16,6 @@ from hailtop.batch import Batch
 from hailtop.batch.job import Job
 from sample_metadata import (
     AnalysisApi,
-    AnalysisType,
-    AnalysisStatus,
     SequenceApi,
     SampleApi,
     exceptions,
@@ -41,47 +39,80 @@ class Analysis:
     """
 
     id: str
-    type: AnalysisType
-    status: AnalysisStatus
+    type: str
+    status: str
     sample_ids: Set[str]
     output: Optional[str]
 
-    @staticmethod
-    def query(
-        analysis_project: str, analysis_type: str, sample_ids: Collection[str]
-    ) -> Optional['Analysis']:
-        """
-        Query the DB to find last completed analysis for these type and samples
-        """
-        data: Optional[Dict] = None
-        if analysis_type == 'joint-calling':
-            data = aapi.get_latest_complete_analysis_for_type(
-                project=analysis_project,
-                analysis_type=analysis_type,
-            )
-        else:
-            data = aapi.get_latest_analysis_for_samples_and_type(
-                project=analysis_project,
-                analysis_type=analysis_type,
-                request_body=sample_ids,
-            )
-        if not data:
-            return None
-        a = Analysis(
-            id=data.pop('id'),
-            type=AnalysisType(data.pop('type', None)),
-            status=AnalysisStatus(data.pop('status', None)),
-            sample_ids=set(data.get('sample_ids', [])),
-            output=data.pop('output', None),
-        )
+
+def _parse_analysis(data: Dict) -> Optional[Analysis]:
+    if not data:
+        return None
+    if 'id' not in data:
+        logger.error(f'Analysis data doesn\'t have id: {data}')
+        return None
+    if 'type' not in data:
+        logger.error(f'Analysis data doesn\'t have type: {data}')
+        return None
+    if 'status' not in data:
+        logger.error(f'Analysis data doesn\'t have status: {data}')
+        return None
+    a = Analysis(
+        id=data['id'],
+        type=data['type'],
+        status=data['status'],
+        sample_ids=set(data.get('sample_ids', [])),
+        output=data.get('output', None),
+    )
+    return a
+
+
+def find_joint_calling_analysis(
+    analysis_project: str,
+    sample_ids: Collection[str],
+) -> Optional[Analysis]:
+    """
+    Query the DB to find the last completed joint-calling analysis for the samples
+    """
+    data = aapi.get_latest_complete_analysis_for_type(
+        project=analysis_project,
+        analysis_type='joint-calling',
+    )
+    a = _parse_analysis(data)
+    if not a:
+        return None
+    assert a.type == 'joint-calling', data
+    assert a.status == 'completed', data
+    if a.sample_ids != set(sample_ids):
+        return None
+    return a
+
+
+def find_analyses_by_sid(
+    sample_ids: Collection[str],
+    analysis_project: str,
+    analysis_type: str,
+) -> Dict[str, Analysis]:
+    """
+    Query the DB to find the last completed analysis for the type and samples,
+    one Analysis object per sample. Assumes the analysis is defined for a single
+    sample (e.g. cram, gvcf)
+    """
+    analysis_per_sid: Dict[str, Analysis] = dict()
+    datas = aapi.get_latest_analysis_for_samples_and_type(
+        project=analysis_project,
+        analysis_type=analysis_type,
+        request_body=sample_ids,
+    )
+    for data in datas:
+        a = _parse_analysis(data)
+        if not a:
+            continue
         assert a.type == analysis_type, data
         assert a.status == 'completed', data
-        if len(sample_ids) == 1:
-            assert a.sample_ids == set(sample_ids), data
-
-        if a.sample_ids != set(sample_ids):
-            return None
-        return a
+        assert len(a.sample_ids) == 1, data
+        analysis_per_sid[list(a.sample_ids)[0]] = a
+    return analysis_per_sid
 
 
 def make_sm_in_progress_job(
@@ -197,83 +228,105 @@ def find_inputs_from_db(
     inputs = []
 
     for proj in input_projects:
+        logger.info(f'Processing project {proj}')
         samples = sapi.get_samples(
             body_get_samples_by_criteria_api_v1_sample_post={
                 'project_ids': [proj],
                 'active': True,
             }
         )
+        logger.info(f'Found {len(samples)} samples')
+        if not samples:
+            logger.info(f'No samples to process, skipping project {proj}')
+            continue
 
+        if skip_samples:
+            logger.info('Checking which samples need to skip')
+            not_skipped_sids = []
+            for s in samples:
+                if skip_samples and s['id'] in skip_samples:
+                    logger.info(f'Skiping sample: {s["id"]}')
+                    continue
+                not_skipped_sids.append(s['id'])
+            logger.info(f'Excluding skipped samples: {len(not_skipped_sids)}')
+            samples = [s for s in samples if s in not_skipped_sids]
+            if not samples:
+                logger.info(f'No samples to process, skipping project {proj}')
+                continue
+
+        logger.info('Checking GVCF analyses for samples')
+        gvcf_analysis_per_sid = find_analyses_by_sid(
+            sample_ids=[s['id'] for s in samples],
+            analysis_type='gvcf',
+            analysis_project=proj,
+        )
+        gvcf_by_sid = dict()
+        sids_without_gvcf = []
+        for s in samples:
+            a = gvcf_analysis_per_sid.get(s['id'])
+            if not a:
+                sids_without_gvcf.append(s['id'])
+                continue
+            gvcf_path = a.output
+            if not gvcf_path:
+                logger.error(
+                    f'"output" is not defined for the latest gvcf analysis, '
+                    f'skipping sample {s["id"]}'
+                )
+                sids_without_gvcf.append(s['id'])
+                continue
+            gvcf_by_sid[s['id']] = gvcf_path
+
+        if sids_without_gvcf:
+            logger.warning(
+                f'No gvcf found for {len(sids_without_gvcf)}/{len(samples)} samples: '
+                f'{", ".join(sids_without_gvcf)}'
+            )
+            samples = [s for s in samples if s['id'] in gvcf_by_sid]
+            if not samples:
+                logger.info(f'No samples to process, skipping project {proj}')
+                continue
+
+        logger.info('Checking sequencing info for samples')
         try:
             seq_infos: List[Dict] = seqapi.get_sequences_by_sample_ids(
                 request_body=[s['id'] for s in samples]
             )
         except exceptions.ApiException:
-            logger.critical(
-                f'Not for all samples in project {proj} sequencing data was ' f'found'
-            )
-            sys.exit(1)
+            logger.critical(f'Not for all samples sequencing data was found')
+            raise
+
         seq_meta_by_sid: Dict = dict()
+        sids_without_meta = []
         for si in seq_infos:
             if 'meta' not in si:
-                logger.error(
-                    f'Sequencing info {si} doesn\'t contain "meta" field, '
-                    f'skipping sample {si["sample_id"]}'
-                )
+                sids_without_meta.append(si['sample_id'])
             else:
                 seq_meta_by_sid[si['sample_id']] = si['meta']
+        if sids_without_meta:
+            logger.error(
+                f'Found {len(sids_without_meta)} samples without "meta" in '
+                f'sequencing info: {", ".join(sids_without_meta)}'
+            )
+        samples = [s for s in samples if s['id'] in seq_meta_by_sid]
+        if not samples:
+            logger.info(f'No samples to process, skipping project {proj}')
+            continue
 
+        logger.info(
+            'Checking GVCFs for samples and collecting pipeline input data frame'
+        )
         for s in samples:
             sample_id = s['id']
-            if skip_samples and sample_id in skip_samples:
-                logger.info(f'Skiping sample: {sample_id}')
-                continue
-
             external_id = s['external_id']
-            if not external_id:
-                logger.warning(
-                    f'"external_id" is not defined, skipping sample {sample_id}'
-                )
-
-            seq_meta = seq_meta_by_sid.get(sample_id)
-            if not seq_meta:
-                continue
+            seq_meta = seq_meta_by_sid[sample_id]
+            gvcf_path = gvcf_by_sid[s['id']]
 
             # TODO: reenable once we support row data and crams
             # if is_test:
             #     s = replace_paths_to_test(s)
             # if s:
             #     samples_by_project[proj].append(s)
-
-            gvcf_analysis_data = aapi.get_latest_analysis_for_samples_and_type(
-                project=input_projects,
-                analysis_type='gvcf',
-                request_body=[sample_id],
-            )
-            if not gvcf_analysis_data:
-                logger.warning(
-                    f'No gvcf analysis for sample {sample_id} ' f'from project {proj}'
-                )
-                continue
-            a = Analysis(
-                id=gvcf_analysis_data.pop('id'),
-                type=AnalysisType(gvcf_analysis_data.pop('type', None)),
-                status=AnalysisStatus(gvcf_analysis_data.pop('status', None)),
-                sample_ids=set(gvcf_analysis_data.get('sample_ids', [])),
-                output=gvcf_analysis_data.pop('output', None),
-            )
-            assert a.type == 'gvcf', gvcf_analysis_data
-            assert a.status == 'completed', gvcf_analysis_data
-            assert len(a.sample_ids) == 1, gvcf_analysis_data
-            assert list(a.sample_ids)[0] == sample_id, gvcf_analysis_data
-
-            gvcf_path = a.output
-            if not gvcf_path:
-                logger.warning(
-                    f'"output" is not defined for the latest gvcf analysis, '
-                    f'skipping sample {sample_id}'
-                )
-                continue
 
             if is_test:
                 if '/batch1/' not in gvcf_path:
@@ -282,17 +335,11 @@ def find_inputs_from_db(
                     f'gs://cpg-{proj}-main',
                     f'gs://cpg-{proj}-test',
                 )
+                gvcf_path = gvcf_path.replace(s['id'], s['external_id'])
                 if not utils.file_exists(gvcf_path):
                     continue
-                gvcf_path = gvcf_path.replace(sample_id, external_id)
                 logger.info(f'Using {gvcf_path} for a test run')
 
-            if not gvcf_path:
-                logger.warning(
-                    f'GVCF analysis for sample ID {sample_id} does not have '
-                    f'an "output" field'
-                )
-                continue
             if not gvcf_path.endswith('.g.vcf.gz'):
                 logger.warning(
                     f'GVCF analysis for sample ID {sample_id} "output" field '
@@ -328,6 +375,10 @@ def find_inputs_from_db(
                 'operation': 'add',
             }
             inputs.append(sample_information)
+
+    if not inputs:
+        logger.error('No found any projects with samples good for processing')
+        sys.exit(1)
 
     df = pd.DataFrame(inputs).set_index('s', drop=False)
     return df
