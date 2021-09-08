@@ -69,7 +69,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     mt_path: str,
     out_mt_path: str,
     out_hgdp_union_mt_path: str,
-    overwrite: bool,  # pylint: disable=unused-argument
+    overwrite: bool,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
     utils.init_hail('sample_qc_subset_mt_for_pca')
@@ -87,16 +87,19 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     hgdp_union_mt = get_sites_shared_with_hgdp(
         mt=mt,
         hgdp_mt=hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_MT_PATH),
+        overwrite=overwrite,
     )
 
     hgdp_union_hq_sites_mt = filter_high_quality_sites(
         hgdp_union_mt,
         out_mt_path=out_hgdp_union_mt_path,
+        overwrite=overwrite,
     )
     generate_subset_mt(
         mt=mt,
         hgdp_union_hq_sites_mt=hgdp_union_hq_sites_mt,
         out_mt_path=out_mt_path,
+        overwrite=overwrite,
     )
 
 
@@ -104,12 +107,15 @@ def get_sites_shared_with_hgdp(
     mt: hl.MatrixTable,
     hgdp_mt: hl.MatrixTable,
     out_mt_path: Optional[str] = None,
+    overwrite: bool = False,
 ) -> hl.MatrixTable:
     """
     1. Strip off column- and entry-level annotations
     2. Combine the dataset with HGDP/1kG (`hgdp_mt`) and keep only shared rows
     3. Add back HGDP column annotations as a `hgdp_1kg_metadata` column
     """
+    if utils.can_reuse(out_mt_path, overwrite):
+        mt = hl.read_matrix_table(out_mt_path)
 
     # The hgdp/1kg table is already dense and annotated with GT,
     # so just need to make sure the analysed dataset table matches that:
@@ -130,7 +136,7 @@ def get_sites_shared_with_hgdp(
 
     if out_mt_path:
         mt.write(out_mt_path, overwrite=True)
-        mt = mt.read_matrix_table(out_mt_path)
+        mt = hl.read_matrix_table(out_mt_path)
     return mt
 
 
@@ -138,6 +144,7 @@ def filter_high_quality_sites(
     mt: hl.MatrixTable,
     num_rows_before_ld_prune: int = 200_000,
     out_mt_path: Optional[str] = None,
+    overwrite: bool = False,
 ) -> hl.MatrixTable:
     """
     1. Run `hl.variant_qc()` to calculate metrics such as AF, call rate
@@ -147,6 +154,8 @@ def filter_high_quality_sites(
     3. Randomly subset sites to `num_rows_before_ld_prune`
     4. LD-prune
     """
+    if utils.can_reuse(out_mt_path, overwrite):
+        mt = hl.read_matrix_table(out_mt_path)
 
     # Choose variants based off of gnomAD v3 criteria
     mt = hl.variant_qc(mt)
@@ -171,7 +180,7 @@ def filter_high_quality_sites(
 
     if out_mt_path:
         mt.write(out_mt_path, overwrite=True)
-        mt = mt.read_matrix_table(out_mt_path)
+        mt = hl.read_matrix_table(out_mt_path)
     return mt
 
 
@@ -179,10 +188,13 @@ def generate_subset_mt(
     mt: hl.MatrixTable,
     hgdp_union_hq_sites_mt: hl.MatrixTable,
     out_mt_path: Optional[str] = None,
+    overwrite: bool = False,
 ) -> hl.MatrixTable:
     """
     Subset the matrix table `mt` down to sites in `hgdp_union_hq_sites_mt`
     """
+    if utils.can_reuse(out_mt_path, overwrite):
+        mt = hl.read_matrix_table(out_mt_path)
 
     # Filter `mt` down to the loci in `hgdp_union_hq_sites_mt`
     mt = mt.semi_join_rows(hgdp_union_hq_sites_mt.rows())
@@ -192,7 +204,7 @@ def generate_subset_mt(
 
     if out_mt_path:
         mt.write(out_mt_path, overwrite=True)
-        mt = mt.read_matrix_table(out_mt_path)
+        mt = hl.read_matrix_table(out_mt_path)
     return mt
 
 
