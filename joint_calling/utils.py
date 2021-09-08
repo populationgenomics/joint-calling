@@ -333,9 +333,9 @@ def get_filter_cutoffs(
 
     if path.startswith('gs://'):
         contents = subprocess.check_output(['gsutil', 'cat', path])
-        filter_cutoffs_d = yaml.load(contents)
+        filter_cutoffs_d = yaml.safe_load(contents)
     else:
         with open(path) as f:
-            filter_cutoffs_d = yaml.load(f)
+            filter_cutoffs_d = yaml.safe_load(f)
 
     return filter_cutoffs_d
