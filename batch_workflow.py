@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 import traceback
 from os.path import join, dirname, abspath, basename
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Collection
 import logging
 import click
 import pandas as pd
@@ -99,6 +99,13 @@ logger.setLevel(logging.INFO)
     'that generates it.',
 )
 @click.option(
+    '--skip-sample',
+    '-S',
+    'skip_samples',
+    multiple=True,
+    help='Don\'t process specified samples. Can be set multiple times.',
+)
+@click.option(
     '--scatter-count',
     'scatter_count',
     type=int,
@@ -121,6 +128,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
     overwrite: bool,
+    skip_samples: Collection[str],
     scatter_count: int,
     dry_run: bool,
     run_vqsr: bool,
@@ -196,6 +204,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         input_projects=input_projects,
         analysis_project=analysis_project,
         is_test=output_namespace in ['test', 'tmp'],
+        skip_samples=skip_samples,
     )
 
     if use_gnarly_genotyper:
@@ -485,8 +494,9 @@ def _add_pre_combiner_jobs(
     output_bucket: str,
     overwrite: bool,
     input_projects: List[str],
-    analysis_project: str,
+    analysis_project: str,  # pylint: disable=unused-argument
     is_test: bool,
+    skip_samples: Optional[Collection[str]] = None,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
@@ -530,8 +540,8 @@ def _add_pre_combiner_jobs(
             )
             samples_df = sm_utils.find_inputs_from_db(
                 input_projects,
-                analysis_project,
                 is_test=is_test,
+                skip_samples=skip_samples,
             )
             samples_df.to_csv(
                 input_samples_tsv_path, index=False, sep='\t', na_rep='NA'

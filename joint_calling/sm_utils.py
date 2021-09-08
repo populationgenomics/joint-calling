@@ -5,10 +5,11 @@ Functions to find the pipeline inputs and communicate with the SM server
 import logging
 import shutil
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from os.path import join, basename
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Set, Collection
 
 import pandas as pd
 from hailtop.batch import Batch
@@ -19,12 +20,18 @@ from sample_metadata import (
     AnalysisStatus,
     SequenceApi,
     SampleApi,
+    exceptions,
 )
 from joint_calling import utils
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
 logger.setLevel(logging.INFO)
+
+
+sapi = SampleApi()
+aapi = AnalysisApi()
+seqapi = SequenceApi()
 
 
 @dataclass
@@ -36,44 +43,45 @@ class Analysis:
     id: str
     type: AnalysisType
     status: AnalysisStatus
+    sample_ids: Set[str]
     output: Optional[str]
-    sample_ids: List[str]
 
     @staticmethod
-    def from_db(**kwargs):
+    def query(
+        analysis_project: str, analysis_type: str, sample_ids: Collection[str]
+    ) -> Optional['Analysis']:
         """
-        Convert from db keys, mainly converting id to id_
+        Query the DB to find last completed analysis for these type and samples
         """
-        analysis_type = kwargs.pop('type', None)
-        status = kwargs.pop('status', None)
-        sample_ids = kwargs['sample_ids']
-        output = kwargs.pop('output', [])
-        return Analysis(
-            id=kwargs.pop('id'),
-            type=AnalysisType(analysis_type),
-            status=AnalysisStatus(status),
-            sample_ids=list(set(sorted(sample_ids))),
-            output=output,
+        data: Optional[Dict] = None
+        if analysis_type == 'joint-calling':
+            data = aapi.get_latest_complete_analysis_for_type(
+                project=analysis_project,
+                analysis_type=analysis_type,
+            )
+        else:
+            data = aapi.get_latest_analysis_for_samples_and_type(
+                project=analysis_project,
+                analysis_type=analysis_type,
+                request_body=sample_ids,
+            )
+        if not data:
+            return None
+        a = Analysis(
+            id=data.pop('id'),
+            type=AnalysisType(data.pop('type', None)),
+            status=AnalysisStatus(data.pop('status', None)),
+            sample_ids=set(data.get('sample_ids', [])),
+            output=data.pop('output', None),
         )
+        assert a.type == analysis_type, data
+        assert a.status == 'completed', data
+        if len(sample_ids) == 1:
+            assert a.sample_ids == set(sample_ids), data
 
-
-def get_latest_complete_analysis(
-    analysis_project: str,
-) -> Dict[Tuple[str, Tuple], Analysis]:
-    """
-    Returns a dictionary that maps a tuple (analysis type, sample ids) to the
-    lastest complete analysis record (represented by a AnalysisModel object)
-    """
-    aapi = AnalysisApi()
-    latest_by_type_and_sids = dict()
-    for a_type in ['cram', 'gvcf', 'joint-calling']:
-        for a_data in aapi.get_latest_complete_analyses_by_type(
-            project=analysis_project,
-            analysis_type=a_type,
-        ):
-            a: Analysis = Analysis.from_db(**a_data)
-            latest_by_type_and_sids[(a_type, tuple(a.sample_ids))] = a
-    return latest_by_type_and_sids
+        if a.sample_ids != set(sample_ids):
+            return None
+        return a
 
 
 def make_sm_in_progress_job(
@@ -134,133 +142,192 @@ python update.py
     return j
 
 
+def replace_paths_to_test(s: Dict) -> Optional[Dict]:
+    """
+    Replace paths of all files in -main namespace to -test namespsace,
+    and return None if files in -test are not found.
+    :param s:
+    :return:
+    """
+
+    def fix(fpath):
+        fpath = fpath.replace('-main-upload/', '-test-upload/')
+        if not utils.file_exists(fpath):
+            return None
+        return fpath
+
+    try:
+        reads_type = s['meta']['reads_type']
+        if reads_type in ('bam', 'cram'):
+            fpath = s['meta']['reads'][0]['location']
+            fpath = fix(fpath)
+            if not fpath:
+                return None
+            s['meta']['reads'][0]['location'] = fpath
+
+            fpath = s['meta']['reads'][0]['secondaryFiles'][0]['location']
+            fpath = fix(fpath)
+            if not fpath:
+                return None
+            s['meta']['reads'][0]['secondaryFiles'][0]['location'] = fpath
+
+        elif reads_type == 'fastq':
+            for li in range(len(s['meta']['reads'])):
+                for rj in range(len(s['meta']['reads'][li])):
+                    fpath = s['meta']['reads'][li][rj]['location']
+                    fpath = fix(fpath)
+                    if not fpath:
+                        return None
+                    s['meta']['reads'][li][rj]['location'] = fpath
+
+        logger.info(f'Found test sample {s["id"]}')
+        return s
+    except Exception:  # pylint: disable=broad-except
+        return None
+
+
 def find_inputs_from_db(
-    input_projects: List[str], analysis_project: str, is_test: bool = False
+    input_projects: List[str],
+    is_test: bool = False,
+    skip_samples: Optional[Collection[str]] = None,
 ) -> pd.DataFrame:
     """
     Determine inputs from SM DB
     """
-    aapi = AnalysisApi()
-    seqapi = SequenceApi()
-    sapi = SampleApi()
-
-    # Get samples in latest analysis
-    latest_analysis = aapi.get_latest_complete_analyses_by_type(
-        analysis_type='joint-calling', project=analysis_project
-    )
-    latest_analysis_sample_ids = [
-        analysis['sample_ids'] for analysis in latest_analysis
-    ]
-    sample_ids_in_latest_analysis = [
-        sample_id for sublist in latest_analysis_sample_ids for sample_id in sublist
-    ]
-
-    active_samples = sapi.get_samples(
-        body_get_samples_by_criteria_api_v1_sample_post={
-            'project_ids': input_projects,
-            'active': True,
-        }
-    )
-    active_samples_by_id = {s['id']: s for s in active_samples}
-    active_sample_ids = set(active_samples_by_id.keys())
-    new_sample_ids = list(set(active_sample_ids) - set(sample_ids_in_latest_analysis))
-    deleted_sample_ids = list(
-        set(sample_ids_in_latest_analysis) - set(active_sample_ids)
-    )
-
     inputs = []
 
-    # Get all sequence metadata for the list of processed samples
-    sequences_data = seqapi.get_sequences_by_sample_ids(request_body=new_sample_ids)
-
-    new_sample_gvcf_analyses = aapi.get_latest_gvcfs_for_samples(new_sample_ids)
-
-    for new_gvcf_analysis in new_sample_gvcf_analyses:
-        sample_id = new_gvcf_analysis.get('sample_ids')[0]
-        current_seq_data = next(
-            seq_data
-            for seq_data in sequences_data
-            if seq_data['sample_id'] == sample_id
+    for proj in input_projects:
+        samples = sapi.get_samples(
+            body_get_samples_by_criteria_api_v1_sample_post={
+                'project_ids': [proj],
+                'active': True,
+            }
         )
-        gvcf_path = new_gvcf_analysis.get('output')
-        external_id = active_samples_by_id[sample_id]['external_id']
-        if is_test:
-            if '/batch1/' not in gvcf_path:
+
+        try:
+            seq_infos: List[Dict] = seqapi.get_sequences_by_sample_ids(
+                request_body=[s['id'] for s in samples]
+            )
+        except exceptions.ApiException:
+            logger.critical(
+                f'Not for all samples in project {proj} sequencing data was ' f'found'
+            )
+            sys.exit(1)
+        seq_meta_by_sid: Dict = dict()
+        for si in seq_infos:
+            if 'meta' not in si:
+                logger.error(
+                    f'Sequencing info {si} doesn\'t contain "meta" field, '
+                    f'skipping sample {si["sample_id"]}'
+                )
+            else:
+                seq_meta_by_sid[si['sample_id']] = si['meta']
+
+        for s in samples:
+            sample_id = s['id']
+            if skip_samples and sample_id in skip_samples:
+                logger.info(f'Skiping sample: {sample_id}')
                 continue
-            for proj in input_projects:
+
+            external_id = s['external_id']
+            if not external_id:
+                logger.warning(
+                    f'"external_id" is not defined, skipping sample {sample_id}'
+                )
+
+            seq_meta = seq_meta_by_sid.get(sample_id)
+            if not seq_meta:
+                continue
+
+            # TODO: reenable once we support row data and crams
+            # if is_test:
+            #     s = replace_paths_to_test(s)
+            # if s:
+            #     samples_by_project[proj].append(s)
+
+            gvcf_analysis_data = aapi.get_latest_analysis_for_samples_and_type(
+                project=input_projects,
+                analysis_type='gvcf',
+                request_body=[sample_id],
+            )
+            if not gvcf_analysis_data:
+                logger.warning(
+                    f'No gvcf analysis for sample {sample_id} ' f'from project {proj}'
+                )
+                continue
+            a = Analysis(
+                id=gvcf_analysis_data.pop('id'),
+                type=AnalysisType(gvcf_analysis_data.pop('type', None)),
+                status=AnalysisStatus(gvcf_analysis_data.pop('status', None)),
+                sample_ids=set(gvcf_analysis_data.get('sample_ids', [])),
+                output=gvcf_analysis_data.pop('output', None),
+            )
+            assert a.type == 'gvcf', gvcf_analysis_data
+            assert a.status == 'completed', gvcf_analysis_data
+            assert len(a.sample_ids) == 1, gvcf_analysis_data
+            assert list(a.sample_ids)[0] == sample_id, gvcf_analysis_data
+
+            gvcf_path = a.output
+            if not gvcf_path:
+                logger.warning(
+                    f'"output" is not defined for the latest gvcf analysis, '
+                    f'skipping sample {sample_id}'
+                )
+                continue
+
+            if is_test:
+                if '/batch1/' not in gvcf_path:
+                    continue
                 gvcf_path = gvcf_path.replace(
                     f'gs://cpg-{proj}-main',
                     f'gs://cpg-{proj}-test',
                 )
                 if not utils.file_exists(gvcf_path):
                     continue
-            gvcf_path = gvcf_path.replace(sample_id, external_id)
-            logger.info(f'Using {gvcf_path} for a test run')
+                gvcf_path = gvcf_path.replace(sample_id, external_id)
+                logger.info(f'Using {gvcf_path} for a test run')
 
-        if not gvcf_path:
-            logger.warning(
-                f'GVCF analysis for sample ID {sample_id} does not have '
-                f'an "output" field'
-            )
-            continue
-        if not gvcf_path.endswith('.g.vcf.gz'):
-            logger.warning(
-                f'GVCF analysis for sample ID {sample_id} "output" field '
-                f'is not a GVCF'
-            )
-            continue
-        if not utils.file_exists(gvcf_path):
-            logger.warning(
-                f'GVCF analysis for sample ID {sample_id} "output" file '
-                f'does not exist: {gvcf_path}'
-            )
-            continue
-        if not utils.file_exists(gvcf_path + '.tbi'):
-            logger.warning(
-                f'GVCF analysis for sample ID {sample_id} "output" field '
-                f'does not have a corresponding tbi index: {gvcf_path}.tbi'
-            )
-            continue
-        sample_information = {
-            's': sample_id,
-            'external_id': external_id,
-            'population': None,
-            'gvcf': gvcf_path,
-            'batch': current_seq_data.get('meta').get('batch'),
-            'r_contamination': current_seq_data.get('meta').get('raw_data.FREEMIX'),
-            'r_chimera': current_seq_data.get('meta').get('raw_data.PCT_CHIMERAS'),
-            'r_duplication': current_seq_data.get('meta').get(
-                'raw_data.PERCENT_DUPLICATION'
-            ),
-            'median_insert_size': current_seq_data.get('meta').get(
-                'raw_data.MEDIAN_INSERT_SIZE'
-            ),
-            'flowcell_lane': 'sample.flowcell_lane',
-            'library_id': 'sample.library_id',
-            'platform': 'sample.platform',
-            'centre': 'sample.centre',
-            'operation': 'add',
-        }
-
-        inputs.append(sample_information)
-
-    for sample_id in deleted_sample_ids:
-        sample_information = {
-            's': sample_id,
-            'external_id': None,
-            'population': None,
-            'gvcf': None,
-            'r_contamination': None,
-            'r_chimera': None,
-            'r_duplication': None,
-            'median_insert_size': None,
-            'flowcell_lane': None,
-            'library_id': None,
-            'platform': None,
-            'centre': None,
-            'operation': 'delete',
-        }
-        inputs.append(sample_information)
+            if not gvcf_path:
+                logger.warning(
+                    f'GVCF analysis for sample ID {sample_id} does not have '
+                    f'an "output" field'
+                )
+                continue
+            if not gvcf_path.endswith('.g.vcf.gz'):
+                logger.warning(
+                    f'GVCF analysis for sample ID {sample_id} "output" field '
+                    f'is not a GVCF'
+                )
+                continue
+            if not utils.file_exists(gvcf_path):
+                logger.warning(
+                    f'GVCF analysis for sample ID {sample_id} "output" file '
+                    f'does not exist: {gvcf_path}'
+                )
+                continue
+            if not utils.file_exists(gvcf_path + '.tbi'):
+                logger.warning(
+                    f'GVCF analysis for sample ID {sample_id} "output" field '
+                    f'does not have a corresponding tbi index: {gvcf_path}.tbi'
+                )
+                continue
+            sample_information = {
+                's': sample_id,
+                'external_id': external_id,
+                'population': None,
+                'gvcf': gvcf_path,
+                'batch': seq_meta.get('batch'),
+                'r_contamination': seq_meta.get('raw_data.FREEMIX'),
+                'r_chimera': seq_meta.get('raw_data.PCT_CHIMERAS'),
+                'r_duplication': seq_meta.get('raw_data.PERCENT_DUPLICATION'),
+                'median_insert_size': seq_meta.get('raw_data.MEDIAN_INSERT_SIZE'),
+                'flowcell_lane': seq_meta.get('sample.flowcell_lane'),
+                'library_id': seq_meta.get('sample.library_id'),
+                'platform': seq_meta.get('sample.platform'),
+                'centre': seq_meta.get('sample.centre'),
+                'operation': 'add',
+            }
+            inputs.append(sample_information)
 
     df = pd.DataFrame(inputs).set_index('s', drop=False)
     return df
