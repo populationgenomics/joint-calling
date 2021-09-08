@@ -142,9 +142,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         web_bucket_suffix = 'test-tmp'
 
     ptrn = f'gs://cpg-{analysis_project}-{{suffix}}/joint-calling/{output_version}'
-    work_bucket = ptrn.format(tmp_bucket_suffix)
-    output_analysis_bucket = ptrn.format(output_analysis_suffix)
-    web_bucket = ptrn.format(web_bucket_suffix)
+    work_bucket = ptrn.format(suffix=tmp_bucket_suffix)
+    output_analysis_bucket = ptrn.format(suffix=output_analysis_suffix)
+    web_bucket = ptrn.format(suffix=web_bucket_suffix)
 
     combiner_bucket = f'{work_bucket}/combiner'
     sample_qc_bucket = f'{work_bucket}/sample_qc'
