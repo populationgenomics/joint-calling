@@ -170,8 +170,9 @@ def filter_high_quality_sites(
     # before feeding it into LD prunning
     mt = mt.cache()
     nrows = mt.count_rows()
-    logger.info(f'Number of rows before subsetting: {nrows}')
-    mt = mt.sample_rows(num_rows_before_ld_prune / nrows, seed=12345)
+    if nrows > num_rows_before_ld_prune:
+        logger.info(f'Number of rows {nrows} > {num_rows_before_ld_prune}, subsetting')
+        mt = mt.sample_rows(num_rows_before_ld_prune / nrows, seed=12345)
 
     # LD prunning
     pruned_variant_ht = hl.ld_prune(mt.GT, r2=0.1, bp_window_size=500000)
