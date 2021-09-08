@@ -67,8 +67,8 @@ logger.setLevel(logging.INFO)
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_path: str,
-    out_mt_path: str,
     out_hgdp_union_mt_path: str,
+    out_mt_path: str,
     overwrite: bool,
     hail_billing: str,  # pylint: disable=unused-argument
 ):

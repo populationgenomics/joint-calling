@@ -366,18 +366,16 @@ def _add_sample_qc_jobs(
 
     sample_qc_bucket = work_bucket
 
-    pca_mt_path = join(work_bucket, 'mt_subset_for_pca.mt')
     pca_with_hgdp_mt_path = join(work_bucket, 'mt_subset_for_pca_with_hgdp.mt')
-    if not can_reuse(pca_mt_path, overwrite) and not can_reuse(
-        pca_with_hgdp_mt_path, overwrite
-    ):
+    pca_mt_path = join(work_bucket, 'mt_subset_for_pca.mt')
+    if not all(can_reuse(fp, overwrite) for fp in [pca_mt_path, pca_with_hgdp_mt_path]):
         pcrelate_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/sample_qc_subset_mt_for_pca.py '
             + (f'--overwrite ' if overwrite else '')
             + f'--mt {mt_path} '
-            f'--out-mt {pca_mt_path} '
             f'--out-hgdp-union-mt {pca_with_hgdp_mt_path} '
+            f'--out-mt {pca_mt_path} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
