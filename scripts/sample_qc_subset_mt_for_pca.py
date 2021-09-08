@@ -115,7 +115,7 @@ def get_sites_shared_with_hgdp(
     3. Add back HGDP column annotations as a `hgdp_1kg_metadata` column
     """
     if utils.can_reuse(out_mt_path, overwrite):
-        mt = hl.read_matrix_table(out_mt_path)
+        return hl.read_matrix_table(out_mt_path)
 
     # The hgdp/1kg table is already dense and annotated with GT,
     # so just need to make sure the analysed dataset table matches that:
@@ -155,7 +155,8 @@ def filter_high_quality_sites(
     4. LD-prune
     """
     if utils.can_reuse(out_mt_path, overwrite):
-        mt = hl.read_matrix_table(out_mt_path)
+        return hl.read_matrix_table(out_mt_path)
+
     logger.info(f'Number of rows before filtering: {mt.count_rows()}')
 
     # Choose variants based off of gnomAD v3 criteria
@@ -197,7 +198,7 @@ def generate_subset_mt(
     Subset the matrix table `mt` down to sites in `hgdp_union_hq_sites_mt`
     """
     if utils.can_reuse(out_mt_path, overwrite):
-        mt = hl.read_matrix_table(out_mt_path)
+        return hl.read_matrix_table(out_mt_path)
 
     # Filter `mt` down to the loci in `hgdp_union_hq_sites_mt`
     mt = mt.semi_join_rows(hgdp_union_hq_sites_mt.rows())
