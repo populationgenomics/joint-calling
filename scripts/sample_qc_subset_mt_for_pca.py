@@ -156,6 +156,7 @@ def filter_high_quality_sites(
     """
     if utils.can_reuse(out_mt_path, overwrite):
         mt = hl.read_matrix_table(out_mt_path)
+    logger.info(f'Number of rows before filtering: {mt.count_rows()}')
 
     # Choose variants based off of gnomAD v3 criteria
     mt = hl.variant_qc(mt)
@@ -170,6 +171,7 @@ def filter_high_quality_sites(
     # before feeding it into LD prunning
     mt = mt.cache()
     nrows = mt.count_rows()
+    logger.info(f'Number of rows after filtering: {nrows}')
     if nrows > num_rows_before_ld_prune:
         logger.info(f'Number of rows {nrows} > {num_rows_before_ld_prune}, subsetting')
         mt = mt.sample_rows(num_rows_before_ld_prune / nrows, seed=12345)
