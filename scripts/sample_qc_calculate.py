@@ -133,16 +133,16 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 ):
     local_tmp_dir = utils.init_hail(__file__, local_tmp_dir)
 
-    input_metadata_ht_path = join(out_bucket, sqc.INPUT_METADATA_HT_NAME)
-    hail_sample_qc_ht_path = join(out_bucket, sqc.HAIL_SAMPLE_QC_HT_NAME)
-    nongnomad_snps_ht_path = join(out_bucket, sqc.NONGNOMAD_SNPS_HT_NAME)
-    sex_ht_path = join(out_bucket, sqc.SEX_HT_NAME)
-    pop_ht_path = join(out_bucket, sqc.POP_HT_NAME)
-    regressed_metrics_ht_path = join(out_bucket, sqc.REGRESSED_METRICS_HT_NAME)
+    input_metadata_ht_path = join(out_bucket, utils.INPUT_METADATA_HT_NAME)
+    hail_sample_qc_ht_path = join(out_bucket, utils.HAIL_SAMPLE_QC_HT_NAME)
+    nongnomad_snps_ht_path = join(out_bucket, utils.NONGNOMAD_SNPS_HT_NAME)
+    sex_ht_path = join(out_bucket, utils.SEX_HT_NAME)
+    pop_ht_path = join(out_bucket, utils.POP_HT_NAME)
+    regressed_metrics_ht_path = join(out_bucket, utils.REGRESSED_METRICS_HT_NAME)
 
-    eigenvalues_ht_path = join(out_analysis_bucket, sqc.PCA_EIGENVALUES_HT_NAME)
-    scores_ht_path = join(out_analysis_bucket, sqc.PCA_SCORES_HT_NAME)
-    loadings_ht_path = join(out_analysis_bucket, sqc.PCA_LOADINGS_HT_NAME)
+    eigenvalues_ht_path = join(out_analysis_bucket, utils.PCA_EIGENVALUES_HT_NAME)
+    scores_ht_path = join(out_analysis_bucket, utils.PCA_SCORES_HT_NAME)
+    loadings_ht_path = join(out_analysis_bucket, utils.PCA_LOADINGS_HT_NAME)
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
     mt_split = utils.get_mt(mt_path, passing_sites_only=True, split=True)

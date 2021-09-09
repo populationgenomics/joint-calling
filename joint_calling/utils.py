@@ -69,6 +69,20 @@ NUMBER_OF_HAPLOTYPE_CALLER_INTERVALS = 50
 NUMBER_OF_GENOMICS_DB_INTERVALS = 50
 
 
+# Sample QC output file names
+INPUT_METADATA_HT_NAME = 'input_metadata.ht'
+HAIL_SAMPLE_QC_HT_NAME = 'hail_sample_qc.ht'
+NONGNOMAD_SNPS_HT_NAME = 'nongnomad_snps.ht'
+HARD_FILTERED_SAMPLES_HT_NAME = 'hard_filtered_samples.ht'
+SEX_HT_NAME = 'sex.ht'
+POP_HT_NAME = 'pop.ht'
+REGRESSED_METRICS_HT_NAME = 'regressed_metrics.ht'
+RELATED_SAMPLES_TO_DROP_HT_NAME = 'related_samples_to_drop.ht'
+PCA_EIGENVALUES_HT_NAME = 'pca_eigenvalues.ht'
+PCA_SCORES_HT_NAME = 'pca_scores.ht'
+PCA_LOADINGS_HT_NAME = 'pca_loadings.ht'
+
+
 def init_hail(name: str, local_tmp_dir: str = None):
     """
     Initialize Hail and set up the directory for logs

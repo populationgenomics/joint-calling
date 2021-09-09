@@ -92,12 +92,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 ):
     utils.init_hail(__file__)
 
-    input_metadata_ht = hl.read_table(join(qc_bucket, sqc.INPUT_METADATA_HT_NAME))
-    hail_sample_qc_ht = hl.read_table(join(qc_bucket, sqc.HAIL_SAMPLE_QC_HT_NAME))
-    nongnomad_snps_ht = hl.read_table(join(qc_bucket, sqc.NONGNOMAD_SNPS_HT_NAME))
-    sex_ht = hl.read_table(join(qc_bucket, sqc.SEX_HT_NAME))
-    pop_ht = hl.read_table(join(qc_bucket, sqc.POP_HT_NAME))
-    regressed_metrics_ht = hl.read_table(join(qc_bucket, sqc.REGRESSED_METRICS_HT_NAME))
+    input_metadata_ht = hl.read_table(join(qc_bucket, utils.INPUT_METADATA_HT_NAME))
+    hail_sample_qc_ht = hl.read_table(join(qc_bucket, utils.HAIL_SAMPLE_QC_HT_NAME))
+    nongnomad_snps_ht = hl.read_table(join(qc_bucket, utils.NONGNOMAD_SNPS_HT_NAME))
+    sex_ht = hl.read_table(join(qc_bucket, utils.SEX_HT_NAME))
+    pop_ht = hl.read_table(join(qc_bucket, utils.POP_HT_NAME))
+    regressed_metrics_ht = hl.read_table(
+        join(qc_bucket, utils.REGRESSED_METRICS_HT_NAME)
+    )
     hard_filtered_samples_ht = hl.read_table(hard_filtered_samples_ht_path)
 
     cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
@@ -113,7 +115,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         )
 
     related_samples_to_drop_ht_path = join(
-        qc_bucket, sqc.RELATED_SAMPLES_TO_DROP_HT_NAME
+        qc_bucket, utils.RELATED_SAMPLES_TO_DROP_HT_NAME
     )
 
     # Re-calculating the maximum set of unrelated samples now that

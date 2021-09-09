@@ -85,9 +85,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     def _make_path(fname):
         return join(out_analysis_bucket, fname.replace('.ht', f'_{pop}.ht'))
 
-    eigenvalues_ht_path = _make_path(sqc.PCA_EIGENVALUES_HT_NAME)
-    scores_ht_path = _make_path(sqc.PCA_SCORES_HT_NAME)
-    loadings_ht_path = _make_path(sqc.PCA_LOADINGS_HT_NAME)
+    eigenvalues_ht_path = _make_path(utils.PCA_EIGENVALUES_HT_NAME)
+    scores_ht_path = _make_path(utils.PCA_SCORES_HT_NAME)
+    loadings_ht_path = _make_path(utils.PCA_LOADINGS_HT_NAME)
 
     if all(
         utils.can_reuse(fp, overwrite)

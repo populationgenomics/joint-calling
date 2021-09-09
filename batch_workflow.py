@@ -29,7 +29,6 @@ from joint_calling import utils
 from joint_calling.utils import can_reuse
 from joint_calling.variant_qc import add_variant_qc_jobs
 from joint_calling import sm_utils
-from joint_calling import sample_qc as sqc
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -498,7 +497,8 @@ def _add_sample_qc_jobs(
 
     if pca_pop:
         pop_pca_scores_ht_path = join(
-            out_analysis_bucket, sqc.PCA_SCORES_HT_NAME.replace('.ht', f'_{pca_pop}.ht')
+            out_analysis_bucket,
+            utils.PCA_SCORES_HT_NAME.replace('.ht', f'_{pca_pop}.ht'),
         )
         if not can_reuse(pop_pca_scores_ht_path, overwrite):
             dataproc.hail_dataproc_job(
