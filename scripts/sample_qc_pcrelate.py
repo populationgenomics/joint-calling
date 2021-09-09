@@ -10,6 +10,7 @@ from typing import Optional
 
 import click
 import hail as hl
+from hail.experimental import lgt_to_gt
 
 from joint_calling import utils
 from joint_calling import _version
@@ -60,6 +61,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     hail_billing: str,  # pylint: disable=unused-argument
 ):
     mt = hl.read_matrix_table(pca_mt_path)
+    mt = mt.select_entries(GT=lgt_to_gt(mt.LGT, mt.LA))
+
     _compute_relatedness(
         mt=mt,
         tmp_bucket=tmp_bucket,

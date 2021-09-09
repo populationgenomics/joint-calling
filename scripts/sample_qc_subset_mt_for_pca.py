@@ -82,7 +82,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         & (mt.locus.in_autosome())
     )
     mt = mt.key_rows_by('locus', 'alleles')
-    mt = hl.experimental.densify(mt)
+    mt = hl.experimental.densify(mt)  # drops mt.END
+    mt = mt.select_entries(GT=lgt_to_gt(mt.LGT, mt.LA))
 
     hgdp_union_mt = get_sites_shared_with_hgdp(
         mt=mt,
@@ -110,6 +111,11 @@ def get_sites_shared_with_hgdp(
     overwrite: bool = False,
 ) -> hl.MatrixTable:
     """
+    Input `mt` must be dense and annotated with GT.
+
+    Assuming `hgdp_mt` is a gnomAD HGDP+1KG subset MatrixTable, which is already
+    dense and annotated with GT.
+
     1. Strip off column- and entry-level annotations
     2. Combine the dataset with HGDP/1kG (`hgdp_mt`) and keep only shared rows
     3. Add back HGDP column annotations as a `hgdp_1kg_metadata` column
@@ -117,14 +123,10 @@ def get_sites_shared_with_hgdp(
     if utils.can_reuse(out_mt_path, overwrite):
         return hl.read_matrix_table(out_mt_path)
 
-    # The hgdp/1kg table is already dense and annotated with GT,
-    # so just need to make sure the analysed dataset table matches that:
-    mt = mt.select_entries(GT=lgt_to_gt(mt.LGT, mt.LA))
-
     # Entries and columns must be identical, so stripping all column-level data,
-    # and all entry-level data except for GT. But first saving the columns
-    # (i.e. sample-level metadata) into a variable to re-add it later:
-    hgdp_cols_ht = hgdp_mt.cols()
+    # and all entry-level data except for GT.
+    mt = mt.select_entries('GT')
+    hgdp_cols_ht = hgdp_mt.cols()  # saving the column data to re-add later
     hgdp_mt = hgdp_mt.select_entries(hgdp_mt.GT).select_cols()
 
     # Join samples between two datasets. It will also subset rows to the rows
