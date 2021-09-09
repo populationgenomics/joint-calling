@@ -120,7 +120,7 @@ logger.setLevel(logging.INFO)
     default=20,
 )
 @click.option(
-    '--n-ancestry-pcs',
+    '--pca-pop',
     'pca_pop',
     help='if specified, a separate PCA will be produced with samples trained only'
     'on this population',
