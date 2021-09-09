@@ -96,7 +96,7 @@ def _compute_relatedness(
     out_ht_path = out_ht_path or join(tmp_bucket, 'relatedness.ht')
     if utils.can_reuse(out_ht_path, overwrite):
         return hl.read_table(out_ht_path)
-    
+
     sample_num = mt.cols().count()
 
     _, scores, _ = hl.hwe_normalized_pca(

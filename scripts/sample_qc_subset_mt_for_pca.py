@@ -60,6 +60,12 @@ logger.setLevel(logging.INFO)
     'that generates it.',
 )
 @click.option(
+    '--is-test',
+    'is_test',
+    is_flag=True,
+    help='subset the gnomAD table to 20 samples',
+)
+@click.option(
     '--hail-billing',
     'hail_billing',
     required=True,
@@ -70,6 +76,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     out_hgdp_union_mt_path: str,
     out_mt_path: str,
     overwrite: bool,
+    is_test: bool,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
     utils.init_hail('sample_qc_subset_mt_for_pca')
@@ -85,12 +92,17 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     mt = hl.experimental.densify(mt)  # drops mt.END
     mt = mt.select_entries(GT=lgt_to_gt(mt.LGT, mt.LA))
 
+    hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_MT_PATH)
+    if is_test:
+        ncols = hgdp_mt.count_cols()
+        target_ncols = 20
+        hgdp_mt = hgdp_mt.sample_cols(p=target_ncols / ncols, seed=42)
+
     hgdp_union_mt = get_sites_shared_with_hgdp(
         mt=mt,
-        hgdp_mt=hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_MT_PATH),
+        hgdp_mt=hgdp_mt,
         overwrite=overwrite,
     )
-
     hgdp_union_hq_sites_mt = filter_high_quality_sites(
         hgdp_union_mt,
         out_mt_path=out_hgdp_union_mt_path,

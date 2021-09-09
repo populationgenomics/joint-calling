@@ -256,6 +256,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         billing_project=billing_project,
         sample_count=len(samples_df),
         age_csv_path=f'gs://cpg-{analysis_project}-main-analysis/metadata/age.csv',
+        is_test=output_namespace in ['test', 'tmp'],
     )
 
     if run_rf or run_vqsr:
@@ -362,6 +363,7 @@ def _add_sample_qc_jobs(
     sample_count: int,  # pylint: disable=unused-argument
     depends_on: Optional[List[Job]] = None,
     billing_project: Optional[str] = None,
+    is_test: bool = False,
 ) -> Tuple[Job, str, str]:
 
     sample_qc_bucket = work_bucket
@@ -376,6 +378,7 @@ def _add_sample_qc_jobs(
             + f'--mt {mt_path} '
             f'--out-hgdp-union-mt {pca_with_hgdp_mt_path} '
             f'--out-mt {pca_mt_path} '
+            + ('--is-test ' if is_test else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
