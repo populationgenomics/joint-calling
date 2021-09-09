@@ -151,8 +151,12 @@ def get_sites_shared_with_hgdp(
     hgdp_cols_ht = hgdp_mt.cols()  # saving the column data to re-add later
     hgdp_mt = hgdp_mt.select_entries(hgdp_mt.GT).select_cols()
     hgdp_mt = hgdp_mt.annotate_cols(project='gnomad')
-    hgdp_mt = hgdp_mt.annotate_cols(continental_pop=hgdp_mt.population_inference.pop)
-    hgdp_mt = hgdp_mt.annotate_cols(subpop=hgdp_mt.population_inference.labeled_subpop)
+    hgdp_mt = hgdp_mt.annotate_cols(
+        continental_pop=hgdp_cols_ht.population_inference.pop
+    )
+    hgdp_mt = hgdp_mt.annotate_cols(
+        subpop=hgdp_cols_ht.population_inference.labeled_subpop
+    )
 
     # Join samples between two datasets. It will also subset rows to the rows
     # shared between datasets.

@@ -94,9 +94,7 @@ def produce_plots(
 
     assigned_pop_ht = hl.read_table(assigned_pop_ht_path)
     scores = hl.read_table(scores_ht_path)
-    scores = scores.annotate(
-        study=hl.if_else(scores.s.contains('TOB'), 'TOB-WGS', 'HGDP-1kG')
-    )
+    scores = scores.annotate(study=assigned_pop_ht[scores.s].project)
     sample_names = scores.s.collect()
     labels = scores.study.collect()
     study = list(set(labels))
