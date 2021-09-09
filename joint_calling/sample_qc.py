@@ -182,7 +182,7 @@ def infer_sex(
 
 def run_pca_ancestry_analysis(
     mt: hl.MatrixTable,
-    sample_to_drop_ht: hl.Table,
+    sample_to_drop_ht: Optional[hl.Table],
     tmp_bucket: str,
     n_pcs: int,
     out_eigenvalues_ht_path: Optional[str] = None,
@@ -218,7 +218,8 @@ def run_pca_ancestry_analysis(
 
     # Adjusting the number of principal components not to exceed the
     # number of samples
-    n_pcs = min(n_pcs, mt.cols().count() - sample_to_drop_ht.count())
+    samples_to_drop_num = 0 if sample_to_drop_ht is None else sample_to_drop_ht.count()
+    n_pcs = min(n_pcs, mt.cols().count() - samples_to_drop_num)
     eigenvalues, scores_ht, loadings_ht = run_pca_with_relateds(
         mt, sample_to_drop_ht, n_pcs=n_pcs
     )

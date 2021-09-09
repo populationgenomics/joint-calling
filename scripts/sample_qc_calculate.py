@@ -131,7 +131,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     target_bed: str,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
-    local_tmp_dir = utils.init_hail('sample_qc', local_tmp_dir)
+    local_tmp_dir = utils.init_hail(__file__, local_tmp_dir)
 
     input_metadata_ht_path = join(out_bucket, sqc.INPUT_METADATA_HT_NAME)
     hail_sample_qc_ht_path = join(out_bucket, sqc.HAIL_SAMPLE_QC_HT_NAME)

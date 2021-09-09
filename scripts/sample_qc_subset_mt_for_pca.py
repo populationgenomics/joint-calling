@@ -79,7 +79,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     is_test: bool,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
-    utils.init_hail('sample_qc_subset_mt_for_pca')
+    utils.init_hail(__file__)
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
     # Subset to biallelic SNPs in autosomes

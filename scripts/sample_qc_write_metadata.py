@@ -90,6 +90,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     overwrite: bool,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
+    utils.init_hail(__file__)
+
     input_metadata_ht = hl.read_table(join(qc_bucket, sqc.INPUT_METADATA_HT_NAME))
     hail_sample_qc_ht = hl.read_table(join(qc_bucket, sqc.HAIL_SAMPLE_QC_HT_NAME))
     nongnomad_snps_ht = hl.read_table(join(qc_bucket, sqc.NONGNOMAD_SNPS_HT_NAME))

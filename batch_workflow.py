@@ -29,6 +29,7 @@ from joint_calling import utils
 from joint_calling.utils import can_reuse
 from joint_calling.variant_qc import add_variant_qc_jobs
 from joint_calling import sm_utils
+from joint_calling import sample_qc as sqc
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -113,6 +114,12 @@ logger.setLevel(logging.INFO)
     help='Number of secondary workers for Dataproc clusters, as well as the'
     'number of shards to parition data for the AS-VQSR analysis',
 )
+@click.option(
+    '--pca_pop',
+    'pca_pop',
+    help='if specified, a separate PCA will be produced with samples trained only'
+    'on this population',
+)
 @click.option('--dry-run', 'dry_run', is_flag=True)
 @click.option('--run-vqsr/--skip-vqsr', 'run_vqsr', is_flag=True, default=True)
 @click.option('--run-rf/--skip-rf', 'run_rf', is_flag=True, default=False)
@@ -130,6 +137,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     overwrite: bool,
     skip_samples: Collection[str],
     scatter_count: int,
+    pca_pop: Optional[str],
     dry_run: bool,
     run_vqsr: bool,
     run_rf: bool,
@@ -257,6 +265,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         sample_count=len(samples_df),
         age_csv_path=f'gs://cpg-{analysis_project}-main-analysis/metadata/age.csv',
         is_test=output_namespace in ['test', 'tmp'],
+        pca_pop=pca_pop,
     )
 
     if run_rf or run_vqsr:
@@ -364,6 +373,7 @@ def _add_sample_qc_jobs(
     depends_on: Optional[List[Job]] = None,
     billing_project: Optional[str] = None,
     is_test: bool = False,
+    pca_pop: Optional[str] = None,
 ) -> Tuple[Job, str, str]:
 
     sample_qc_bucket = work_bucket
@@ -485,6 +495,29 @@ def _add_sample_qc_jobs(
         )
     else:
         metadata_qc_job = b.new_job(f'Write sample QC metadata [reuse]')
+
+    if pca_pop:
+        pop_pca_scores_ht_path = join(
+            out_analysis_bucket, sqc.PCA_SCORES_HT_NAME.replace('.ht', f'_{pca_pop}.ht')
+        )
+        if not can_reuse(pop_pca_scores_ht_path, overwrite):
+            dataproc.hail_dataproc_job(
+                b,
+                f'{scripts_dir}/pca_pop.py '
+                + f'--pca-hgdp-mt-path {pca_with_hgdp_mt_path} '
+                f'--pop {pca_pop} '
+                f'--out-analysis-bucket {out_analysis_bucket} '
+                f'--meta-ht {meta_ht_path} '
+                f'--tmp-bucket {work_bucket}/tmp '
+                + (f'--overwrite ' if overwrite else '')
+                + (f'--hail-billing {billing_project} ' if billing_project else ''),
+                max_age='8h',
+                packages=utils.DATAPROC_PACKAGES,
+                depends_on=[metadata_qc_job],
+                job_name=f'Pop-specific PCA',
+            )
+        else:
+            b.new_job(f'Pop-specific PCA [reuse]')
 
     return metadata_qc_job, hard_filter_ht_path, meta_ht_path
 

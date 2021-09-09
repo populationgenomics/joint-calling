@@ -59,6 +59,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     overwrite: bool,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
+    utils.init_hail(__file__)
+
     mt = hl.read_matrix_table(pca_mt_path)
     mt = mt.select_entries('GT')
 

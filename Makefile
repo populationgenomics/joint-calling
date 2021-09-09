@@ -34,6 +34,7 @@ test_to_tmp:
 	--analysis-project $(ANALYSIS_PROJECT) \
 	--input-project tob-wgs \
 	--output-version ${TEST_VERSION} \
+	--pca-pop nfe \
 	--keep-scratch \
 	$(REUSE_ARG)
 
@@ -51,6 +52,7 @@ test_to_test:
 	--analysis-project $(ANALYSIS_PROJECT) \
 	--input-project tob-wgs \
 	--output-version $(VERSION) \
+	--pca-pop nfe \
 	--keep-scratch \
 	$(REUSE_ARG)
 
@@ -68,4 +70,5 @@ main_to_main:
 	--analysis-project $(ANALYSIS_PROJECT) \
 	--input-project tob-wgs \
 	--output-version $(VERSION) \
+	--pca-pop nfe \
 	$(REUSE_ARG)
