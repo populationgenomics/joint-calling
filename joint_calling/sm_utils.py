@@ -219,7 +219,8 @@ def find_inputs(
     skip_samples: Optional[Collection[str]] = None,
 ) -> pd.DataFrame:
     """
-    Determine inputs from SM DB
+    Determine input samples and pull input files and metadata from
+    the CPG sample-metadata server database.
     """
     inputs = []
 
@@ -357,7 +358,9 @@ def find_inputs(
             sample_information = {
                 's': sample_id,
                 'external_id': external_id,
-                'population': None,
+                'project': proj,
+                'continental_pop': None,
+                'subpop': None,
                 'gvcf': gvcf_path,
                 'batch': seq_meta.get('batch'),
                 'r_contamination': seq_meta.get('raw_data.FREEMIX'),

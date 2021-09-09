@@ -25,17 +25,29 @@ logger.setLevel(logging.INFO)
 @click.command()
 @click.version_option(_version.__version__)
 @click.option(
-    '--qc-bucket',
-    'qc_bucket',
-    help='Bucket with the results from sample_qc_calculate.py',
+    '--input-metadata-ht',
+    'input_metadata_ht_path',
+    callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
-    '--filter-cutoffs-file',
-    'filter_cutoffs_path',
-    help=f'YAML file with filtering cutoffs',
+    '--hard-filtered-samples-ht',
+    'hard_filtered_samples_ht_path',
+    callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
-    '--age-csv', 'age_csv_path', help='CSV file with 2 columns: `sample` and `age`'
+    '--sex-ht',
+    'sex_ht_path',
+    callback=utils.get_validation_callback(ext='ht', must_exist=True),
+)
+@click.option(
+    '--custom-qc-ht',
+    'custom_qc_ht_path',
+    callback=utils.get_validation_callback(ext='ht', must_exist=True),
+)
+@click.option(
+    '--regressed-filtes-ht',
+    'regressed_metrics_ht_path',
+    callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
     '--hard-filtered-samples-ht',
@@ -48,6 +60,20 @@ logger.setLevel(logging.INFO)
     'relatedness_ht_path',
     required=True,
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
+)
+@click.option(
+    '--pop-ht',
+    'pop_ht_path',
+    required=True,
+    callback=utils.get_validation_callback(ext='ht', must_exist=True),
+)
+@click.option(
+    '--filter-cutoffs-file',
+    'filter_cutoffs_path',
+    help=f'YAML file with filtering cutoffs',
+)
+@click.option(
+    '--age-csv', 'age_csv_path', help='CSV file with 2 columns: `sample` and `age`'
 )
 @click.option(
     '--out-meta-ht',
@@ -79,11 +105,16 @@ logger.setLevel(logging.INFO)
     help='Hail billing account ID.',
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
-    qc_bucket: str,
+    input_metadata_ht_path: str,
+    hard_filtered_samples_ht_path: str,
+    sex_ht_path: str,
+    custom_qc_ht_path: str,
+    hail_sample_qc_ht_path: str,
+    regressed_metrics_ht_path: str,
+    relatedness_ht_path: str,
+    pop_ht_path: str,
     filter_cutoffs_path: str,
     age_csv_path: str,
-    hard_filtered_samples_ht_path: str,
-    relatedness_ht_path: str,
     out_meta_ht_path: str,
     out_meta_tsv_path: str,
     tmp_bucket: str,
@@ -92,17 +123,16 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 ):
     utils.init_hail(__file__)
 
-    input_metadata_ht = hl.read_table(join(qc_bucket, utils.INPUT_METADATA_HT_NAME))
-    hail_sample_qc_ht = hl.read_table(join(qc_bucket, utils.HAIL_SAMPLE_QC_HT_NAME))
-    nongnomad_snps_ht = hl.read_table(join(qc_bucket, utils.NONGNOMAD_SNPS_HT_NAME))
-    sex_ht = hl.read_table(join(qc_bucket, utils.SEX_HT_NAME))
-    pop_ht = hl.read_table(join(qc_bucket, utils.POP_HT_NAME))
-    regressed_metrics_ht = hl.read_table(
-        join(qc_bucket, utils.REGRESSED_METRICS_HT_NAME)
-    )
-    hard_filtered_samples_ht = hl.read_table(hard_filtered_samples_ht_path)
-
     cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
+
+    input_metadata_ht = hl.read_table(input_metadata_ht_path)
+    hard_filtered_samples_ht = hl.read_table(hard_filtered_samples_ht_path)
+    sex_ht = hl.read_table(sex_ht_path)
+    custom_qc_ht = hl.read_table(custom_qc_ht_path)
+    hail_sample_qc_ht = hl.read_table(hail_sample_qc_ht_path)
+    regressed_metrics_ht = hl.read_table(regressed_metrics_ht_path)
+    relatedness_ht = hl.read_table(relatedness_ht_path)
+    pop_ht = hl.read_table(pop_ht_path)
 
     if age_csv_path:
         age_ht = (
@@ -114,17 +144,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
             age=age_ht[input_metadata_ht.external_id].age,
         )
 
-    related_samples_to_drop_ht_path = join(
-        qc_bucket, utils.RELATED_SAMPLES_TO_DROP_HT_NAME
-    )
-
     # Re-calculating the maximum set of unrelated samples now that
     # we have metrics adjusted for population, so newly QC-failed samples
     # are excluded
-    sqc.flag_related_samples(
+    related_samples_to_drop_ht_path = join(tmp_bucket, 'related_samples_to_drop.ht')
+    related_samples_to_drop_ht = sqc.flag_related_samples(
         hard_filtered_samples_ht=hard_filtered_samples_ht,
         sex_ht=sex_ht,
-        relatedness_ht=hl.read_table(relatedness_ht_path),
+        relatedness_ht=relatedness_ht,
         regressed_metrics_ht=regressed_metrics_ht,
         tmp_bucket=tmp_bucket,
         kin_threshold=cutoffs_d['pca']['max_kin'],
@@ -135,15 +162,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     # Combine all intermediate tables together
     _generate_metadata(
         sample_qc_ht=hail_sample_qc_ht,
-        nongnomad_snps_ht=nongnomad_snps_ht,
+        custom_qc_ht=custom_qc_ht,
         sex_ht=sex_ht,
         input_metadata_ht=input_metadata_ht,
         hard_filtered_samples_ht=hard_filtered_samples_ht,
         regressed_metrics_ht=regressed_metrics_ht,
         pop_ht=pop_ht,
-        related_samples_to_drop_after_qc_ht=hl.read_table(
-            related_samples_to_drop_ht_path
-        ),
+        related_samples_to_drop_after_qc_ht=related_samples_to_drop_ht,
         out_ht_path=out_meta_ht_path,
         out_tsv_path=out_meta_tsv_path,
         overwrite=overwrite,
@@ -152,7 +177,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
 def _generate_metadata(
     sample_qc_ht: hl.Table,
-    nongnomad_snps_ht: hl.Table,
+    custom_qc_ht: hl.Table,
     sex_ht: hl.Table,
     input_metadata_ht: hl.Table,
     hard_filtered_samples_ht: hl.Table,
@@ -167,7 +192,7 @@ def _generate_metadata(
     Combine all intermediate tables into a single metadata table
 
     :param sample_qc_ht: table with a `bi_allelic_sample_qc` row field
-    :param nongnomad_snps_ht: table with a `nongnomad_snps` row field
+    :param custom_qc_ht: table with a `nongnomad_snps` row field
     :param sex_ht: table with the follwing row fields:
         `f_stat`, `n_called`, `expected_homs`, `observed_homs`
     :param input_metadata_ht: table with stats from the input metadata
@@ -212,7 +237,7 @@ def _generate_metadata(
 
         meta_ht = meta_ht.annotate(
             sample_qc=sample_qc_ht[meta_ht.key].bi_allelic_sample_qc,
-            nongnomad_snps=nongnomad_snps_ht[meta_ht.key].nongnomad_snps,
+            nongnomad_snps=custom_qc_ht[meta_ht.key].nongnomad_snps,
             **hard_filtered_samples_ht[meta_ht.key],
             **regressed_metrics_ht[meta_ht.key],
             **pop_ht[meta_ht.key],

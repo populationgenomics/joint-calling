@@ -43,14 +43,23 @@ logger.setLevel(logging.INFO)
     'out_hgdp_union_mt_path',
     required=True,
     callback=utils.get_validation_callback(ext='mt'),
-    help='path to write the combined Matrix Table with HGDP-1KG. The difference with `--out-mt` is that it also contains HGDP-1KG samples',
+    help='path to write the combined Matrix Table with HGDP-1KG. '
+    'The difference with `--out-mt` is that it also contains HGDP-1KG samples',
+)
+@click.option(
+    '--out-assigned-pop-ht',
+    'out_assigned_pop_ht_path',
+    callback=utils.get_validation_callback(ext='ht'),
+    help='writes table with 3 column fields: continental_pop, subpop, study',
 )
 @click.option(
     '--out-mt',
     'out_mt_path',
     required=True,
     callback=utils.get_validation_callback(ext='mt'),
-    help='path to write the Matrix Table after subsetting to selected rows. The difference with --out-hgdp-union-mt is that it contains only the dataset samples',
+    help='path to write the Matrix Table after subsetting to selected rows. '
+    'The difference with --out-hgdp-union-mt is that it contains only the dataset '
+    'samples',
 )
 @click.option(
     '--overwrite/--reuse',
@@ -74,6 +83,7 @@ logger.setLevel(logging.INFO)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_path: str,
     out_hgdp_union_mt_path: str,
+    out_assigned_pop_ht_path: str,
     out_mt_path: str,
     overwrite: bool,
     is_test: bool,
@@ -94,14 +104,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_MT_PATH)
     if is_test:
-        ncols = hgdp_mt.count_cols()
-        target_ncols = 20
-        hgdp_mt = hgdp_mt.sample_cols(p=target_ncols / ncols, seed=42)
+        hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_TEST_MT_PATH)
 
     hgdp_union_mt = get_sites_shared_with_hgdp(
         mt=mt,
         hgdp_mt=hgdp_mt,
         overwrite=overwrite,
+        out_assigned_pop_ht_path=out_assigned_pop_ht_path,
     )
     hgdp_union_hq_sites_mt = filter_high_quality_sites(
         hgdp_union_mt,
@@ -120,6 +129,7 @@ def get_sites_shared_with_hgdp(
     mt: hl.MatrixTable,
     hgdp_mt: hl.MatrixTable,
     out_mt_path: Optional[str] = None,
+    out_assigned_pop_ht_path: Optional[str] = None,
     overwrite: bool = False,
 ) -> hl.MatrixTable:
     """
@@ -136,10 +146,13 @@ def get_sites_shared_with_hgdp(
         return hl.read_matrix_table(out_mt_path)
 
     # Entries and columns must be identical, so stripping all column-level data,
-    # and all entry-level data except for GT.
+    # except `project` and `population`; and all entry-level data except GT.
     mt = mt.select_entries('GT')
     hgdp_cols_ht = hgdp_mt.cols()  # saving the column data to re-add later
     hgdp_mt = hgdp_mt.select_entries(hgdp_mt.GT).select_cols()
+    hgdp_mt = hgdp_mt.annotate_cols(project='gnomad')
+    hgdp_mt = hgdp_mt.annotate_cols(continental_pop=hgdp_mt.population_inference.pop)
+    hgdp_mt = hgdp_mt.annotate_cols(subpop=hgdp_mt.population_inference.labeled_subpop)
 
     # Join samples between two datasets. It will also subset rows to the rows
     # shared between datasets.
@@ -148,9 +161,16 @@ def get_sites_shared_with_hgdp(
     # Add in back the sample-level metadata
     mt = mt.annotate_cols(hgdp_1kg_metadata=hgdp_cols_ht[mt.s])
 
+    if out_assigned_pop_ht_path and not utils.can_reuse(
+        out_assigned_pop_ht_path, overwrite
+    ):
+        ht = mt.cols()
+        ht.write(out_assigned_pop_ht_path, overwrite=True)
+
     if out_mt_path:
         mt.write(out_mt_path, overwrite=True)
         mt = hl.read_matrix_table(out_mt_path)
+
     return mt
 
 

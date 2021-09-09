@@ -114,7 +114,13 @@ logger.setLevel(logging.INFO)
     'number of shards to parition data for the AS-VQSR analysis',
 )
 @click.option(
-    '--pca_pop',
+    '--num-ancestry-pcs',
+    'num_ancestry_pcs',
+    type=int,
+    default=20,
+)
+@click.option(
+    '--n-ancestry-pcs',
     'pca_pop',
     help='if specified, a separate PCA will be produced with samples trained only'
     'on this population',
@@ -137,6 +143,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     skip_samples: Collection[str],
     scatter_count: int,
     pca_pop: Optional[str],
+    num_ancestry_pcs: int,
     dry_run: bool,
     run_vqsr: bool,
     run_rf: bool,
@@ -158,7 +165,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     ptrn = f'gs://cpg-{analysis_project}-{{suffix}}/joint-calling/{output_version}'
     work_bucket = ptrn.format(suffix=tmp_bucket_suffix)
-    output_analysis_bucket = ptrn.format(suffix=output_analysis_suffix)
+    out_analysis_bucket = ptrn.format(suffix=output_analysis_suffix)
     web_bucket = ptrn.format(suffix=web_bucket_suffix)
 
     combiner_bucket = f'{work_bucket}/combiner'
@@ -205,7 +212,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     samples_df, samples_csv_path, pre_combiner_jobs = _add_pre_combiner_jobs(
         b=b,
-        work_bucket=join(work_bucket, 'pre-combine'),
+        work_bucket=join(work_bucket, 'pre_combine'),
         output_bucket=combiner_bucket,
         overwrite=overwrite,
         input_projects=input_projects,
@@ -253,18 +260,20 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         b=b,
         mt_path=raw_combined_mt_path,
         samples_csv_path=samples_csv_path,
-        work_bucket=sample_qc_bucket,
-        out_analysis_bucket=output_analysis_bucket,
+        sample_qc_bucket=sample_qc_bucket,
+        out_analysis_bucket=out_analysis_bucket,
+        out_web_bucket=web_bucket,
         filter_cutoffs_path=filter_cutoffs_path,
         scripts_dir=scripts_dir,
         overwrite=overwrite,
         scatter_count=scatter_count,
-        depends_on=[combiner_job],
+        combiner_job=combiner_job,
         billing_project=billing_project,
         sample_count=len(samples_df),
         age_csv_path=f'gs://cpg-{analysis_project}-main-analysis/metadata/age.csv',
-        is_test=output_namespace in ['test', 'tmp'],
+        num_ancestry_pcs=num_ancestry_pcs,
         pca_pop=pca_pop,
+        is_test=output_namespace in ['test', 'tmp'],
     )
 
     if run_rf or run_vqsr:
@@ -361,42 +370,53 @@ def _add_sample_qc_jobs(
     b: hb.Batch,
     mt_path: str,
     samples_csv_path: str,
-    work_bucket: str,
+    sample_qc_bucket: str,
     out_analysis_bucket: str,
+    out_web_bucket: str,
     age_csv_path: str,
     filter_cutoffs_path: Optional[str],
     scripts_dir: str,
     overwrite: bool,
     scatter_count: int,
     sample_count: int,  # pylint: disable=unused-argument
-    depends_on: Optional[List[Job]] = None,
+    combiner_job: Job,
+    num_ancestry_pcs: int,
+    pca_pop: Optional[str] = None,
     billing_project: Optional[str] = None,
     is_test: bool = False,
-    pca_pop: Optional[str] = None,
 ) -> Tuple[Job, str, str]:
 
-    sample_qc_bucket = work_bucket
-
-    pca_with_hgdp_mt_path = join(work_bucket, 'mt_subset_for_pca_with_hgdp.mt')
-    pca_mt_path = join(work_bucket, 'mt_subset_for_pca.mt')
-    if not all(can_reuse(fp, overwrite) for fp in [pca_mt_path, pca_with_hgdp_mt_path]):
-        pcrelate_job = dataproc.hail_dataproc_job(
+    mt_union_hgdp_for_pca_path = join(
+        sample_qc_bucket, 'mt_subset_for_pca_with_hgdp.mt'
+    )
+    mt_for_pca_path = join(sample_qc_bucket, 'mt_subset_for_pca.mt')
+    assigned_pop_ht_path = join(sample_qc_bucket, 'ancestry', 'assigned_pop.ht')
+    if not all(
+        can_reuse(fp, overwrite)
+        for fp in [
+            mt_for_pca_path,
+            mt_union_hgdp_for_pca_path,
+            assigned_pop_ht_path,
+        ]
+    ):
+        subset_for_pca_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/sample_qc_subset_mt_for_pca.py '
             + (f'--overwrite ' if overwrite else '')
             + f'--mt {mt_path} '
-            f'--out-hgdp-union-mt {pca_with_hgdp_mt_path} '
-            f'--out-mt {pca_mt_path} '
+            f'--out-hgdp-union-mt {mt_union_hgdp_for_pca_path} '
+            f'--out-assigned-pop-ht {assigned_pop_ht_path} '
+            f'--out-mt {mt_for_pca_path} '
             + ('--is-test ' if is_test else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            depends_on=(depends_on or []),
+            depends_on=[combiner_job],
             job_name='Subset MT for PCA',
         )
     else:
-        pcrelate_job = b.new_job(f'Subset MT for PCA [reuse]')
+        subset_for_pca_job = b.new_job(f'Subset MT for PCA [reuse]')
 
     relatedness_ht_path = join(out_analysis_bucket, 'relatedness.ht')
     if not can_reuse(relatedness_ht_path, overwrite):
@@ -404,9 +424,9 @@ def _add_sample_qc_jobs(
             b,
             f'{scripts_dir}/sample_qc_pcrelate.py '
             + (f'--overwrite ' if overwrite else '')
-            + f'--pca-mt {pca_mt_path} '
+            + f'--pca-mt {mt_for_pca_path} '
             f'--out-relatedness-ht {relatedness_ht_path} '
-            f'--tmp-bucket {work_bucket}/tmp '
+            f'--tmp-bucket {sample_qc_bucket}/tmp '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
@@ -414,52 +434,127 @@ def _add_sample_qc_jobs(
             # (throw SparkException: Job aborted due to stage failure: ShuffleMapStage)
             # so we use num_workers instead of num_secondary_workers here
             num_workers=scatter_count,
-            depends_on=[pcrelate_job],
+            depends_on=[subset_for_pca_job],
             job_name='Run pcrelate',
         )
     else:
         pcrelate_job = b.new_job(f'Run pcrelate [reuse]')
 
     if filter_cutoffs_path:
-        gcs_path = join(work_bucket, 'filter-cutoffs.yaml')
+        gcs_path = join(sample_qc_bucket, 'filter-cutoffs.yaml')
         subprocess.run(['gsutil', 'cp', filter_cutoffs_path, gcs_path], check=False)
         filter_cutoffs_param = f'--filter-cutoffs-file {gcs_path}'
     else:
         filter_cutoffs_param = ''
 
-    hard_filter_ht_path = join(sample_qc_bucket, 'hard_filters.ht')
-    pop_ht_path = join(sample_qc_bucket, 'pop.ht')
-    regressed_metrics_ht_path = join(sample_qc_bucket, 'regress_metrics.ht')
+    input_metadata_ht_path = join(sample_qc_bucket, 'input_metadata.ht')
+    hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filtered_samples.ht')
+    sex_ht_path = join(sample_qc_bucket, 'sex.ht')
+    hail_sample_qc_ht_path = join(sample_qc_bucket, 'hail_sample_qc.ht')
+    custom_qc_ht_path = join(sample_qc_bucket, 'custom_qc.ht')
     if any(
         not can_reuse(fp, overwrite)
         for fp in [
-            hard_filter_ht_path,
+            hard_filtered_samples_ht_path,
+            sex_ht_path,
+            hail_sample_qc_ht_path,
+            custom_qc_ht_path,
+        ]
+    ):
+        sample_qc_hardfilter_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/sample_qc_hard_filters.py '
+            f'--mt {mt_path} '
+            f'--meta-csv {samples_csv_path} '
+            f'{filter_cutoffs_param} '
+            f'--out-input-metadata-ht {input_metadata_ht_path} '
+            f'--out-hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
+            f'--out-sex-ht {sex_ht_path} '
+            f'--out-hail-sample-qc-ht {hail_sample_qc_ht_path} '
+            f'--out-custom-qc-ht {custom_qc_ht_path} '
+            f'--tmp-bucket {sample_qc_bucket}/tmp '
+            + (f'--overwrite ' if overwrite else '')
+            + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=scatter_count,
+            depends_on=[combiner_job],
+            job_name='Sample QC hard filters',
+        )
+    else:
+        sample_qc_hardfilter_job = b.new_job(f'Sample QC hard filters [reuse]')
+
+    intermediate_related_samples_to_drop_ht_path = join(
+        sample_qc_bucket, 'tmp', 'intermediate_related_samples_to_drop.ht'
+    )
+    if not can_reuse(intermediate_related_samples_to_drop_ht_path, overwrite):
+        cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
+        flag_related_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/sample_qc_flag_related.py '
+            f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
+            f'--sex-ht {sex_ht_path} '
+            f'--relatedness-ht {relatedness_ht_path} '
+            f'--out-ht {intermediate_related_samples_to_drop_ht_path} '
+            f'--tmp-bucket {sample_qc_bucket}/tmp '
+            f'--max-kin {cutoffs_d["pca"]["max_kin"]} '
+            + (f'--overwrite ' if overwrite else '')
+            + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=scatter_count,
+            depends_on=[sample_qc_hardfilter_job, pcrelate_job],
+            job_name='Sample QC flag related',
+        )
+    else:
+        flag_related_job = b.new_job(f'Sample QC flag related [reuse]')
+
+    pca_job, pca_scores_ht_path = _add_ancestry_jobs(
+        b=b,
+        mt_union_hgdp_path=mt_union_hgdp_for_pca_path,
+        assigned_pop_ht_path=assigned_pop_ht_path,
+        num_ancestry_pcs=num_ancestry_pcs,
+        tmp_bucket=join(sample_qc_bucket, 'tmp'),
+        out_analysis_bucket=out_analysis_bucket,
+        out_web_bucket=out_web_bucket,
+        scripts_dir=scripts_dir,
+        overwrite=overwrite,
+        scatter_count=scatter_count,
+        depends_on=[flag_related_job],
+        related_samples_to_drop_ht_path=intermediate_related_samples_to_drop_ht_path,
+        billing_project=billing_project,
+    )
+
+    pop_ht_path = join(sample_qc_bucket, 'pop.ht')
+    regressed_metrics_ht_path = join(sample_qc_bucket, 'regressed_metrics.ht')
+    if any(
+        not can_reuse(fp, overwrite)
+        for fp in [
             pop_ht_path,
             regressed_metrics_ht_path,
         ]
     ):
-        sample_qc_job = dataproc.hail_dataproc_job(
+        regressed_filters_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/sample_qc_calculate.py '
+            f'{scripts_dir}/sample_qc_regressed_filters.py '
+            f'--pca-scores-ht {pca_scores_ht_path} '
+            f'--assigned-pop-ht {assigned_pop_ht_path} '
+            f'--hail-sample-qc-ht {hail_sample_qc_ht_path} '
+            f'{filter_cutoffs_param} '
+            f'--n-pcs {num_ancestry_pcs} '
+            f'--out-regressed-metrics-ht {regressed_metrics_ht_path} '
+            f'--out-pop-ht {pop_ht_path} '
+            f'--tmp-bucket {sample_qc_bucket}/tmp '
             + (f'--overwrite ' if overwrite else '')
-            + f'{filter_cutoffs_param} '
-            + f'--mt {mt_path} '
-            f'--pca-hgdp-mt-path {pca_with_hgdp_mt_path} '
-            f'--meta-csv {samples_csv_path} '
-            f'--relatedness-ht {relatedness_ht_path} '
-            f'--out-hard-filtered-samples-ht {hard_filter_ht_path} '
-            f'--out-bucket {work_bucket} '
-            f'--out-analysis-bucket {out_analysis_bucket} '
-            f'--tmp-bucket {work_bucket}/tmp '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            max_age='12h',
+            max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            depends_on=(depends_on or []) + [pcrelate_job],
-            job_name='Sample QC',
+            depends_on=[flag_related_job, pca_job, hard_filtered_samples_ht_path],
+            job_name='Sample QC regressed filters',
         )
     else:
-        sample_qc_job = b.new_job(f'Sample QC [reuse]')
+        regressed_filters_job = b.new_job(f'Sample QC regressed filters [reuse]')
 
     meta_ht_path = join(out_analysis_bucket, 'meta.ht')
     meta_tsv_path = join(out_analysis_bucket, 'meta.tsv')
@@ -477,49 +572,137 @@ def _add_sample_qc_jobs(
         metadata_qc_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/sample_qc_write_metadata.py '
-            + (f'--overwrite ' if overwrite else '')
-            + f'{filter_cutoffs_param} '
-            + f'--qc-bucket {work_bucket} '
-            f'--tmp-bucket {work_bucket}/tmp '
-            f'{age_csv_param}'
-            f'--hard-filtered-samples-ht {hard_filter_ht_path} '
+            f'--input-metadata-ht {input_metadata_ht_path} '
+            f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
+            f'--sex-ht {sex_ht_path} '
+            f'--custom-qc-ht {custom_qc_ht_path} '
+            f'--hail-sample-qc-ht {hail_sample_qc_ht_path} '
+            f'--regressed-filtes-ht {regressed_metrics_ht_path} '
             f'--relatedness-ht {relatedness_ht_path} '
+            f'--pop-ht {pop_ht_path} '
+            f'{age_csv_param}'
+            f'--tmp-bucket {sample_qc_bucket}/tmp '
             f'--out-meta-ht {meta_ht_path} '
             f'--out-meta-tsv {meta_tsv_path} '
+            + (f'--overwrite ' if overwrite else '')
+            + f'{filter_cutoffs_param} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            depends_on=[sample_qc_job],
+            depends_on=[regressed_filters_job],
             job_name=f'Write sample QC metadata',
         )
     else:
         metadata_qc_job = b.new_job(f'Write sample QC metadata [reuse]')
 
     if pca_pop:
-        pop_pca_scores_ht_path = join(
-            out_analysis_bucket,
-            utils.PCA_SCORES_HT_NAME.replace('.ht', f'_{pca_pop}.ht'),
+        _add_ancestry_jobs(
+            b=b,
+            pop=pca_pop,
+            mt_union_hgdp_path=mt_union_hgdp_for_pca_path,
+            assigned_pop_ht_path=assigned_pop_ht_path,
+            num_ancestry_pcs=num_ancestry_pcs,
+            tmp_bucket=join(sample_qc_bucket, 'tmp'),
+            out_analysis_bucket=out_analysis_bucket,
+            out_web_bucket=out_web_bucket,
+            scripts_dir=scripts_dir,
+            overwrite=overwrite,
+            scatter_count=scatter_count,
+            depends_on=[flag_related_job],
+            related_samples_to_drop_ht_path=intermediate_related_samples_to_drop_ht_path,
+            billing_project=billing_project,
         )
-        if not can_reuse(pop_pca_scores_ht_path, overwrite):
-            dataproc.hail_dataproc_job(
-                b,
-                f'{scripts_dir}/pca_pop.py '
-                + f'--pca-hgdp-mt-path {pca_with_hgdp_mt_path} '
-                f'--pop {pca_pop} '
-                f'--out-analysis-bucket {out_analysis_bucket} '
-                f'--meta-ht {meta_ht_path} '
-                f'--tmp-bucket {work_bucket}/tmp '
-                + (f'--overwrite ' if overwrite else '')
-                + (f'--hail-billing {billing_project} ' if billing_project else ''),
-                max_age='8h',
-                packages=utils.DATAPROC_PACKAGES,
-                depends_on=[metadata_qc_job],
-                job_name=f'Pop-specific PCA',
-            )
-        else:
-            b.new_job(f'Pop-specific PCA [reuse]')
 
-    return metadata_qc_job, hard_filter_ht_path, meta_ht_path
+    return metadata_qc_job, hard_filtered_samples_ht_path, meta_ht_path
+
+
+def _add_ancestry_jobs(
+    b: hb.Batch,
+    mt_union_hgdp_path: str,
+    assigned_pop_ht_path: str,
+    num_ancestry_pcs: int,
+    tmp_bucket: str,
+    out_analysis_bucket: str,
+    out_web_bucket: str,
+    scripts_dir: str,
+    overwrite: bool,
+    scatter_count: int,
+    pop: Optional[str] = None,
+    depends_on: Optional[List[Job]] = None,
+    related_samples_to_drop_ht_path: Optional[str] = None,
+    billing_project: Optional[str] = None,
+) -> Tuple[Job, str]:
+    """
+    Run PCA and make PCA and loadings plots.
+
+    Returns the PCA job, and the path to PCA scores Table
+    """
+    ancestry_analysis_bucket = join(out_analysis_bucket, 'ancestry', pop or 'all')
+    ancestry_web_bucket = join(out_web_bucket, 'ancestry', pop or 'all')
+
+    eigenvalues_ht_path = join(ancestry_analysis_bucket, f'eigenvalues_{pop}.ht')
+    scores_ht_path = join(ancestry_analysis_bucket, f'scores_{pop}.ht')
+    loadings_ht_path = join(ancestry_analysis_bucket, f'loadings_{pop}.ht')
+    job_name = f'PCA ({pop or "all"})'
+    if not all(
+        can_reuse(fp, overwrite)
+        for fp in [eigenvalues_ht_path, scores_ht_path, loadings_ht_path]
+    ):
+        pca_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/ancestry_pca.py '
+            + f'--hgdp-union-mt {mt_union_hgdp_path} '
+            + (f'--pop {pop} ' if pop else '')
+            + f'--n-pcs {num_ancestry_pcs} '
+            f'--out-eigenvalues-ht {eigenvalues_ht_path} '
+            f'--out-scores-ht {scores_ht_path} '
+            f'--out-loadings-ht {loadings_ht_path} '
+            + (
+                f'--related-samples-to-drop-ht {related_samples_to_drop_ht_path} '
+                if related_samples_to_drop_ht_path
+                else ''
+            )
+            + f'--tmp-bucket {tmp_bucket} '
+            + (f'--overwrite ' if overwrite else '')
+            + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=scatter_count,
+            depends_on=depends_on or [],
+            job_name=job_name,
+        )
+    else:
+        pca_job = b.new_job(f'{job_name} [reuse]')
+
+    out_path_ptn = join(ancestry_web_bucket, '{scope}_pc{pci}.{ext}')
+    paths = []
+    for scope in ['study', 'continental_pop', 'subpop', 'loadings']:
+        for ext in ['png', 'html']:
+            for pci in range(num_ancestry_pcs):
+                paths.append(
+                    out_path_ptn.format(scope=scope, pop=pop, pci=pci, ext=ext)
+                )
+    job_name = f'Plot PCA and loadings ({pop or "all"})'
+    if all(not utils.can_reuse(fp, overwrite) for fp in paths):
+        dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/ancestry_plot.py '
+            f'--eigenvalues-ht {eigenvalues_ht_path} '
+            f'--scores-ht {scores_ht_path} '
+            f'--loadings-ht {loadings_ht_path} '
+            f'--assigned-pop-ht {assigned_pop_ht_path} '
+            + f'--out-path-pattern {out_path_ptn} '
+            + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES + ['selenium'],
+            num_secondary_workers=scatter_count,
+            depends_on=[pca_job],
+            job_name=job_name,
+        )
+    else:
+        b.new_job(f'{job_name} [reuse]')
+
+    return pca_job, scores_ht_path
 
 
 def _add_pre_combiner_jobs(
