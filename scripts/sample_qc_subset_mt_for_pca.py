@@ -103,8 +103,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     mt = mt.select_entries(GT=lgt_to_gt(mt.LGT, mt.LA))
 
     hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_MT_PATH)
-    if is_test:
-        hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_TEST_MT_PATH)
+    # if is_test:
+    #     hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_TEST_MT_PATH)
 
     hgdp_union_mt = get_sites_shared_with_hgdp(
         mt=mt,
