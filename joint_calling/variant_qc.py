@@ -30,10 +30,10 @@ def add_variant_qc_jobs(
     scripts_dir: str,
     ped_file: Optional[str],
     overwrite: bool,
-    run_rf: bool,
     vqsr_params_d: Dict,
     scatter_count: int,
     depends_on: Optional[List[Job]] = None,
+    run_rf: bool = False,
 ) -> Tuple[Job, str]:
     """
     Add variant QC related hail-query jobs
