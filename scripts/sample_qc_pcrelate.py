@@ -10,7 +10,6 @@ from typing import Optional
 
 import click
 import hail as hl
-from hail.experimental import lgt_to_gt
 
 from joint_calling import utils
 from joint_calling import _version
@@ -28,7 +27,7 @@ logger.setLevel(logging.INFO)
     'pca_mt_path',
     required=True,
     callback=utils.get_validation_callback(ext='mt', must_exist=True),
-    help='path to the Matrix Table ready for PC relate',
+    help='path to the Matrix Table ready for PC relate. Dense and GT-annotated',
 )
 @click.option(
     '--out-relatedness-ht',
@@ -61,7 +60,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     hail_billing: str,  # pylint: disable=unused-argument
 ):
     mt = hl.read_matrix_table(pca_mt_path)
-    mt = mt.select_entries(GT=lgt_to_gt(mt.LGT, mt.LA))
+    mt = mt.select_entries('GT')
 
     _compute_relatedness(
         mt=mt,
@@ -97,7 +96,7 @@ def _compute_relatedness(
     out_ht_path = out_ht_path or join(tmp_bucket, 'relatedness.ht')
     if utils.can_reuse(out_ht_path, overwrite):
         return hl.read_table(out_ht_path)
-
+    
     sample_num = mt.cols().count()
 
     _, scores, _ = hl.hwe_normalized_pca(
