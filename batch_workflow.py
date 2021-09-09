@@ -550,7 +550,7 @@ def _add_sample_qc_jobs(
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            depends_on=[flag_related_job, pca_job, hard_filtered_samples_ht_path],
+            depends_on=[flag_related_job, pca_job, sample_qc_hardfilter_job],
             job_name='Sample QC regressed filters',
         )
     else:
