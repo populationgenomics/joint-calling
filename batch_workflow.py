@@ -402,6 +402,7 @@ def _add_sample_qc_jobs(
     if any(
         not can_reuse(fp, overwrite)
         for fp in [
+            input_metadata_ht_path,
             hard_filtered_samples_ht_path,
             sex_ht_path,
             hail_sample_qc_ht_path,
