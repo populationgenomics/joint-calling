@@ -60,8 +60,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     hail_billing: str,  # pylint: disable=unused-argument
 ):
     mt = hl.read_matrix_table(pca_mt_path)
-    mt = mt.select_entries('END', GT=mt.LGT)
-
     _compute_relatedness(
         mt=mt,
         tmp_bucket=tmp_bucket,
