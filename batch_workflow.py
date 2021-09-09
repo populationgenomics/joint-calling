@@ -387,9 +387,9 @@ def _add_sample_qc_jobs(
 ) -> Tuple[Job, str, str]:
 
     mt_union_hgdp_for_pca_path = join(
-        sample_qc_bucket, 'mt_subset_for_pca_with_hgdp.mt'
+        sample_qc_bucket, 'ancestry', 'mt_union_hgdp_for_pca_path.mt'
     )
-    mt_for_pca_path = join(sample_qc_bucket, 'mt_subset_for_pca.mt')
+    mt_for_pca_path = join(sample_qc_bucket, 'ancestry', 'mt_for_pca.mt')
     assigned_pop_ht_path = join(sample_qc_bucket, 'ancestry', 'assigned_pop.ht')
     if not all(
         can_reuse(fp, overwrite)
