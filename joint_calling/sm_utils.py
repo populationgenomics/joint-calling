@@ -3,12 +3,8 @@ Functions to find the pipeline inputs and communicate with the SM server
 """
 
 import logging
-import shutil
-import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass
-from os.path import join, basename
 from typing import List, Dict, Optional, Set, Collection
 
 import pandas as pd
@@ -217,7 +213,7 @@ def replace_paths_to_test(s: Dict) -> Optional[Dict]:
         return None
 
 
-def find_inputs_from_db(
+def find_inputs(
     input_projects: List[str],
     is_test: bool = False,
     skip_samples: Optional[Collection[str]] = None,
@@ -381,110 +377,4 @@ def find_inputs_from_db(
         sys.exit(1)
 
     df = pd.DataFrame(inputs).set_index('s', drop=False)
-    return df
-
-
-def find_inputs(
-    input_buckets: List[str],
-    input_metadata_buckets: Optional[List[str]] = None,
-) -> pd.DataFrame:  # pylint disable=too-many-branches
-    """
-    Read the inputs assuming a standard CPG storage structure.
-    :param input_buckets: buckets to find GVCFs
-    :param input_metadata_buckets: buckets to find CSV metadata files
-    :return: a dataframe with the following structure:
-        s (key)
-        population
-        gvcf
-        r_contamination
-        r_chimera
-        r_duplication
-        median_insert_size
-    """
-    gvcf_paths: List[str] = []
-    for ib in input_buckets:
-        cmd = f'gsutil ls \'{ib}/*.g.vcf.gz\''
-        gvcf_paths.extend(
-            line.strip()
-            for line in subprocess.check_output(cmd, shell=True).decode().split()
-        )
-
-    local_tmp_dir = tempfile.mkdtemp()
-
-    if input_metadata_buckets:
-        qc_csvs: List[str] = []
-        for ib in input_metadata_buckets:
-            cmd = f'gsutil ls \'{ib}/*.csv\''
-            qc_csvs.extend(
-                line.strip()
-                for line in subprocess.check_output(cmd, shell=True).decode().split()
-            )
-
-        df: pd.DataFrame = None
-        # sample.id,sample.sample_name,sample.flowcell_lane,sample.library_id,sample.platform,sample.centre,sample.reference_genome,raw_data.FREEMIX,raw_data.PlinkSex,raw_data.PCT_CHIMERAS,raw_data.PERCENT_DUPLICATION,raw_data.MEDIAN_INSERT_SIZE,raw_data.MEDIAN_COVERAGE
-        # 613,TOB1529,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_H04,KCCG,hg38,0.0098939700,F(-1),0.023731,0.151555,412.0,31.0
-        # 609,TOB1653,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_F03,KCCG,hg38,0.0060100100,F(-1),0.024802,0.165634,452.0,33.0
-        # 604,TOB1764,ILLUMINA,HVTV7DSXY.1-2-3-4,LP9000037-NTP_B02,KCCG,hg38,0.0078874400,F(-1),0.01684,0.116911,413.0,43.0
-        # 633,TOB1532,ILLUMINA,HVTVGDSXY.1-2-3-4,LP9000039-NTP_C05,KCCG,hg38,0.0121946000,F(-1),0.024425,0.151094,453.0,37.0
-        columns = {
-            'sample.sample_name': 's',
-            'raw_data.FREEMIX': 'r_contamination',
-            'raw_data.PCT_CHIMERAS': 'r_chimera',
-            'raw_data.PERCENT_DUPLICATION': 'r_duplication',
-            'raw_data.MEDIAN_INSERT_SIZE': 'median_insert_size',
-        }
-        for qc_csv in qc_csvs:
-            local_qc_csv_path = join(local_tmp_dir, basename(qc_csv))
-            subprocess.run(
-                f'gsutil cp {qc_csv} {local_qc_csv_path}', check=False, shell=True
-            )
-            single_df = pd.read_csv(local_qc_csv_path)
-            single_df = single_df.rename(columns=columns)[columns.values()]
-            single_df['population'] = None
-            single_df['gvcf'] = ''
-            single_df = single_df.set_index('s', drop=False)
-            df = (
-                single_df
-                if df is None
-                else (pd.concat([df, single_df], ignore_index=False).drop_duplicates())
-            )
-        sample_names = list(df['s'])
-    else:
-        sample_names = [basename(gp).replace('.g.vcf.gz', '') for gp in gvcf_paths]
-        df = pd.DataFrame(
-            data=dict(
-                s=sample_names,
-                population=None,
-                gvcf=gvcf_paths,
-                r_contamination=pd.NA,
-                r_chimera=pd.NA,
-                r_duplication=pd.NA,
-                median_insert_size=pd.NA,
-            )
-        ).set_index('s', drop=False)
-
-    shutil.rmtree(local_tmp_dir)
-
-    # Checking 1-to-1 match of sample names to GVCFs
-    for sn in sample_names:
-        matching_gvcfs = [gp for gp in gvcf_paths if sn in gp]
-        if len(matching_gvcfs) > 1:
-            logging.warning(
-                f'Multiple GVCFs found for the sample {sn}:' f'{matching_gvcfs}'
-            )
-        elif len(matching_gvcfs) == 0:
-            logging.warning(f'No GVCFs found for the sample {sn}')
-
-    # Checking 1-to-1 match of GVCFs to sample names, and filling a dict
-    for gp in gvcf_paths:
-        matching_sn = [sn for sn in sample_names if sn in gp]
-        if len(matching_sn) > 1:
-            logging.warning(
-                f'Multiple samples found for the GVCF {gp}:' f'{matching_sn}'
-            )
-        elif len(matching_sn) == 0:
-            logging.warning(f'No samples found for the GVCF {gp}')
-        else:
-            df.loc[matching_sn[0], ['gvcf']] = gp
-    df = df[df.gvcf.notnull()]
     return df

@@ -572,7 +572,7 @@ def _add_pre_combiner_jobs(
                 f'Querying samples from the sample-metadata server '
                 f'for the projects: {", ".join(input_projects)}'
             )
-            samples_df = sm_utils.find_inputs_from_db(
+            samples_df = sm_utils.find_inputs(
                 input_projects,
                 is_test=is_test,
                 skip_samples=skip_samples,
