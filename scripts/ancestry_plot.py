@@ -152,7 +152,7 @@ def produce_plots(
     continental_population = list(set(labels))
     tooltips = [('labels', '@label'), ('samples', '@samples')]
 
-    for i in range(0, (number_of_pcs - 1)):
+    for i in range(number_of_pcs - 1):
         pc1 = i
         pc2 = i + 1
         plot = figure(
@@ -200,7 +200,7 @@ def produce_plots(
     sub_population = list(set(labels))
     tooltips = [('labels', '@label'), ('samples', '@samples')]
 
-    for i in range(0, (number_of_pcs - 1)):
+    for i in range(number_of_pcs - 1):
         pc1 = i
         pc2 = i + 1
         plot = figure(
@@ -239,7 +239,7 @@ def produce_plots(
 
     # Plot loadings
     loadings_ht = hl.read_table(loadings_ht_path)
-    for i in range(0, number_of_pcs):
+    for i in range(0, number_of_pcs - 1):
         pc = i + 1
         plot = manhattan_loadings(
             pvals=hl.abs(loadings_ht.loadings[i]),
