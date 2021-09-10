@@ -704,6 +704,7 @@ def _add_ancestry_jobs(
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES + ['selenium'],
+            init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
             num_secondary_workers=scatter_count,
             depends_on=[pca_job],
             job_name=job_name,
