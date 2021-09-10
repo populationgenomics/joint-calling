@@ -89,9 +89,6 @@ def produce_plots(
     scope ("study", "continental_pop", "subpop", plus for loadings) into
     file paths defined by `out_path_pattern`.
     """
-
-    utils.init_hail(__file__)
-
     assigned_pop_ht = hl.read_table(assigned_pop_ht_path)
     scores = hl.read_table(scores_ht_path)
     scores = scores.annotate(study=assigned_pop_ht[scores.s].project)
