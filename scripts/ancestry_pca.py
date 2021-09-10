@@ -29,7 +29,9 @@ logger.setLevel(logging.INFO)
     callback=utils.get_validation_callback(ext='mt', must_exist=True),
     help='path to Matrix Table generated with sample_qc_subset_mt_for_pca.py',
 )
-@click.option('--n-pcs', 'n_pcs', help='number of PCs to compute for ancestry PCA.')
+@click.option(
+    '--n-pcs', 'n_pcs', type=int, help='number of PCs to compute for ancestry PCA.'
+)
 @click.option(
     '--pop',
     'pop',
