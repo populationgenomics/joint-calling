@@ -645,12 +645,14 @@ def _add_ancestry_jobs(
 
     Returns the PCA job, and the path to PCA scores Table
     """
-    ancestry_analysis_bucket = join(out_analysis_bucket, 'ancestry', pop or 'all')
-    ancestry_web_bucket = join(out_web_bucket, 'ancestry', pop or 'all')
+    pop_tag = pop or 'all'
+    
+    ancestry_analysis_bucket = join(out_analysis_bucket, 'ancestry', pop_tag)
+    ancestry_web_bucket = join(out_web_bucket, 'ancestry', pop_tag)
 
-    eigenvalues_ht_path = join(ancestry_analysis_bucket, f'eigenvalues_{pop}.ht')
-    scores_ht_path = join(ancestry_analysis_bucket, f'scores_{pop}.ht')
-    loadings_ht_path = join(ancestry_analysis_bucket, f'loadings_{pop}.ht')
+    eigenvalues_ht_path = join(ancestry_analysis_bucket, f'eigenvalues_{pop_tag}.ht')
+    scores_ht_path = join(ancestry_analysis_bucket, f'scores_{pop_tag}.ht')
+    loadings_ht_path = join(ancestry_analysis_bucket, f'loadings_{pop_tag}.ht')
     job_name = f'PCA ({pop or "all"})'
     if not all(
         can_reuse(fp, overwrite)
@@ -688,10 +690,10 @@ def _add_ancestry_jobs(
         for ext in ['png', 'html']:
             paths.append(
                 out_path_ptn.format(
-                    scope=scope, pop=pop, pci=num_ancestry_pcs - 1, ext=ext
+                    scope=scope, pci=num_ancestry_pcs - 1, ext=ext
                 )
             )
-    job_name = f'Plot PCA and loadings ({pop or "all"})'
+    job_name = f'Plot PCA and loadings ({pop_tag})'
     if all(not utils.can_reuse(fp, overwrite) for fp in paths):
         dataproc.hail_dataproc_job(
             b,
