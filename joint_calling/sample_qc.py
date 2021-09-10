@@ -261,8 +261,8 @@ def assign_pops(
         return hl.read_table(out_ht_path)
 
     samples_with_pop_ht = assigned_pop_ht.filter(
-        hl.is_defined(assigned_pop_ht.continental_pop) & assigned_pop_ht.continental_pop
-        != ''
+        hl.is_defined(assigned_pop_ht.continental_pop) & 
+        (assigned_pop_ht.continental_pop != '')
     )
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop=samples_with_pop_ht[pop_pca_scores_ht.key].continental_pop
