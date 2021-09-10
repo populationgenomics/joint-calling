@@ -27,31 +27,36 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--input-metadata-ht',
     'input_metadata_ht_path',
+    required=True,
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
     '--hard-filtered-samples-ht',
     'hard_filtered_samples_ht_path',
+    required=True,
+    callback=utils.get_validation_callback(ext='ht', must_exist=True),
+)
+@click.option(
+    '--hail-sample-qc-ht',
+    'hail_sample_qc_ht_path',
+    required=True,
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
     '--sex-ht',
     'sex_ht_path',
+    required=True,
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
     '--custom-qc-ht',
     'custom_qc_ht_path',
+    required=True,
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
     '--regressed-filtes-ht',
     'regressed_metrics_ht_path',
-    callback=utils.get_validation_callback(ext='ht', must_exist=True),
-)
-@click.option(
-    '--hard-filtered-samples-ht',
-    'hard_filtered_samples_ht_path',
     required=True,
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
@@ -107,9 +112,9 @@ logger.setLevel(logging.INFO)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     input_metadata_ht_path: str,
     hard_filtered_samples_ht_path: str,
+    hail_sample_qc_ht_path: str,
     sex_ht_path: str,
     custom_qc_ht_path: str,
-    hail_sample_qc_ht_path: str,
     regressed_metrics_ht_path: str,
     relatedness_ht_path: str,
     pop_ht_path: str,
