@@ -104,12 +104,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
             | (mt.hgdp_1kg_metadata.population_inference.pop == pop.lower())
         )
 
+    related_samples_to_drop_ht = None
     if related_samples_to_drop_ht_path:
         related_samples_to_drop_ht = hl.read_table(related_samples_to_drop_ht_path)
 
     sqc.run_pca_ancestry_analysis(
         mt=mt,
-        sample_to_drop_ht=hl.read_table(related_samples_to_drop_ht),
+        sample_to_drop_ht=related_samples_to_drop_ht,
         tmp_bucket=tmp_bucket,
         n_pcs=n_pcs,
         out_eigenvalues_ht_path=out_eigenvalues_ht_path,

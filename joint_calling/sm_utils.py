@@ -319,7 +319,7 @@ def find_inputs(
             seq_meta = seq_meta_by_sid[sample_id]
             gvcf_path = gvcf_by_sid[s['id']]
 
-            # TODO: reenable once we support row data and crams
+            # TODO: reenable once we support raw data and crams
             # if is_test:
             #     s = replace_paths_to_test(s)
             # if s:
