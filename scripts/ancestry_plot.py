@@ -28,10 +28,10 @@ logger.setLevel(logging.INFO)
 @click.command()
 @click.version_option(_version.__version__)
 @click.option(
-    '--eigenvalues-ht',
-    'eigenvalues_ht_path',
+    '--eigenvalues',
+    'eigenvalues_path',
     required=True,
-    callback=utils.get_validation_callback(ext='ht', must_exist=True),
+    callback=utils.get_validation_callback(ext='txt', must_exist=True),
 )
 @click.option(
     '--scores-ht',
@@ -59,7 +59,7 @@ logger.setLevel(logging.INFO)
     help='Hail billing account ID.',
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
-    eigenvalues_ht_path: str,
+    eigenvalues_path: str,
     scores_ht_path: str,
     loadings_ht_path: str,
     assigned_pop_ht_path: str,
@@ -69,7 +69,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     utils.init_hail(__file__)
 
     produce_plots(
-        eigenvalues_ht_path=eigenvalues_ht_path,
+        eigenvalues_path=eigenvalues_path,
         scores_ht_path=scores_ht_path,
         loadings_ht_path=loadings_ht_path,
         assigned_pop_ht_path=assigned_pop_ht_path,
@@ -78,7 +78,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
 
 def produce_plots(
-    eigenvalues_ht_path: str,
+    eigenvalues_path: str,
     scores_ht_path: str,
     loadings_ht_path: str,
     assigned_pop_ht_path: str,
@@ -99,7 +99,9 @@ def produce_plots(
     labels = scores.study.collect()
     study = list(set(labels))
     tooltips = [('labels', '@label'), ('samples', '@samples')]
-    eigenvalues = hl.import_table(eigenvalues_ht_path)
+    eigenvalues = hl.import_table(
+        eigenvalues_path, no_header=True, types={'f0': hl.tfloat}
+    )
     eigenvalues = eigenvalues.to_pandas()
     eigenvalues.columns = ['eigenvalue']
     eigenvalues = pd.to_numeric(eigenvalues.eigenvalue)

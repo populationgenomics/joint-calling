@@ -44,9 +44,9 @@ logger.setLevel(logging.INFO)
     help='Samples to remove from the analysis',
 )
 @click.option(
-    '--out-eigenvalues-ht',
-    'out_eigenvalues_ht_path',
-    callback=utils.get_validation_callback(ext='ht', must_exist=False),
+    '--out-eigenvalues',
+    'out_eigenvalues_path',
+    callback=utils.get_validation_callback(ext='txt', must_exist=False),
 )
 @click.option(
     '--out-scores-ht',
@@ -82,7 +82,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     n_pcs: int,
     related_samples_to_drop_ht_path: Optional[str],
     pop: Optional[str],
-    out_eigenvalues_ht_path: str,
+    out_eigenvalues_path: str,
     out_scores_ht_path: str,
     out_loadings_ht_path: str,
     tmp_bucket: str,
@@ -93,7 +93,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     if all(
         utils.can_reuse(fp, overwrite)
-        for fp in [out_eigenvalues_ht_path, out_scores_ht_path, out_loadings_ht_path]
+        for fp in [out_eigenvalues_path, out_scores_ht_path, out_loadings_ht_path]
     ):
         return
 
@@ -115,7 +115,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         sample_to_drop_ht=related_samples_to_drop_ht,
         tmp_bucket=tmp_bucket,
         n_pcs=n_pcs,
-        out_eigenvalues_ht_path=out_eigenvalues_ht_path,
+        out_eigenvalues_path=out_eigenvalues_path,
         out_scores_ht_path=out_scores_ht_path,
         out_loadings_ht_path=out_loadings_ht_path,
         overwrite=overwrite,

@@ -646,17 +646,17 @@ def _add_ancestry_jobs(
     Returns the PCA job, and the path to PCA scores Table
     """
     pop_tag = pop or 'all'
-    
+
     ancestry_analysis_bucket = join(out_analysis_bucket, 'ancestry', pop_tag)
     ancestry_web_bucket = join(out_web_bucket, 'ancestry', pop_tag)
 
-    eigenvalues_ht_path = join(ancestry_analysis_bucket, f'eigenvalues_{pop_tag}.ht')
+    eigenvalues_path = join(ancestry_analysis_bucket, f'eigenvalues_{pop_tag}.txt')
     scores_ht_path = join(ancestry_analysis_bucket, f'scores_{pop_tag}.ht')
     loadings_ht_path = join(ancestry_analysis_bucket, f'loadings_{pop_tag}.ht')
     job_name = f'PCA ({pop or "all"})'
     if not all(
         can_reuse(fp, overwrite)
-        for fp in [eigenvalues_ht_path, scores_ht_path, loadings_ht_path]
+        for fp in [eigenvalues_path, scores_ht_path, loadings_ht_path]
     ):
         pca_job = dataproc.hail_dataproc_job(
             b,
@@ -664,7 +664,7 @@ def _add_ancestry_jobs(
             + f'--hgdp-union-mt {mt_union_hgdp_path} '
             + (f'--pop {pop} ' if pop else '')
             + f'--n-pcs {num_ancestry_pcs} '
-            f'--out-eigenvalues-ht {eigenvalues_ht_path} '
+            f'--out-eigenvalues {eigenvalues_path} '
             f'--out-scores-ht {scores_ht_path} '
             f'--out-loadings-ht {loadings_ht_path} '
             + (
@@ -689,16 +689,14 @@ def _add_ancestry_jobs(
     for scope in ['study', 'continental_pop', 'subpop', 'loadings']:
         for ext in ['png', 'html']:
             paths.append(
-                out_path_ptn.format(
-                    scope=scope, pci=num_ancestry_pcs - 1, ext=ext
-                )
+                out_path_ptn.format(scope=scope, pci=num_ancestry_pcs - 1, ext=ext)
             )
     job_name = f'Plot PCA and loadings ({pop_tag})'
     if all(not utils.can_reuse(fp, overwrite) for fp in paths):
         dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/ancestry_plot.py '
-            f'--eigenvalues-ht {eigenvalues_ht_path} '
+            f'--eigenvalues {eigenvalues_path} '
             f'--scores-ht {scores_ht_path} '
             f'--loadings-ht {loadings_ht_path} '
             f'--assigned-pop-ht {assigned_pop_ht_path} '

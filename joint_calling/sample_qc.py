@@ -172,7 +172,7 @@ def run_pca_ancestry_analysis(
     sample_to_drop_ht: Optional[hl.Table],
     tmp_bucket: str,
     n_pcs: int,
-    out_eigenvalues_ht_path: Optional[str] = None,
+    out_eigenvalues_path: Optional[str] = None,
     out_scores_ht_path: Optional[str] = None,
     out_loadings_ht_path: Optional[str] = None,
     overwrite: bool = False,
@@ -185,7 +185,7 @@ def run_pca_ancestry_analysis(
         previous relatedness analysis. With a `rank` row field
     :param n_pcs: maximum number of principal components
     :param overwrite: overwrite checkpoints if they exist
-    :param out_eigenvalues_ht_path: path to write PCA eigenvalues
+    :param out_eigenvalues_path: path to a txt file to write PCA eigenvalues
     :param out_scores_ht_path: path to write PCA scores
     :param out_loadings_ht_path: path to write PCA loadings
     :return: a Table with a row field:
@@ -196,7 +196,7 @@ def run_pca_ancestry_analysis(
     if all(
         not fp or utils.can_reuse(fp, overwrite)
         for fp in [
-            out_eigenvalues_ht_path,
+            out_eigenvalues_path,
             out_scores_ht_path,
             out_loadings_ht_path,
         ]
@@ -211,8 +211,8 @@ def run_pca_ancestry_analysis(
         mt, sample_to_drop_ht, n_pcs=n_pcs
     )
 
-    if out_eigenvalues_ht_path:
-        hl.Table.from_pandas(pd.DataFrame(eigenvalues)).export(out_eigenvalues_ht_path)
+    if out_eigenvalues_path:
+        hl.Table.from_pandas(pd.DataFrame(eigenvalues)).export(out_eigenvalues_path)
     if out_loadings_ht_path:
         loadings_ht.write(out_loadings_ht_path, overwrite=True)
     scores_ht.write(out_scores_ht_path, overwrite=True)
