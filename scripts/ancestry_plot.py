@@ -101,7 +101,7 @@ def produce_plots(
     )
     eigenvalues = eigenvalues.to_pandas()
     eigenvalues.columns = ['eigenvalue']
-    eigenvalues = pd.to_numeric(eigenvalues.eigenvalue)
+    eigenvalues = pd.to_numeric(eigenvalues.eigenvalue)[1:]
     variance = eigenvalues.divide(float(eigenvalues.sum())) * 100
     variance = variance.round(2)
 
@@ -109,7 +109,7 @@ def produce_plots(
     number_of_pcs = len(eigenvalues)
 
     # plot by study
-    for i in range(0, (number_of_pcs - 1)):
+    for i in range(number_of_pcs - 1):
         pc1 = i
         pc2 = i + 1
         plot = figure(
