@@ -159,7 +159,7 @@ def _make_assigned_pop_ht(
 ) -> hl.Table:
     if utils.can_reuse(out_assigned_pop_ht_path, overwrite):
         return hl.read_table(out_assigned_pop_ht_path)
-    ht = hgdp_union_mt.cols().select()
+    ht = hgdp_union_mt.cols().select_globals().select()
     ht = ht.annotate(
         project=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), 'gnomad')

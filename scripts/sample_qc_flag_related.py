@@ -53,7 +53,7 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--max-kin',
     'max_kin',
-    type=int,
+    type=float,
 )
 @click.option(
     '--overwrite/--reuse',
