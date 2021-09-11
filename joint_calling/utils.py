@@ -8,7 +8,7 @@ import sys
 import time
 import hashlib
 from os.path import isdir, isfile, exists, join
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union, Iterable
 import yaml
 import hail as hl
 import click
@@ -167,12 +167,23 @@ def file_exists(path: str) -> bool:
     return os.path.exists(path)
 
 
-def can_reuse(fpath: Optional[str], overwrite: bool, silent=False) -> bool:
+def can_reuse(
+    fpath: Optional[Union[Iterable[str], str]],
+    overwrite: bool,
+    silent=False,
+) -> bool:
     """
-    Checks if the file `fpath` exists and we are not overwriting
+    Checks if `fpath` is good to reuse in the analysis: it exists
+    and `overwrite` is False.
+
+    If `fpath` is a collection, it requires all files in it to exist.
     """
     if not fpath:
         return False
+
+    if not isinstance(fpath, str):
+        return all(can_reuse(fp, overwrite) for fp in fpath)
+
     if not file_exists(fpath):
         return False
 

@@ -399,15 +399,15 @@ def _add_sample_qc_jobs(
     sex_ht_path = join(sample_qc_bucket, 'sex.ht')
     hail_sample_qc_ht_path = join(sample_qc_bucket, 'hail_sample_qc.ht')
     custom_qc_ht_path = join(sample_qc_bucket, 'custom_qc.ht')
-    if any(
-        not can_reuse(fp, overwrite)
-        for fp in [
+    if not can_reuse(
+        [
             input_metadata_ht_path,
             hard_filtered_samples_ht_path,
             sex_ht_path,
             hail_sample_qc_ht_path,
             custom_qc_ht_path,
-        ]
+        ],
+        overwrite,
     ):
         sample_qc_hardfilter_job = dataproc.hail_dataproc_job(
             b,
@@ -437,13 +437,13 @@ def _add_sample_qc_jobs(
     )
     mt_for_pca_path = join(sample_qc_bucket, 'ancestry', 'mt_for_pca.mt')
     assigned_pop_ht_path = join(sample_qc_bucket, 'ancestry', 'assigned_pop.ht')
-    if not all(
-        can_reuse(fp, overwrite)
-        for fp in [
+    if not can_reuse(
+        [
             mt_for_pca_path,
             mt_union_hgdp_for_pca_path,
             assigned_pop_ht_path,
-        ]
+        ],
+        overwrite,
     ):
         subset_for_pca_job = dataproc.hail_dataproc_job(
             b,
@@ -535,12 +535,12 @@ def _add_sample_qc_jobs(
 
     pop_ht_path = join(sample_qc_bucket, 'pop.ht')
     regressed_metrics_ht_path = join(sample_qc_bucket, 'regressed_metrics.ht')
-    if any(
-        not can_reuse(fp, overwrite)
-        for fp in [
+    if not can_reuse(
+        [
             pop_ht_path,
             regressed_metrics_ht_path,
-        ]
+        ],
+        overwrite,
     ):
         regressed_filters_job = dataproc.hail_dataproc_job(
             b,
@@ -566,12 +566,12 @@ def _add_sample_qc_jobs(
 
     meta_ht_path = join(out_analysis_bucket, 'meta.ht')
     meta_tsv_path = join(out_analysis_bucket, 'meta.tsv')
-    if any(
-        not can_reuse(fp, overwrite)
-        for fp in [
+    if not can_reuse(
+        [
             meta_ht_path,
             meta_tsv_path,
-        ]
+        ],
+        overwrite,
     ):
         if utils.file_exists(age_csv_path):
             age_csv_param = f'--age-csv {age_csv_path} '
@@ -654,10 +654,7 @@ def _add_ancestry_jobs(
     scores_ht_path = join(ancestry_analysis_bucket, f'scores_{pop_tag}.ht')
     loadings_ht_path = join(ancestry_analysis_bucket, f'loadings_{pop_tag}.ht')
     job_name = f'PCA ({pop or "all"})'
-    if not all(
-        can_reuse(fp, overwrite)
-        for fp in [eigenvalues_path, scores_ht_path, loadings_ht_path]
-    ):
+    if not can_reuse([eigenvalues_path, scores_ht_path, loadings_ht_path], overwrite):
         pca_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/ancestry_pca.py '
@@ -692,7 +689,7 @@ def _add_ancestry_jobs(
                 out_path_ptn.format(scope=scope, pci=num_ancestry_pcs - 1, ext=ext)
             )
     job_name = f'Plot PCA and loadings ({pop_tag})'
-    if all(not utils.can_reuse(fp, overwrite) for fp in paths):
+    if not can_reuse(paths, overwrite):
         dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/ancestry_plot.py '
