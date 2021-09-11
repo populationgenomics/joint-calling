@@ -699,6 +699,7 @@ def _add_ancestry_jobs(
             f'--assigned-pop-ht {assigned_pop_ht_path} '
             + f'--out-path-pattern {out_path_ptn} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            pyfiles=['joint_calling/utils.py'],
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES + ['selenium'],
             init=['gs://cpg-reference/hail_dataproc/install_common.sh'],

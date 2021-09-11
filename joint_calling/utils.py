@@ -26,7 +26,6 @@ DEFAULT_REF = 'GRCh38'
 REF_BUCKET = 'gs://cpg-reference/hg38/v1'
 
 DATAPROC_PACKAGES = [
-    'joint-calling',
     'click',
     'cpg-gnomad',
     'google',

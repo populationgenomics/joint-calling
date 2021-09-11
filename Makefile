@@ -35,7 +35,7 @@ test_to_tmp:
 	--analysis-project $(ANALYSIS_PROJECT) \
 	--input-project tob-wgs \
 	--output-version ${TEST_VERSION} \
-	--pca-pop nfe \
+	#--pca-pop nfe \
 	--keep-scratch \
 	--pre-computed-hgdp-union-mt $(PRE_COMPUTED_HGDP) \
 	$(REUSE_ARG)
