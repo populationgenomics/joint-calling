@@ -7,6 +7,7 @@ Plot ancestry PCA analysis results
 import logging
 import click
 import pandas as pd
+import numpy as np
 import hail as hl
 from bokeh.io.export import get_screenshot_as_png
 from bokeh.resources import CDN
@@ -98,15 +99,13 @@ def produce_plots(
     tooltips = [('labels', '@label'), ('samples', '@samples')]
     eigenvalues = hl.import_table(
         eigenvalues_path, no_header=True, types={'f0': hl.tfloat}
-    )
-    eigenvalues = eigenvalues.to_pandas()
-    eigenvalues.columns = ['eigenvalue']
-    eigenvalues = pd.to_numeric(eigenvalues.eigenvalue)[1:]
-    variance = eigenvalues.divide(float(eigenvalues.sum())) * 100
+    ).f0.collect()
+    eigenvalues = pd.to_numeric(eigenvalues)
+    variance = np.divide(eigenvalues[1:], float(eigenvalues.sum())) * 100
     variance = variance.round(2)
 
     # Get number of PCs
-    number_of_pcs = len(eigenvalues)
+    number_of_pcs = len(eigenvalues) - 1
 
     # plot by study
     for i in range(number_of_pcs - 1):
@@ -239,7 +238,7 @@ def produce_plots(
 
     # Plot loadings
     loadings_ht = hl.read_table(loadings_ht_path)
-    for i in range(0, number_of_pcs - 1):
+    for i in range(number_of_pcs - 1):
         pc = i + 1
         plot = manhattan_loadings(
             pvals=hl.abs(loadings_ht.loadings[i]),
