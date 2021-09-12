@@ -97,8 +97,8 @@ def add_pre_combiner_jobs(
                 project_name=proj,
                 alignment_input=alignment_input,
             )
-            samples_df.loc[s_id, ['cram']] = cram_j.output_cram.cram
-            samples_df.loc[s_id, ['crai']] = cram_j.output_cram.crai
+            samples_df.loc[s_id, ['cram']] = output_cram
+            samples_df.loc[s_id, ['crai']] = output_cram + '.crai'
 
             if hc_intervals_j is None:
                 hc_intervals_j = _add_split_intervals_job(
@@ -120,7 +120,7 @@ def add_pre_combiner_jobs(
                 depends_on=[cram_j],
             )
             gvcf_jobs.append(gvcf_j)
-            samples_df.loc[s_id, ['gvcf']] = gvcf_j.output_gvcf['g.vcf.gz']
+            samples_df.loc[s_id, ['gvcf']] = output_gvcf_path
 
         subset_gvcf_jobs, samples_df = _add_prep_gvcfs_for_combiner_steps(
             b=b,
