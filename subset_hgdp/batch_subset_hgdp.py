@@ -16,7 +16,7 @@ service_backend = hb.ServiceBackend(
 )
 batch = hb.Batch(name='subset-gnomad-hgdp-1kg', backend=service_backend)
 
-dataproc.hail_dataproc_job(
+make_full_hq_j = dataproc.hail_dataproc_job(
     batch,
     'subset_hgdp.py',
     max_age='12h',
@@ -26,7 +26,7 @@ dataproc.hail_dataproc_job(
     num_secondary_workers=50,
 )
 
-dataproc.hail_dataproc_job(
+make_test_hq_j = dataproc.hail_dataproc_job(
     batch,
     'subset_hgdp.py --test',
     max_age='12h',
@@ -34,9 +34,10 @@ dataproc.hail_dataproc_job(
     init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
     job_name='subset-gnomad-hgdp-1kg',
     num_secondary_workers=50,
+    depends_on=[make_full_hq_j],
 )
 
-dataproc.hail_dataproc_job(
+make_pop_hq_j = dataproc.hail_dataproc_job(
     batch,
     'subset_hgdp.py --pop',
     max_age='12h',
@@ -44,6 +45,7 @@ dataproc.hail_dataproc_job(
     init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
     job_name='subset-gnomad-hgdp-1kg',
     num_secondary_workers=50,
+    depends_on=[make_full_hq_j],
 )
 
 dataproc.hail_dataproc_job(
@@ -54,6 +56,7 @@ dataproc.hail_dataproc_job(
     init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
     job_name='subset-gnomad-hgdp-1kg',
     num_secondary_workers=50,
+    depends_on=[make_test_hq_j],
 )
 
 batch.run()
