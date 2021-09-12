@@ -27,7 +27,6 @@ def add_variant_qc_jobs(
     hard_filter_ht_path: str,
     meta_ht_path: str,
     samples_df: pd.DataFrame,
-    scripts_dir: str,
     ped_file: Optional[str],
     overwrite: bool,
     vqsr_params_d: Dict,
@@ -53,7 +52,7 @@ def add_variant_qc_jobs(
     ):
         info_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/generate_info_ht.py --overwrite '
+            f'{utils.SCRIPTS_DIR}/generate_info_ht.py --overwrite '
             f'--mt {raw_combined_mt_path} '
             f'--out-info-ht {info_ht_path} '
             f'--out-split-info-ht {info_split_ht_path}',
@@ -72,7 +71,7 @@ def add_variant_qc_jobs(
     ):
         var_qc_anno_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/generate_variant_qc_annotations.py '
+            f'{utils.SCRIPTS_DIR}/generate_variant_qc_annotations.py '
             + f'{"--overwrite " if overwrite else ""}'
             + f'--mt {raw_combined_mt_path} '
             + f'--hard-filtered-samples-ht {hard_filter_ht_path} '
@@ -97,7 +96,7 @@ def add_variant_qc_jobs(
     if overwrite or not utils.file_exists(freq_ht_path):
         freq_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/generate_freq_data.py --overwrite '
+            f'{utils.SCRIPTS_DIR}/generate_freq_data.py --overwrite '
             f'--mt {raw_combined_mt_path} '
             f'--hard-filtered-samples-ht {hard_filter_ht_path} '
             f'--meta-ht {meta_ht_path} '
@@ -116,7 +115,7 @@ def add_variant_qc_jobs(
     if overwrite or not utils.file_exists(rf_annotations_ht_path):
         rf_anno_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/create_rf_annotations.py --overwrite '
+            f'{utils.SCRIPTS_DIR}/create_rf_annotations.py --overwrite '
             f'--info-split-ht {info_split_ht_path} '
             f'--freq-ht {freq_ht_path} '
             + (f'--fam-stats-ht {fam_stats_ht_path} ' if fam_stats_ht_path else '')
@@ -141,7 +140,7 @@ def add_variant_qc_jobs(
         if overwrite or not utils.file_exists(rf_result_ht_path):
             rf_job = dataproc.hail_dataproc_job(
                 b,
-                f'{scripts_dir}/random_forest.py --overwrite '
+                f'{utils.SCRIPTS_DIR}/random_forest.py --overwrite '
                 f'--annotations-ht {rf_annotations_ht_path} '
                 f'--bucket {work_bucket} '
                 f'--use-adj-genotypes '
@@ -167,7 +166,6 @@ def add_variant_qc_jobs(
             rf_model_id=rf_model_id,
             work_bucket=rf_bucket,
             overwrite=overwrite,
-            scripts_dir=scripts_dir,
             depends_on=[rf_job],
             scatter_count=scatter_count,
         )
@@ -184,7 +182,6 @@ def add_variant_qc_jobs(
                 work_bucket=vqsr_bucket,
                 web_bucket=join(web_bucket, 'vqsr'),
                 depends_on=depends_on or [],
-                scripts_dir=scripts_dir,
                 vqsr_params_d=vqsr_params_d,
                 scatter_count=scatter_count,
                 output_vcf_path=vqsred_vcf_path,
@@ -206,7 +203,6 @@ def add_variant_qc_jobs(
             work_bucket=vqsr_bucket,
             analysis_bucket=join(web_bucket, 'vqsr'),
             overwrite=overwrite,
-            scripts_dir=scripts_dir,
             final_gathered_vcf_job=final_gathered_vcf_job,
             rf_anno_job=rf_anno_job,
             scatter_count=scatter_count,
@@ -226,7 +222,6 @@ def make_rf_eval_jobs(
     rf_model_id: str,
     work_bucket: str,
     overwrite: bool,
-    scripts_dir: str,
     depends_on: Optional[List[Job]],
     scatter_count: int,
 ) -> Tuple[Job, str]:
@@ -240,7 +235,7 @@ def make_rf_eval_jobs(
     if overwrite or not utils.file_exists(score_bin_ht_path):
         eval_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/evaluation.py --overwrite '
+            f'{utils.SCRIPTS_DIR}/evaluation.py --overwrite '
             f'--mt {combined_mt_path} '
             f'--rf-annotations-ht {rf_annotations_ht_path} '
             f'--info-split-ht {info_split_ht_path} '
@@ -263,7 +258,7 @@ def make_rf_eval_jobs(
     if overwrite or not utils.file_exists(final_filter_ht_path):
         final_filter_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/final_filter.py --overwrite '
+            f'{utils.SCRIPTS_DIR}/final_filter.py --overwrite '
             f'--out-final-filter-ht {final_filter_ht_path} '
             f'--model-id {rf_model_id} '
             f'--model-name RF '
@@ -296,7 +291,6 @@ def make_vqsr_eval_jobs(
     work_bucket: str,
     analysis_bucket: str,  # pylint: disable=unused-argument
     overwrite: bool,
-    scripts_dir: str,
     final_gathered_vcf_job: Job,
     rf_anno_job: Job,
     scatter_count: int,
@@ -311,7 +305,7 @@ def make_vqsr_eval_jobs(
     if overwrite or not utils.file_exists(vqsr_filters_split_ht_path):
         load_vqsr_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/load_vqsr.py --overwrite '
+            f'{utils.SCRIPTS_DIR}/load_vqsr.py --overwrite '
             f'--split-multiallelic '
             f'--out-path {vqsr_filters_split_ht_path} '
             f'--vqsr-vcf-path {final_gathered_vcf_path} '
@@ -334,7 +328,7 @@ def make_vqsr_eval_jobs(
     ):
         eval_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/evaluation.py --overwrite '
+            f'{utils.SCRIPTS_DIR}/evaluation.py --overwrite '
             f'--mt {combined_mt_path} '
             f'--rf-annotations-ht {rf_annotations_ht_path} '
             f'--info-split-ht {info_split_ht_path} '
@@ -362,7 +356,7 @@ def make_vqsr_eval_jobs(
     if not utils.file_exists(output_ht_path):
         final_filter_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/final_filter.py --overwrite '
+            f'{utils.SCRIPTS_DIR}/final_filter.py --overwrite '
             f'--out-final-filter-ht {output_ht_path} '
             f'--vqsr-filters-split-ht {vqsr_filters_split_ht_path} '
             f'--model-id {vqsr_model_id} '

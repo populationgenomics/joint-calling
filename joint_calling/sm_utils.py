@@ -362,6 +362,7 @@ def find_inputs(
                 'continental_pop': None,
                 'subpop': None,
                 'gvcf': gvcf_path,
+                'cram': None,
                 'batch': seq_meta.get('batch'),
                 'r_contamination': seq_meta.get('raw_data.FREEMIX'),
                 'r_chimera': seq_meta.get('raw_data.PCT_CHIMERAS'),
@@ -381,3 +382,45 @@ def find_inputs(
 
     df = pd.DataFrame(inputs).set_index('s', drop=False)
     return df
+
+
+def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add NA12878 GVCFs and syndip BAM into the dataframe.
+    """
+    if 'syndip' not in df.s:
+        df = df.append(
+            {
+                's': 'syndip',
+                'external_id': 'syndip',
+                'project': 'validation',
+                'cram': 'gs://cpg-reference/syndip/CHM1_CHM13_2.bam',
+                'crai': 'gs://cpg-reference/syndip/CHM1_CHM13_2.bam.bai',
+            },
+            ignore_index=True,
+        )
+
+    giab_samples = ['NA12891', 'NA12891', 'NA12892']
+    if not any(sn not in df.s for sn in giab_samples):
+        for sn in giab_samples:
+            df = df.append(
+                {
+                    's': sn,
+                    'external_id': sn,
+                    'project': 'validation',
+                    'gvcf': f'gs://cpg-reference/giab/{sn}.g.vcf.gz',
+                }
+            )
+    return df
+
+
+@dataclass
+class AlignmentInput:
+    """
+    Sort of a union type for possible alignment inputs
+    """
+
+    bam_or_cram_path: Optional[str] = None
+    index_path: Optional[str] = None
+    fqs1: Optional[List[str]] = None
+    fqs2: Optional[List[str]] = None
