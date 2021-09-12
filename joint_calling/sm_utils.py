@@ -400,7 +400,7 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
             ignore_index=True,
         )
 
-    giab_samples = ['NA12891', 'NA12891', 'NA12892']
+    giab_samples = ['NA12878', 'NA12891', 'NA12892']
     if not any(sn not in df.s for sn in giab_samples):
         for sn in giab_samples:
             df = df.append(
