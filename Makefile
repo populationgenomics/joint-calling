@@ -36,7 +36,6 @@ test_to_tmp:
 	--input-project tob-wgs \
 	--output-version ${TEST_VERSION} \
 	--keep-scratch \
-	--pre-computed-hgdp-union-mt $(PRE_COMPUTED_HGDP) \
 	$(REUSE_ARG)
 
 .PHONY: test_to_test
