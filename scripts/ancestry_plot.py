@@ -146,8 +146,7 @@ def produce_plots(
     # plot by continental population
     scores = scores.annotate(continental_pop=assigned_pop_ht[scores.s].continental_pop)
     labels = scores.continental_pop.collect()
-    # Change TOB-WGS 'none' values to 'TOB-WGS'
-    labels = ['TOB-NFE' if x is None else x for x in labels]
+    labels = [(x or 'missing') for x in labels]
     continental_population = list(set(labels))
     tooltips = [('labels', '@label'), ('samples', '@samples')]
 
@@ -195,7 +194,7 @@ def produce_plots(
     # plot by subpopulation
     scores = scores.annotate(subpop=assigned_pop_ht[scores.s].subpop)
     labels = scores.subpop.collect()
-    labels = ['TOB-NFE' if x is None else x for x in labels]
+    labels = [(x or 'missing') for x in labels]
     sub_population = list(set(labels))
     tooltips = [('labels', '@label'), ('samples', '@samples')]
 
