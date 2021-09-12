@@ -65,12 +65,11 @@ CLINVAR_HT_PATH = join(REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
 GNOMAD_HT_PATH = (
     'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'
 )
-GNOMAD_HGDP_1KG_MT_PATH = (
-    'gs://gcp-public-data--gnomad/release/3.1/mt/genomes/'
-    'gnomad.genomes.v3.1.hgdp_1kg_subset_dense.mt'
+GNOMAD_HGDP_1KG_MT_PATH = join(
+    REF_BUCKET, 'mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_hq.mt/'
 )
 GNOMAD_HGDP_1KG_TEST_MT_PATH = join(
-    REF_BUCKET, 'mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_test.mt'
+    REF_BUCKET, 'mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_test_hq.mt'
 )
 
 SCRIPTS_DIR = 'scripts'

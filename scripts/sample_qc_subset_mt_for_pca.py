@@ -106,6 +106,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     input_metadata_ht = hl.read_table(input_metadata_ht_path)
     hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_MT_PATH)
+    if is_test:
+        hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_TEST_MT_PATH)
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
     # Subset to biallelic SNPs in autosomes
@@ -121,8 +123,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     if pre_computed_hgdp_unuon_mt_path:
         hgdp_union_mt = hl.read_matrix_table(pre_computed_hgdp_unuon_mt_path)
     else:
-        # if is_test:
-        #     hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_TEST_MT_PATH)
         hgdp_union_mt = get_sites_shared_with_hgdp(
             mt=mt,
             hgdp_mt=hgdp_mt,
@@ -163,16 +163,13 @@ def _make_provided_pop_ht(
     ht = ht.annotate(
         project=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), 'gnomad')
-        .default('tob-wgs'),
-        # .default(input_metadata_ht[ht.s].project),
+        .default(input_metadata_ht[ht.s].project),
         continental_pop=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), hgdp_ht[ht.s].population_inference.pop)
-        .default(''),
-        # .default(input_metadata_ht[ht.s].continental_pop),
+        .default(input_metadata_ht[ht.s].continental_pop),
         subpop=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), hgdp_ht[ht.s].labeled_subpop)
-        .default(''),
-        # .default(input_metadata_ht[ht.s].subpop),
+        .default(input_metadata_ht[ht.s].subpop),
     )
     return ht.checkpoint(out_provided_pop_ht_path, overwrite=overwrite)
 
