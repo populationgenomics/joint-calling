@@ -57,9 +57,9 @@ def add_pre_combiner_jobs(
     else:
         if utils.can_reuse(input_samples_tsv_path, overwrite):
             logger.info(f'Reading existing inputs TSV {input_samples_tsv_path}')
-            samples_df = pd.read_csv(input_samples_tsv_path, sep='\t', na_values='NA').set_index(
-                's', drop=False
-            )
+            samples_df = pd.read_csv(
+                input_samples_tsv_path, sep='\t', na_values='NA'
+            ).set_index('s', drop=False)
         else:
             logger.info(
                 f'Querying samples from the sample-metadata server '
@@ -79,7 +79,7 @@ def add_pre_combiner_jobs(
 
         hc_intervals_j = None
         gvcf_jobs = []
-        
+
         cram_df = samples_df[samples_df.cram.notna()]
         for s_id, proj, input_cram, input_crai in zip(
             cram_df.s, cram_df.project, cram_df.cram, cram_df.crai
@@ -127,6 +127,7 @@ def add_pre_combiner_jobs(
             samples_df=samples_df,
             output_gvcf_bucket=join(pre_combiner_bucket, 'gvcf'),
             overwrite=overwrite,
+            depends_on=gvcf_jobs,
         )
         samples_df.to_csv(
             combiner_ready_samples_tsv_path, index=False, sep='\t', na_rep='NA'
