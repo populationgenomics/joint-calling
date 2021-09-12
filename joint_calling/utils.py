@@ -47,7 +47,11 @@ GATK_IMAGE = f'{AR_REPO}/gatk:{GATK_VERSION}'
 GNARLY_IMAGE = f'{AR_REPO}/gnarly_genotyper:hail_ukbb_300K'
 BCFTOOLS_IMAGE = f'{AR_REPO}/bcftools:1.10.2--h4f4756c_2'
 SM_IMAGE = f'{AR_REPO}/sm-api:2.0.3'
+ALIGNMENT_IMAGE = f'{AR_REPO}/alignment:v4'
+PICARD_IMAGE = f'{AR_REPO}/picard-cloud:2.23.8'
 
+REF_FASTA = join(REF_BUCKET, 'Homo_sapiens_assembly38.fasta')
+UNPADDED_INTERVALS = join(REF_BUCKET, 'hg38.even.handcurated.20k.intervals')
 NOALT_REGIONS = join(REF_BUCKET, 'noalt.bed')
 TEL_AND_CENT_HT_PATH = join(
     REF_BUCKET, 'gnomad/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht'

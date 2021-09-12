@@ -74,7 +74,6 @@ def make_vqsr_jobs(
     work_bucket: str,
     web_bucket: str,
     depends_on: Optional[List[Job]],
-    scripts_dir: str,
     vqsr_params_d: Dict,
     scatter_count: int,
     output_vcf_path: str,
@@ -92,7 +91,6 @@ def make_vqsr_jobs(
     :param work_bucket: bucket for intermediate files
     :param web_bucket: bucket for plots and evaluation results (exposed via http)
     :param depends_on: job that the created jobs should only run after
-    :param scripts_dir: repository directory with scripts
     :param vqsr_params_d: parameters for VQSR
     :param scatter_count: number of shards to patition data for scattering
     :param output_vcf_path: path to write final recalibrated VCF to
@@ -104,11 +102,6 @@ def make_vqsr_jobs(
     unpadded_intervals_path = os.path.join(
         utils.REF_BUCKET, 'hg38.even.handcurated.20k.intervals'
     )
-    ref_fasta = os.path.join(utils.REF_BUCKET, 'Homo_sapiens_assembly38.fasta')
-    ref_fasta_index = os.path.join(
-        utils.REF_BUCKET, 'Homo_sapiens_assembly38.fasta.fai'
-    )
-    ref_dict = os.path.join(utils.REF_BUCKET, 'Homo_sapiens_assembly38.dict')
     dbsnp_vcf = os.path.join(utils.REF_BUCKET, 'Homo_sapiens_assembly38.dbsnp138.vcf')
     dbsnp_vcf_index = os.path.join(
         utils.REF_BUCKET, 'Homo_sapiens_assembly38.dbsnp138.vcf.idx'
@@ -143,14 +136,15 @@ def make_vqsr_jobs(
         utils.REF_BUCKET,
         'Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz.tbi',
     )
+    ref_fasta = utils.REF_FASTA
+    ref_fasta_index = utils.REF_FASTA + '.fai'
+    ref_dict = (
+        ref_fasta.replace('.fasta', '').replace('.fna', '').replace('.fa', '') + '.dict'
+    )
     ref_fasta = b.read_input_group(
         base=ref_fasta,
-        dict=ref_dict
-        or (
-            ref_fasta.replace('.fasta', '').replace('.fna', '').replace('.fa', '')
-            + '.dict'
-        ),
-        fai=ref_fasta_index or (ref_fasta + '.fai'),
+        dict=ref_dict,
+        fai=ref_fasta_index,
     )
     dbsnp_vcf = b.read_input_group(base=dbsnp_vcf, index=dbsnp_vcf_index)
     eval_interval_list = b.read_input(eval_interval_list)
@@ -188,7 +182,7 @@ def make_vqsr_jobs(
     if not can_reuse(combined_vcf_path, overwrite):
         mt_to_vcf_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/mt_to_vcf.py --overwrite '
+            f'{utils.SCRIPTS_DIR}/mt_to_vcf.py --overwrite '
             f'--mt {combined_mt_path} '
             f'--meta-ht {meta_ht_path} '
             f'--hard-filtered-samples-ht {hard_filter_ht_path} '
