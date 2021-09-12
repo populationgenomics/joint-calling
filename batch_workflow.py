@@ -170,6 +170,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     out_analysis_bucket = ptrn.format(suffix=output_analysis_suffix)
     web_bucket = ptrn.format(suffix=web_bucket_suffix)
 
+    pre_combiner_bucket = f'{work_bucket}/pre_combiner'
     combiner_bucket = f'{work_bucket}/combiner'
     sample_qc_bucket = f'{work_bucket}/sample_qc'
 
@@ -216,8 +217,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         pre_combiner_jobs,
     ) = pre_combiner.add_pre_combiner_jobs(
         b=b,
-        work_bucket=join(work_bucket, 'pre_combine'),
-        combiner_bucket=combiner_bucket,
+        pre_combiner_bucket=pre_combiner_bucket,
         overwrite=overwrite,
         input_projects=input_projects,
         analysis_project=analysis_project,

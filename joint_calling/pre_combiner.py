@@ -22,8 +22,7 @@ logger.setLevel(logging.INFO)
 
 def add_pre_combiner_jobs(
     b: hb.Batch,
-    work_bucket: str,
-    combiner_bucket: str,
+    pre_combiner_bucket: str,
     overwrite: bool,
     input_projects: List[str],
     analysis_project: str,  # pylint: disable=unused-argument
@@ -41,11 +40,11 @@ def add_pre_combiner_jobs(
     # File with the pointers to GVCFs to process along with metdata.
     # If it doesn't exist, we trigger a utuils.find_inputs(combiner_bucket) function
     # to find the GVCFs and the metadata given the requested batch ids.
-    input_samples_tsv_path = join(work_bucket, 'samples.tsv')
+    input_samples_tsv_path = join(pre_combiner_bucket, 'samples-raw.tsv')
     # Raw GVCFs need pre-processing before passing to the combiner. If the following
     # file exists, we assume the samples are pre-processed; otherwise, we add Batch
     # jobs to do the pre-processing.
-    combiner_ready_samples_tsv_path = join(combiner_bucket, 'samples.tsv')
+    combiner_ready_samples_tsv_path = join(pre_combiner_bucket, 'samples.tsv')
     subset_gvcf_jobs: List[Job] = []
     if utils.can_reuse(combiner_ready_samples_tsv_path, overwrite):
         logger.info(
@@ -89,7 +88,7 @@ def add_pre_combiner_jobs(
                     bam_or_cram_path=input_cram,
                     index_path=input_crai,
                 )
-                output_cram = join(combiner_bucket, 'cram', f'{s_id}.cram')
+                output_cram = join(pre_combiner_bucket, 'cram', f'{s_id}.cram')
                 cram_j = _make_realign_jobs(
                     b=b,
                     output_path=output_cram,
@@ -107,7 +106,7 @@ def add_pre_combiner_jobs(
                         scatter_count=utils.NUMBER_OF_HAPLOTYPE_CALLER_INTERVALS,
                         ref_fasta=utils.REF_FASTA,
                     )
-                output_gvcf_path = join(combiner_bucket, 'gvcf', f'{s_id}.g.vcf.gz')
+                output_gvcf_path = join(pre_combiner_bucket, 'gvcf', f'{s_id}.g.vcf.gz')
                 gvcf_j = _make_produce_gvcf_jobs(
                     b=b,
                     output_path=output_gvcf_path,
@@ -115,7 +114,7 @@ def add_pre_combiner_jobs(
                     project_name=proj,
                     cram_path=output_cram,
                     intervals_j=hc_intervals_j,
-                    tmp_bucket=join(work_bucket, 'tmp'),
+                    tmp_bucket=join(pre_combiner_bucket, 'tmp'),
                     overwrite=overwrite,
                     depends_on=[cram_j],
                 )
@@ -125,7 +124,7 @@ def add_pre_combiner_jobs(
         subset_gvcf_jobs, samples_df = _add_prep_gvcfs_for_combiner_steps(
             b=b,
             samples_df=samples_df,
-            output_gvcf_bucket=join(combiner_bucket, 'gvcf'),
+            output_gvcf_bucket=join(pre_combiner_bucket, 'gvcf'),
             overwrite=overwrite,
         )
         samples_df.to_csv(
@@ -156,8 +155,8 @@ def _make_realign_jobs(
         return b.new_job(f'{job_name} [reuse]')
 
     logger.info(
-        f'Not found expected result {output_path} for {sample_name}. '
-        f'Parsing the "reads" metadata field and submitting the alignmentment'
+        f'Parsing the "reads" metadata field and submitting the alignment '
+        f'to write {output_path} for {sample_name}. '
     )
     j = b.new_job(job_name)
     j.image(utils.ALIGNMENT_IMAGE)
@@ -274,8 +273,7 @@ def _make_produce_gvcf_jobs(
     if utils.file_exists(output_path):
         return b.new_job(f'{job_name} [reuse]')
     logger.info(
-        f'Not found expected result {output_path} for {sample_name}. '
-        f'Submitting the variant calling jobs.'
+        f'Submitting the variant calling jobs to write {output_path} for {sample_name}'
     )
 
     reference = b.read_input_group(
