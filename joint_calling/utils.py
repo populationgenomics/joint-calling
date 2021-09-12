@@ -14,6 +14,7 @@ import hail as hl
 import click
 from google.cloud import storage
 from joint_calling import _version, get_package_path
+from joint_calling import __name__ as package_name
 
 
 logger = logging.getLogger(__file__)
@@ -66,6 +67,9 @@ GNOMAD_HGDP_1KG_MT_PATH = (
 GNOMAD_HGDP_1KG_TEST_MT_PATH = join(
     REF_BUCKET, 'mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_test.mt'
 )
+
+SCRIPTS_DIR = 'scripts'
+PACKAGE_DIR = package_name
 
 
 NUMBER_OF_HAPLOTYPE_CALLER_INTERVALS = 50

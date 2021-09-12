@@ -692,14 +692,14 @@ def _add_ancestry_jobs(
     if not can_reuse(paths, overwrite):
         dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/ancestry_plot.py '
+            f'{join(utils.SCRIPTS_DIR, "ancestry_plot.py")} '
             f'--eigenvalues {eigenvalues_path} '
             f'--scores-ht {scores_ht_path} '
             f'--loadings-ht {loadings_ht_path} '
             f'--assigned-pop-ht {assigned_pop_ht_path} '
             + f'--out-path-pattern {out_path_ptn} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            pyfiles=['joint_calling/utils.py'],
+            pyfiles=[utils.PACKAGE_DIR],
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES + ['selenium'],
             init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
