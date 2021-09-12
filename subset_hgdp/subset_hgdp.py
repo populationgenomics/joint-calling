@@ -47,9 +47,7 @@ def main(
         out_fpath = OUTPUT_PATH.format(suf=suf)
         if not hl.hadoop_exists(out_fpath):
             # Get samples from the specified population only
-            mt = mt.filter_cols(
-                mt.hgdp_1kg_metadata.population_inference.pop == pop.lower()
-            )
+            mt = mt.filter_cols(mt.population_inference.pop == pop.lower())
             mt.write(out_fpath, overwrite=True)
         mt = hl.read_matrix_table(out_fpath)
 
