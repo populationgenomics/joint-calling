@@ -34,26 +34,32 @@ def main(
     if test:
         suf = '_test'
         # Subset to 50 samples
-        ncols = mt.count_cols()
-        target_ncols = 50
-        mt = mt.sample_cols(p=target_ncols / ncols, seed=42)
-        mt.write(OUTPUT_PATH.format(suf=suf), overwrite=True)
-        mt = hl.read_matrix_table(OUTPUT_PATH.format(suf=suf))
+        out_fpath = OUTPUT_PATH.format(suf=suf)
+        if not hl.hadoop_exists(out_fpath):
+            ncols = mt.count_cols()
+            target_ncols = 50
+            mt = mt.sample_cols(p=target_ncols / ncols, seed=42)
+            mt.write(out_fpath, overwrite=True)
+        mt = hl.read_matrix_table(out_fpath)
 
     if pop:
         suf = f'{suf}_{pop}'
-        # Get samples from the specified population only
-        mt = mt.filter_cols(
-            ~hl.is_defined(mt.hgdp_1kg_metadata)
-            | (mt.hgdp_1kg_metadata.population_inference.pop == pop.lower())
-        )
-        mt.write(OUTPUT_PATH.format(suf=suf), overwrite=True)
-        mt = hl.read_matrix_table(OUTPUT_PATH.format(suf=suf))
+        out_fpath = OUTPUT_PATH.format(suf=suf)
+        if not hl.hadoop_exists(out_fpath):
+            # Get samples from the specified population only
+            mt = mt.filter_cols(
+                ~hl.is_defined(mt.hgdp_1kg_metadata)
+                | (mt.hgdp_1kg_metadata.population_inference.pop == pop.lower())
+            )
+            mt.write(out_fpath, overwrite=True)
+        mt = hl.read_matrix_table(out_fpath)
 
-    filter_high_quality_sites(
-        mt,
-        out_mt_path=OUTPUT_PATH.format(suf=f'{suf}_hq'),
-    )
+    out_fpath = OUTPUT_PATH.format(suf=f'{suf}_hq')
+    if not hl.hadoop_exists(out_fpath):
+        filter_high_quality_sites(
+            mt,
+            out_mt_path=out_fpath,
+        )
 
 
 def filter_high_quality_sites(

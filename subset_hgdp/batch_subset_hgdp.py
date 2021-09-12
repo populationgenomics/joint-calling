@@ -39,7 +39,7 @@ make_test_hq_j = dataproc.hail_dataproc_job(
 
 make_pop_hq_j = dataproc.hail_dataproc_job(
     batch,
-    'subset_hgdp.py --pop',
+    f'subset_hgdp.py --pop {POP}',
     max_age='12h',
     packages=['selenium'],
     init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
