@@ -162,8 +162,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         web_bucket_suffix = f'{output_namespace}-web'
     else:
         output_suffix = 'test-tmp'
-        output_analysis_suffix = 'test-tmp'
-        web_bucket_suffix = 'test-tmp'
+        output_analysis_suffix = 'test-tmp/analysis'
+        web_bucket_suffix = 'test-tmp/web'
 
     ptrn = f'gs://cpg-{analysis_project}-{{suffix}}/joint-calling/{output_version}'
     work_bucket = ptrn.format(suffix=tmp_bucket_suffix)
@@ -436,12 +436,12 @@ def _add_sample_qc_jobs(
         sample_qc_bucket, 'ancestry', 'mt_union_hgdp_for_pca_path.mt'
     )
     mt_for_pca_path = join(sample_qc_bucket, 'ancestry', 'mt_for_pca.mt')
-    assigned_pop_ht_path = join(sample_qc_bucket, 'ancestry', 'assigned_pop.ht')
+    provided_pop_ht_path = join(sample_qc_bucket, 'ancestry', 'provided_pop.ht')
     if not can_reuse(
         [
             mt_for_pca_path,
             mt_union_hgdp_for_pca_path,
-            assigned_pop_ht_path,
+            provided_pop_ht_path,
         ],
         overwrite,
     ):
@@ -457,7 +457,7 @@ def _add_sample_qc_jobs(
                 else ''
             )
             + f'--out-hgdp-union-mt {mt_union_hgdp_for_pca_path} '
-            f'--out-assigned-pop-ht {assigned_pop_ht_path} '
+            f'--out-provided-pop-ht {provided_pop_ht_path} '
             f'--out-mt {mt_for_pca_path} '
             + ('--is-test ' if is_test else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
@@ -520,7 +520,7 @@ def _add_sample_qc_jobs(
     pca_job, pca_scores_ht_path = _add_ancestry_jobs(
         b=b,
         mt_union_hgdp_path=mt_union_hgdp_for_pca_path,
-        assigned_pop_ht_path=assigned_pop_ht_path,
+        provided_pop_ht_path=provided_pop_ht_path,
         num_ancestry_pcs=num_ancestry_pcs,
         tmp_bucket=join(sample_qc_bucket, 'tmp'),
         out_analysis_bucket=out_analysis_bucket,
@@ -533,11 +533,11 @@ def _add_sample_qc_jobs(
         billing_project=billing_project,
     )
 
-    pop_ht_path = join(sample_qc_bucket, 'pop.ht')
+    inferred_pop_ht_path = join(sample_qc_bucket, 'ancestry', 'inferred_pop.ht')
     regressed_metrics_ht_path = join(sample_qc_bucket, 'regressed_metrics.ht')
     if not can_reuse(
         [
-            pop_ht_path,
+            inferred_pop_ht_path,
             regressed_metrics_ht_path,
         ],
         overwrite,
@@ -546,12 +546,12 @@ def _add_sample_qc_jobs(
             b,
             f'{scripts_dir}/sample_qc_regressed_filters.py '
             f'--pca-scores-ht {pca_scores_ht_path} '
-            f'--assigned-pop-ht {assigned_pop_ht_path} '
+            f'--provided-pop-ht {provided_pop_ht_path} '
             f'--hail-sample-qc-ht {hail_sample_qc_ht_path} '
             f'{filter_cutoffs_param} '
             f'--n-pcs {num_ancestry_pcs} '
             f'--out-regressed-metrics-ht {regressed_metrics_ht_path} '
-            f'--out-pop-ht {pop_ht_path} '
+            f'--out-inferred-pop-ht {inferred_pop_ht_path} '
             f'--tmp-bucket {sample_qc_bucket}/tmp '
             + (f'--overwrite ' if overwrite else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
@@ -587,7 +587,7 @@ def _add_sample_qc_jobs(
             f'--hail-sample-qc-ht {hail_sample_qc_ht_path} '
             f'--regressed-filtes-ht {regressed_metrics_ht_path} '
             f'--relatedness-ht {relatedness_ht_path} '
-            f'--pop-ht {pop_ht_path} '
+            f'--pop-ht {inferred_pop_ht_path} '
             f'{age_csv_param}'
             f'--tmp-bucket {sample_qc_bucket}/tmp '
             f'--out-meta-ht {meta_ht_path} '
@@ -608,7 +608,7 @@ def _add_sample_qc_jobs(
             b=b,
             pop=pca_pop,
             mt_union_hgdp_path=mt_union_hgdp_for_pca_path,
-            assigned_pop_ht_path=assigned_pop_ht_path,
+            provided_pop_ht_path=provided_pop_ht_path,
             num_ancestry_pcs=num_ancestry_pcs,
             tmp_bucket=join(sample_qc_bucket, 'tmp'),
             out_analysis_bucket=out_analysis_bucket,
@@ -627,7 +627,7 @@ def _add_sample_qc_jobs(
 def _add_ancestry_jobs(
     b: hb.Batch,
     mt_union_hgdp_path: str,
-    assigned_pop_ht_path: str,
+    provided_pop_ht_path: str,
     num_ancestry_pcs: int,
     tmp_bucket: str,
     out_analysis_bucket: str,
@@ -696,7 +696,7 @@ def _add_ancestry_jobs(
             f'--eigenvalues {eigenvalues_path} '
             f'--scores-ht {scores_ht_path} '
             f'--loadings-ht {loadings_ht_path} '
-            f'--assigned-pop-ht {assigned_pop_ht_path} '
+            f'--provided-pop-ht {provided_pop_ht_path} '
             + f'--out-path-pattern {out_path_ptn} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',

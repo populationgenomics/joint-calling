@@ -30,8 +30,8 @@ logger.setLevel(logging.INFO)
     required=True,
 )
 @click.option(
-    '--assigned-pop-ht',
-    'assigned_pop_ht_path',
+    '--provided-pop-ht',
+    'provided_pop_ht_path',
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
     required=True,
 )
@@ -56,8 +56,8 @@ logger.setLevel(logging.INFO)
     required=True,
 )
 @click.option(
-    '--out-pop-ht',
-    'out_pop_ht_path',
+    '--out-inferred-pop-ht',
+    'out_inferred_pop_ht_path',
     callback=utils.get_validation_callback(ext='ht', must_exist=False),
     required=True,
 )
@@ -83,11 +83,11 @@ logger.setLevel(logging.INFO)
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     pca_scores_ht_path: str,
-    assigned_pop_ht_path: str,
+    provided_pop_ht_path: str,
     hail_sample_qc_ht_path: str,
     filter_cutoffs_path: str,
     out_regressed_metrics_ht_path: str,
-    out_pop_ht_path: str,
+    out_inferred_pop_ht_path: str,
     tmp_bucket: str,
     overwrite: bool,
     n_pcs: int,
@@ -99,13 +99,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     # Using calculated PCA scores as well as training samples with known
     # `population` tag, to assign population tags to remaining samples
-    sqc.assign_pops(
+    sqc.infer_pop_labels(
         pop_pca_scores_ht=hl.read_table(pca_scores_ht_path),
-        assigned_pop_ht=hl.read_table(assigned_pop_ht_path),
+        provided_pop_ht=hl.read_table(provided_pop_ht_path),
         tmp_bucket=tmp_bucket,
         min_prob=cutoffs_d['pca']['min_pop_prob'],
         n_pcs=n_pcs,
-        out_ht_path=out_pop_ht_path,
+        out_ht_path=out_inferred_pop_ht_path,
         overwrite=overwrite,
     )
 

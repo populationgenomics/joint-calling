@@ -220,9 +220,9 @@ def run_pca_ancestry_analysis(
     return scores_ht
 
 
-def assign_pops(
+def infer_pop_labels(
     pop_pca_scores_ht: hl.Table,
-    assigned_pop_ht: hl.Table,
+    provided_pop_ht: hl.Table,
     tmp_bucket: str,
     min_prob: float,
     max_mislabeled_training_samples: int = 50,
@@ -236,7 +236,7 @@ def assign_pops(
 
     :param pop_pca_scores_ht: output table of `_run_pca_ancestry_analysis()`
         with a row field 'scores': array<float64>
-    :param assigned_pop_ht: table with a `continental_pop` field. Samples for which
+    :param provided_pop_ht: table with a `continental_pop` field. Samples for which
         the latter is defined will be used to train the random forest
     :param tmp_bucket: bucket to write checkpoints and intermediate files
     :param min_prob: min probability of belonging to a given population
@@ -256,13 +256,13 @@ def assign_pops(
         ... (prob_*: float64 for each population label)
     """
     logger.info('Assigning global population labels')
-    out_ht_path = out_ht_path or join(tmp_bucket, 'pop.ht')
+    out_ht_path = out_ht_path or join(tmp_bucket, 'inferred_pop.ht')
     if utils.can_reuse(out_ht_path, overwrite):
         return hl.read_table(out_ht_path)
 
-    samples_with_pop_ht = assigned_pop_ht.filter(
-        hl.is_defined(assigned_pop_ht.continental_pop) & 
-        (assigned_pop_ht.continental_pop != '')
+    samples_with_pop_ht = provided_pop_ht.filter(
+        hl.is_defined(provided_pop_ht.continental_pop)
+        & (provided_pop_ht.continental_pop != '')
     )
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop=samples_with_pop_ht[pop_pca_scores_ht.key].continental_pop

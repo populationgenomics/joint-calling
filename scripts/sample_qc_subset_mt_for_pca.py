@@ -58,8 +58,8 @@ logger.setLevel(logging.INFO)
     'The difference with `--out-mt` is that it also contains HGDP-1KG samples',
 )
 @click.option(
-    '--out-assigned-pop-ht',
-    'out_assigned_pop_ht_path',
+    '--out-provided-pop-ht',
+    'out_provided_pop_ht_path',
     callback=utils.get_validation_callback(ext='ht'),
     help='writes table with 3 column fields: continental_pop, subpop, study',
 )
@@ -96,7 +96,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     input_metadata_ht_path: str,
     pre_computed_hgdp_unuon_mt_path: Optional[str],
     out_hgdp_union_mt_path: str,
-    out_assigned_pop_ht_path: str,
+    out_provided_pop_ht_path: str,
     out_mt_path: str,
     overwrite: bool,
     is_test: bool,  # pylint: disable=unused-argument
@@ -129,11 +129,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
             overwrite=overwrite,
         )
 
-    _make_assigned_pop_ht(
+    _make_provided_pop_ht(
         hgdp_union_mt=hgdp_union_mt,
         input_metadata_ht=input_metadata_ht,
         hgdp_ht=hgdp_mt.cols(),
-        out_assigned_pop_ht_path=out_assigned_pop_ht_path,
+        out_provided_pop_ht_path=out_provided_pop_ht_path,
         overwrite=overwrite,
     )
 
@@ -150,15 +150,15 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     )
 
 
-def _make_assigned_pop_ht(
+def _make_provided_pop_ht(
     hgdp_union_mt: hl.MatrixTable,
     input_metadata_ht: hl.Table,
     hgdp_ht: hl.Table,
-    out_assigned_pop_ht_path: str,
+    out_provided_pop_ht_path: str,
     overwrite: bool,
 ) -> hl.Table:
-    if utils.can_reuse(out_assigned_pop_ht_path, overwrite):
-        return hl.read_table(out_assigned_pop_ht_path)
+    if utils.can_reuse(out_provided_pop_ht_path, overwrite):
+        return hl.read_table(out_provided_pop_ht_path)
     ht = hgdp_union_mt.cols().select_globals().select()
     ht = ht.annotate(
         project=hl.case()
@@ -174,7 +174,7 @@ def _make_assigned_pop_ht(
         .default(''),
         # .default(input_metadata_ht[ht.s].subpop),
     )
-    return ht.checkpoint(out_assigned_pop_ht_path, overwrite=overwrite)
+    return ht.checkpoint(out_provided_pop_ht_path, overwrite=overwrite)
 
 
 def get_sites_shared_with_hgdp(
