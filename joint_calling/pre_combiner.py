@@ -57,7 +57,7 @@ def add_pre_combiner_jobs(
     else:
         if utils.can_reuse(input_samples_tsv_path, overwrite):
             logger.info(f'Reading existing inputs TSV {input_samples_tsv_path}')
-            samples_df = pd.read_csv(input_samples_tsv_path, sep='\t').set_index(
+            samples_df = pd.read_csv(input_samples_tsv_path, sep='\t', na_values='NA').set_index(
                 's', drop=False
             )
         else:
@@ -79,47 +79,48 @@ def add_pre_combiner_jobs(
 
         hc_intervals_j = None
         gvcf_jobs = []
+        
+        cram_df = samples_df[samples_df.cram.notna()]
         for s_id, proj, input_cram, input_crai in zip(
-            samples_df.s, samples_df.project, samples_df.cram, samples_df.crai
+            cram_df.s, cram_df.project, cram_df.cram, cram_df.crai
         ):
-            if input_cram:
-                assert input_crai
-                alignment_input = sm_utils.AlignmentInput(
-                    bam_or_cram_path=input_cram,
-                    index_path=input_crai,
-                )
-                output_cram = join(pre_combiner_bucket, 'cram', f'{s_id}.cram')
-                cram_j = _make_realign_jobs(
-                    b=b,
-                    output_path=output_cram,
-                    sample_name=s_id,
-                    project_name=proj,
-                    alignment_input=alignment_input,
-                )
-                samples_df.loc[s_id, ['cram']] = cram_j.output_cram.cram
-                samples_df.loc[s_id, ['crai']] = cram_j.output_cram.crai
+            assert isinstance(input_crai, str)
+            alignment_input = sm_utils.AlignmentInput(
+                bam_or_cram_path=input_cram,
+                index_path=input_crai,
+            )
+            output_cram = join(pre_combiner_bucket, 'cram', f'{s_id}.cram')
+            cram_j = _make_realign_jobs(
+                b=b,
+                output_path=output_cram,
+                sample_name=s_id,
+                project_name=proj,
+                alignment_input=alignment_input,
+            )
+            samples_df.loc[s_id, ['cram']] = cram_j.output_cram.cram
+            samples_df.loc[s_id, ['crai']] = cram_j.output_cram.crai
 
-                if hc_intervals_j is None:
-                    hc_intervals_j = _add_split_intervals_job(
-                        b=b,
-                        interval_list=utils.UNPADDED_INTERVALS,
-                        scatter_count=utils.NUMBER_OF_HAPLOTYPE_CALLER_INTERVALS,
-                        ref_fasta=utils.REF_FASTA,
-                    )
-                output_gvcf_path = join(pre_combiner_bucket, 'gvcf', f'{s_id}.g.vcf.gz')
-                gvcf_j = _make_produce_gvcf_jobs(
+            if hc_intervals_j is None:
+                hc_intervals_j = _add_split_intervals_job(
                     b=b,
-                    output_path=output_gvcf_path,
-                    sample_name=s_id,
-                    project_name=proj,
-                    cram_path=output_cram,
-                    intervals_j=hc_intervals_j,
-                    tmp_bucket=join(pre_combiner_bucket, 'tmp'),
-                    overwrite=overwrite,
-                    depends_on=[cram_j],
+                    interval_list=utils.UNPADDED_INTERVALS,
+                    scatter_count=utils.NUMBER_OF_HAPLOTYPE_CALLER_INTERVALS,
+                    ref_fasta=utils.REF_FASTA,
                 )
-                gvcf_jobs.append(gvcf_j)
-                samples_df.loc[s_id, ['gvcf']] = gvcf_j.output_gvcf['g.vcf.gz']
+            output_gvcf_path = join(pre_combiner_bucket, 'gvcf', f'{s_id}.g.vcf.gz')
+            gvcf_j = _make_produce_gvcf_jobs(
+                b=b,
+                output_path=output_gvcf_path,
+                sample_name=s_id,
+                project_name=proj,
+                cram_path=output_cram,
+                intervals_j=hc_intervals_j,
+                tmp_bucket=join(pre_combiner_bucket, 'tmp'),
+                overwrite=overwrite,
+                depends_on=[cram_j],
+            )
+            gvcf_jobs.append(gvcf_j)
+            samples_df.loc[s_id, ['gvcf']] = gvcf_j.output_gvcf['g.vcf.gz']
 
         subset_gvcf_jobs, samples_df = _add_prep_gvcfs_for_combiner_steps(
             b=b,
