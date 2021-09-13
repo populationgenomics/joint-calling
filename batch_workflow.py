@@ -19,6 +19,7 @@ from os.path import join, basename
 from typing import List, Optional, Tuple, Collection
 import logging
 import click
+import pandas as pd
 import hailtop.batch as hb
 from hailtop.batch.job import Job
 from analysis_runner import dataproc
@@ -208,8 +209,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         backend=backend,
     )
 
-    # Scripts path to pass to dataproc when submitting scripts
-    filter_cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
+    samples_df = find_inputs(
+        output_bucket=work_bucket,
+        overwrite=overwrite,
+        input_projects=input_projects,
+        is_test=output_namespace in ['test', 'tmp'],
+        skip_samples=skip_samples,
+    )
 
     (
         samples_df,
@@ -217,12 +223,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         pre_combiner_jobs,
     ) = pre_combiner.add_pre_combiner_jobs(
         b=b,
+        samples_df=samples_df,
         pre_combiner_bucket=pre_combiner_bucket,
         overwrite=overwrite,
-        input_projects=input_projects,
         analysis_project=analysis_project,
-        is_test=output_namespace in ['test', 'tmp'],
-        skip_samples=skip_samples,
     )
 
     if use_gnarly_genotyper:
@@ -290,7 +294,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         samples_df=samples_df,
         ped_file=ped_file,
         overwrite=overwrite,
-        vqsr_params_d=filter_cutoffs_d['vqsr'],
+        vqsr_params_d=utils.get_filter_cutoffs(filter_cutoffs_path)['vqsr'],
         scatter_count=scatter_count,
         depends_on=[sample_qc_job],
     )
@@ -706,6 +710,40 @@ def _add_ancestry_jobs(
         b.new_job(f'{job_name} [reuse]')
 
     return pca_job, scores_ht_path
+
+
+def find_inputs(
+    output_bucket: str,
+    overwrite: bool,
+    input_projects: List[str],
+    is_test: bool,
+    skip_samples: Optional[Collection[str]] = None,
+) -> pd.DataFrame:
+    """
+    Find inputs, make a sample data DataFrame, save to a TSV file
+    """
+    output_tsv_path = join(output_bucket, 'samples.tsv')
+
+    if utils.can_reuse(output_tsv_path, overwrite):
+        logger.info(f'Reading already found DB inputs from {output_tsv_path}')
+        samples_df = pd.read_csv(output_tsv_path, sep='\t', na_values='NA').set_index(
+            's', drop=False
+        )
+        return samples_df
+
+    logger.info(
+        f'Querying samples from the sample-metadata server '
+        f'for the projects: {", ".join(input_projects)}'
+    )
+    samples_df = sm_utils.find_inputs_from_db(
+        input_projects,
+        is_test=is_test,
+        skip_samples=skip_samples,
+    )
+    samples_df = sm_utils.add_validation_samples(samples_df)
+    samples_df.to_csv(output_tsv_path, index=False, sep='\t', na_rep='NA')
+    samples_df = samples_df[pd.notnull(samples_df.s)]
+    return samples_df
 
 
 if __name__ == '__main__':

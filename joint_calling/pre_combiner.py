@@ -6,7 +6,7 @@ Functions that craete Batch jobs that get from raw data to a combiner-ready GVCF
 
 import logging
 from os.path import join, dirname, splitext
-from typing import Optional, List, Tuple, Collection
+from typing import Optional, List, Tuple
 
 import pandas as pd
 import hailtop.batch as hb
@@ -22,74 +22,34 @@ logger.setLevel(logging.INFO)
 
 def add_pre_combiner_jobs(
     b: hb.Batch,
+    samples_df: pd.DataFrame,
     pre_combiner_bucket: str,
     overwrite: bool,
-    input_projects: List[str],
     analysis_project: str,  # pylint: disable=unused-argument
-    is_test: bool,
-    skip_samples: Optional[Collection[str]] = None,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
 
-    Returns a Tuple of: a pandas dataframe with the sample metadata, a CSV file
+    Returns a Tuple of: a DataFrame with the sample metadata, a TSV file
     corresponding to that dataframe, and a list of jobs to wait for before
     submitting the combiner job
     """
 
-    # File with the pointers to GVCFs to process along with metdata.
-    # If it doesn't exist, we trigger a utuils.find_inputs(combiner_bucket) function
-    # to find the GVCFs and the metadata given the requested batch ids.
-    input_samples_tsv_path = join(pre_combiner_bucket, 'samples-raw.tsv')
-    # Raw GVCFs need pre-processing before passing to the combiner. If the following
-    # file exists, we assume the samples are pre-processed; otherwise, we add Batch
-    # jobs to do the pre-processing.
-    combiner_ready_samples_tsv_path = join(pre_combiner_bucket, 'samples.tsv')
-    subset_gvcf_jobs: List[Job] = []
-    if utils.can_reuse(combiner_ready_samples_tsv_path, overwrite):
-        logger.info(
-            f'Reading existing combiner-read inputs TSV {combiner_ready_samples_tsv_path}'
-        )
-        samples_df = pd.read_csv(combiner_ready_samples_tsv_path, sep='\t').set_index(
-            's', drop=False
-        )
-        samples_df = samples_df[pd.notnull(samples_df.s)]
-    else:
-        if utils.can_reuse(input_samples_tsv_path, overwrite):
-            logger.info(f'Reading existing inputs TSV {input_samples_tsv_path}')
-            samples_df = pd.read_csv(
-                input_samples_tsv_path, sep='\t', na_values='NA'
-            ).set_index('s', drop=False)
-        else:
-            logger.info(
-                f'Querying samples from the sample-metadata server '
-                f'for the projects: {", ".join(input_projects)}'
-            )
-            samples_df = sm_utils.find_inputs(
-                input_projects,
-                is_test=is_test,
-                skip_samples=skip_samples,
-            )
-            samples_df = sm_utils.add_validation_samples(samples_df)
-            samples_df.to_csv(
-                input_samples_tsv_path, index=False, sep='\t', na_rep='NA'
-            )
+    gvcfs_tsv_path = join(pre_combiner_bucket, 'gvcfs.tsv')
 
-        samples_df = samples_df[pd.notnull(samples_df.s)]
-
-        hc_intervals_j = None
-        gvcf_jobs = []
-
-        cram_df = samples_df[samples_df.cram.notna()]
-        for s_id, proj, input_cram, input_crai in zip(
-            cram_df.s, cram_df.project, cram_df.cram, cram_df.crai
-        ):
-            assert isinstance(input_crai, str)
+    hc_intervals_j = None
+    gvcf_jobs = []
+    cram_df = samples_df[samples_df.cram.notna()]
+    for s_id, proj, input_cram, input_crai in zip(
+        cram_df.s, cram_df.project, cram_df.cram, cram_df.crai
+    ):
+        assert isinstance(input_crai, str)
+        output_cram = join(pre_combiner_bucket, 'cram', f'{s_id}.cram')
+        if not utils.can_reuse(output_cram, overwrite):
             alignment_input = sm_utils.AlignmentInput(
                 bam_or_cram_path=input_cram,
                 index_path=input_crai,
             )
-            output_cram = join(pre_combiner_bucket, 'cram', f'{s_id}.cram')
             cram_j = _make_realign_jobs(
                 b=b,
                 output_path=output_cram,
@@ -97,9 +57,13 @@ def add_pre_combiner_jobs(
                 project_name=proj,
                 alignment_input=alignment_input,
             )
-            samples_df.loc[s_id, ['cram']] = output_cram
-            samples_df.loc[s_id, ['crai']] = output_cram + '.crai'
+        else:
+            cram_j = None
+        samples_df.loc[s_id, ['cram']] = output_cram
+        samples_df.loc[s_id, ['crai']] = output_cram + '.crai'
 
+        output_gvcf_path = join(pre_combiner_bucket, 'gvcf', f'{s_id}.g.vcf.gz')
+        if not utils.can_reuse(output_gvcf_path, overwrite):
             if hc_intervals_j is None:
                 hc_intervals_j = _add_split_intervals_job(
                     b=b,
@@ -107,7 +71,6 @@ def add_pre_combiner_jobs(
                     scatter_count=utils.NUMBER_OF_HAPLOTYPE_CALLER_INTERVALS,
                     ref_fasta=utils.REF_FASTA,
                 )
-            output_gvcf_path = join(pre_combiner_bucket, 'gvcf', f'{s_id}.g.vcf.gz')
             gvcf_j = _make_produce_gvcf_jobs(
                 b=b,
                 output_path=output_gvcf_path,
@@ -117,27 +80,21 @@ def add_pre_combiner_jobs(
                 intervals_j=hc_intervals_j,
                 tmp_bucket=join(pre_combiner_bucket, 'tmp'),
                 overwrite=overwrite,
-                depends_on=[cram_j],
+                depends_on=[cram_j] if cram_j else [],
             )
             gvcf_jobs.append(gvcf_j)
-            samples_df.loc[s_id, ['gvcf']] = output_gvcf_path
+        samples_df.loc[s_id, ['gvcf']] = output_gvcf_path
 
-        subset_gvcf_jobs, samples_df = _add_prep_gvcfs_for_combiner_steps(
-            b=b,
-            samples_df=samples_df,
-            output_gvcf_bucket=join(pre_combiner_bucket, 'gvcf'),
-            overwrite=overwrite,
-            depends_on=gvcf_jobs,
-        )
-        samples_df.to_csv(
-            combiner_ready_samples_tsv_path, index=False, sep='\t', na_rep='NA'
-        )
-        logger.info(
-            f'Saved metadata with updated GVCFs to '
-            f'{combiner_ready_samples_tsv_path}'
-        )
-
-    return samples_df, combiner_ready_samples_tsv_path, subset_gvcf_jobs
+    subset_gvcf_jobs, samples_df = _add_prep_gvcfs_for_combiner_steps(
+        b=b,
+        samples_df=samples_df,
+        output_gvcf_bucket=join(pre_combiner_bucket, 'gvcf'),
+        overwrite=overwrite,
+        depends_on=gvcf_jobs,
+    )
+    samples_df.to_csv(gvcfs_tsv_path, index=False, sep='\t', na_rep='NA')
+    logger.info(f'Saved combiner-ready GVCF data to {gvcfs_tsv_path}')
+    return samples_df, gvcfs_tsv_path, subset_gvcf_jobs
 
 
 def _make_realign_jobs(
@@ -481,36 +438,37 @@ def _add_prep_gvcfs_for_combiner_steps(
     for s_id, proj, external_id, gvcf_path in zip(
         samples_df.s, samples_df.project, samples_df.external_id, samples_df.gvcf
     ):
-        logger.info(
-            f'Adding reblock and subset jobs for sample {s_id}, gvcf {gvcf_path}'
-        )
-        gvcf = b.read_input_group(
-            **{'g.vcf.gz': gvcf_path, 'g.vcf.gz.tbi': gvcf_path + '.tbi'}
-        )
-        reblock_j = _add_reblock_gvcf_job(
-            b=b,
-            sample_name=s_id,
-            project_name=proj,
-            input_gvcf=gvcf,
-            overwrite=overwrite,
-        )
-        if depends_on:
-            reblock_j.depends_on(*depends_on)
         output_gvcf_path = join(output_gvcf_bucket, f'{s_id}.g.vcf.gz')
-        jobs.append(
-            _add_subset_noalt_step(
+        if not utils.can_reuse(output_gvcf_path, overwrite):
+            logger.info(
+                f'Adding reblock and subset jobs for sample {s_id}, gvcf {gvcf_path}'
+            )
+            gvcf = b.read_input_group(
+                **{'g.vcf.gz': gvcf_path, 'g.vcf.gz.tbi': gvcf_path + '.tbi'}
+            )
+            reblock_j = _add_reblock_gvcf_job(
                 b=b,
                 sample_name=s_id,
                 project_name=proj,
-                input_gvcf=reblock_j.output_gvcf,
-                output_gvcf_path=output_gvcf_path,
-                noalt_regions=noalt_regions,
-                depends_on=depends_on,
-                external_sample_id=external_id,
-                internal_sample_id=s_id,
+                input_gvcf=gvcf,
+                overwrite=overwrite,
             )
-        )
-        assert s_id
+            if depends_on:
+                reblock_j.depends_on(*depends_on)
+            jobs.append(
+                _add_subset_noalt_step(
+                    b=b,
+                    sample_name=s_id,
+                    project_name=proj,
+                    input_gvcf=reblock_j.output_gvcf,
+                    output_gvcf_path=output_gvcf_path,
+                    noalt_regions=noalt_regions,
+                    depends_on=depends_on,
+                    external_sample_id=external_id,
+                    internal_sample_id=s_id,
+                )
+            )
+            assert s_id
         samples_df.loc[s_id, ['gvcf']] = output_gvcf_path
         logger.info(f'Updating sample {s_id} gvcf to {output_gvcf_path}')
     logger.info(f'Updated sample DF: {samples_df}')

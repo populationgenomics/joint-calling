@@ -213,7 +213,7 @@ def replace_paths_to_test(s: Dict) -> Optional[Dict]:
         return None
 
 
-def find_inputs(
+def find_inputs_from_db(
     input_projects: List[str],
     is_test: bool = False,
     skip_samples: Optional[Collection[str]] = None,
