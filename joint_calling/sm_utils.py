@@ -403,12 +403,14 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
     giab_samples = ['NA12878', 'NA12891', 'NA12892']
     if not any(sn not in df.s for sn in giab_samples):
         for sn in giab_samples:
+            cram = f'https://ftp-trace.ncbi.nih.gov/1000genomes/ftp/phase3/data/{sn}/high_coverage_alignment/{sn}.mapped.ILLUMINA.bwa.CEU.high_coverage_pcr_free.20130906.bam.cram'
             df = df.append(
                 {
                     's': sn,
                     'external_id': sn,
                     'project': 'validation',
-                    'gvcf': f'gs://cpg-reference/giab/{sn}.g.vcf.gz',
+                    'cram': cram,
+                    'crai': cram + '.crai',
                 }
             )
     return df

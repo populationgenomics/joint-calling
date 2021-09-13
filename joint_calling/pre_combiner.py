@@ -5,7 +5,7 @@ Functions that craete Batch jobs that get from raw data to a combiner-ready GVCF
 """
 
 import logging
-from os.path import join, dirname, splitext
+from os.path import join, dirname, splitext, basename
 from typing import Optional, List, Tuple
 
 import pandas as pd
@@ -24,6 +24,7 @@ def add_pre_combiner_jobs(
     b: hb.Batch,
     samples_df: pd.DataFrame,
     pre_combiner_bucket: str,
+    output_suffix: str,
     overwrite: bool,
     analysis_project: str,  # pylint: disable=unused-argument
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
@@ -35,16 +36,41 @@ def add_pre_combiner_jobs(
     submitting the combiner job
     """
 
-    gvcfs_tsv_path = join(pre_combiner_bucket, 'gvcfs.tsv')
+    logger.info(f'Samples DF: {samples_df}')
+    jobs = []
 
+    # Samples for which a GVCF is provided as input:
+    gvcf_df = samples_df[samples_df.gvcf.notna()]
+    for s_id, proj, external_id, gvcf_path in zip(
+        gvcf_df.s, gvcf_df.project, gvcf_df.external_id, gvcf_df.gvcf
+    ):
+        proj_bucket = f'gs://cpg-{proj}-{output_suffix}'
+        output_gvcf_path = join(proj_bucket, 'gvcf', f'{s_id}.g.vcf.gz')
+        if not utils.can_reuse(output_gvcf_path, overwrite):
+            j = _add_postproc_gvcf_jobs(
+                b=b,
+                gvcf_path=gvcf_path,
+                output_path=output_gvcf_path,
+                sample_name=s_id,
+                project_name=proj,
+                external_id=external_id,
+                overwrite=overwrite,
+            )
+            jobs.append(j)
+        samples_df.loc[s_id, ['gvcf']] = output_gvcf_path
+        logger.info(f'Updating sample {s_id} gvcf to {output_gvcf_path}')
+
+    logger.info(f'Updated sample DF after post-processing GVCF inputs: {samples_df}')
+
+    # Samples for which a CRAM is provided as input:
     hc_intervals_j = None
-    gvcf_jobs = []
     cram_df = samples_df[samples_df.cram.notna()]
-    for s_id, proj, input_cram, input_crai in zip(
-        cram_df.s, cram_df.project, cram_df.cram, cram_df.crai
+    for s_id, external_id, proj, input_cram, input_crai in zip(
+        cram_df.s, cram_df.external_id, cram_df.project, cram_df.cram, cram_df.crai
     ):
         assert isinstance(input_crai, str)
-        output_cram = join(pre_combiner_bucket, 'cram', f'{s_id}.cram')
+        proj_bucket = f'gs://cpg-{proj}-{output_suffix}'
+        output_cram = join(proj_bucket, 'cram', f'{s_id}.cram')
         if not utils.can_reuse(output_cram, overwrite):
             alignment_input = sm_utils.AlignmentInput(
                 bam_or_cram_path=input_cram,
@@ -62,7 +88,7 @@ def add_pre_combiner_jobs(
         samples_df.loc[s_id, ['cram']] = output_cram
         samples_df.loc[s_id, ['crai']] = output_cram + '.crai'
 
-        output_gvcf_path = join(pre_combiner_bucket, 'gvcf', f'{s_id}.g.vcf.gz')
+        output_gvcf_path = join(proj_bucket, 'gvcf', f'{s_id}.g.vcf.gz')
         if not utils.can_reuse(output_gvcf_path, overwrite):
             if hc_intervals_j is None:
                 hc_intervals_j = _add_split_intervals_job(
@@ -76,25 +102,21 @@ def add_pre_combiner_jobs(
                 output_path=output_gvcf_path,
                 sample_name=s_id,
                 project_name=proj,
+                external_id=external_id,
                 cram_path=output_cram,
                 intervals_j=hc_intervals_j,
                 tmp_bucket=join(pre_combiner_bucket, 'tmp'),
                 overwrite=overwrite,
                 depends_on=[cram_j] if cram_j else [],
             )
-            gvcf_jobs.append(gvcf_j)
+            jobs.append(gvcf_j)
         samples_df.loc[s_id, ['gvcf']] = output_gvcf_path
 
-    subset_gvcf_jobs, samples_df = _add_prep_gvcfs_for_combiner_steps(
-        b=b,
-        samples_df=samples_df,
-        output_gvcf_bucket=join(pre_combiner_bucket, 'gvcf'),
-        overwrite=overwrite,
-        depends_on=gvcf_jobs,
-    )
+    # Saving the resulting DataFrame as a TSV file
+    gvcfs_tsv_path = join(pre_combiner_bucket, 'gvcfs.tsv')
     samples_df.to_csv(gvcfs_tsv_path, index=False, sep='\t', na_rep='NA')
     logger.info(f'Saved combiner-ready GVCF data to {gvcfs_tsv_path}')
-    return samples_df, gvcfs_tsv_path, subset_gvcf_jobs
+    return samples_df, gvcfs_tsv_path, jobs
 
 
 def _make_realign_jobs(
@@ -120,6 +142,15 @@ def _make_realign_jobs(
     j = b.new_job(job_name)
     j.image(utils.ALIGNMENT_IMAGE)
     total_cpu = 32
+    j.cpu(total_cpu)
+    j.memory('standard')
+    j.storage('500G')
+    j.declare_resource_group(
+        output_cram={
+            'cram': '{root}.cram',
+            'crai': '{root}.cram.crai',
+        }
+    )
 
     reference = b.read_input_group(
         base=utils.REF_FASTA,
@@ -135,20 +166,36 @@ def _make_realign_jobs(
         bwa2bit64=utils.REF_FASTA + '.bwt.2bit.64',
     )
 
+    work_dir = dirname(j.output_cram.cram)
+
+    pull_inputs_cmd = ''
+
     if alignment_input.bam_or_cram_path:
         use_bazam = True
         bazam_cpu = 10
         bwa_cpu = 32
         bamsormadup_cpu = 10
-
         assert alignment_input.index_path
         assert not alignment_input.fqs1 and not alignment_input.fqs2
-        cram = b.read_input_group(
-            base=alignment_input.bam_or_cram_path, index=alignment_input.index_path
-        )
+
+        if alignment_input.bam_or_cram_path.startswith('gs://'):
+            cram = b.read_input_group(
+                base=alignment_input.bam_or_cram_path, index=alignment_input.index_path
+            )
+            cram_localized_path = cram.base
+        else:
+            # Can't use on Batch localization mechanism with `b.read_input_group`,
+            # but have to manually localize with `wget`
+            cram_name = basename(alignment_input.bam_or_cram_path)
+            cram_localized_path = join(work_dir, cram_name)
+            crai_localized_path = join(work_dir, cram_name + '.crai')
+            pull_inputs_cmd = (
+                f'wget {alignment_input.bam_or_cram_path} -O {cram_localized_path}\n'
+                f'wget {alignment_input.index_path} -O {crai_localized_path}'
+            )
         r1_param = (
             f'<(bazam -Xmx16g -Dsamjdk.reference_fasta={reference.base}'
-            f' -n{bazam_cpu} -bam {cram.base})'
+            f' -n{bazam_cpu} -bam {cram_localized_path})'
         )
         r2_param = '-'
     else:
@@ -163,16 +210,6 @@ def _make_realign_jobs(
         logger.info(f'r1_param: {r1_param}')
         logger.info(f'r2_param: {r2_param}')
 
-    j.cpu(total_cpu)
-    j.memory('standard')
-    j.storage('750G')
-    j.declare_resource_group(
-        output_cram={
-            'cram': '{root}.cram',
-            'crai': '{root}.cram.crai',
-        }
-    )
-
     rg_line = f'@RG\\tID:{sample_name}\\tSM:{sample_name}'
     # BWA command options:
     # -K     process INT input bases in each batch regardless of nThreads (for reproducibility)
@@ -184,7 +221,9 @@ def _make_realign_jobs(
 set -o pipefail
 set -ex
 
-(while true; do df -h; pwd; du -sh $(dirname {j.output_cram.cram}); sleep 600; done) &
+(while true; do df -h; pwd; du -sh {work_dir}; sleep 600; done) &
+
+{pull_inputs_cmd}
 
 bwa-mem2 mem -K 100000000 {'-p' if use_bazam else ''} -t{bwa_cpu} -Y \\
     -R '{rg_line}' {reference.base} {r1_param} {r2_param} | \\
@@ -195,7 +234,7 @@ samtools view -T {reference.base} -O cram -o {j.output_cram.cram}
 
 samtools index -@{total_cpu} {j.output_cram.cram} {j.output_cram.crai}
 
-df -h; pwd; du -sh $(dirname {j.output_cram.cram})
+df -h; pwd; du -sh {work_dir}
     """
     j.command(command)
     b.write_output(j.output_cram, splitext(output_path)[0])
@@ -215,15 +254,16 @@ def _make_produce_gvcf_jobs(
     output_path: str,
     sample_name: str,
     project_name: str,
+    external_id: str,
     cram_path: str,
     intervals_j: Job,
-    tmp_bucket: str,  # pylint: disable=unused-argument
-    overwrite: bool,  # pylint: disable=unused-argument
+    tmp_bucket: str,
+    overwrite: bool,
     depends_on: Optional[List[Job]] = None,
 ) -> Job:
     """
     Takes all samples with a 'file' of 'type'='bam' in `samples_df`,
-    and runs HaplotypeCaller on them, and sets a new 'file' of 'type'='gvcf'
+    and runs HaplotypeCaller on them in parallel, then post-processes the GVCF
 
     HaplotypeCaller is run in an interval-based sharded way, with per-interval
     HaplotypeCaller jobs defined in a nested loop.
@@ -231,6 +271,7 @@ def _make_produce_gvcf_jobs(
     job_name = f'{project_name}/{sample_name}: make GVCF'
     if utils.file_exists(output_path):
         return b.new_job(f'{job_name} [reuse]')
+
     logger.info(
         f'Submitting the variant calling jobs to write {output_path} for {sample_name}'
     )
@@ -264,6 +305,9 @@ def _make_produce_gvcf_jobs(
                 depends_on=depends_on,
             )
         )
+    if depends_on:
+        haplotype_caller_jobs[0].depends_on(*depends_on)
+
     hc_gvcf_path = join(tmp_bucket, 'haplotypecaller', f'{sample_name}.g.vcf.gz')
     merge_j = _add_merge_gvcfs_job(
         b=b,
@@ -273,9 +317,17 @@ def _make_produce_gvcf_jobs(
         output_gvcf_path=hc_gvcf_path,
     )
 
-    if depends_on:
-        haplotype_caller_jobs[0].depends_on(*depends_on)
-    return merge_j
+    j = _add_postproc_gvcf_jobs(
+        b=b,
+        gvcf_path=hc_gvcf_path,
+        output_path=output_path,
+        sample_name=sample_name,
+        project_name=project_name,
+        external_id=external_id,
+        overwrite=overwrite,
+        depends_on=[merge_j],
+    )
+    return j
 
 
 def _add_split_intervals_job(
@@ -421,92 +473,46 @@ def _add_merge_gvcfs_job(
     return j
 
 
-def _add_prep_gvcfs_for_combiner_steps(
-    b,
-    samples_df: pd.DataFrame,
-    output_gvcf_bucket: str,
+def _add_postproc_gvcf_jobs(
+    b: hb.Batch,
+    gvcf_path: str,
+    output_path: str,
+    sample_name: str,
+    project_name: str,
+    external_id: str,
     overwrite: bool,
     depends_on: Optional[List[Job]] = None,
-) -> Tuple[List[Job], pd.DataFrame]:
-    """
-    Add steps required to prepare GVCFs from combining
-    """
-    noalt_regions = b.read_input(utils.NOALT_REGIONS)
-
-    jobs = []
-    logger.info(f'Samples DF: {samples_df}')
-    for s_id, proj, external_id, gvcf_path in zip(
-        samples_df.s, samples_df.project, samples_df.external_id, samples_df.gvcf
-    ):
-        output_gvcf_path = join(output_gvcf_bucket, f'{s_id}.g.vcf.gz')
-        if not utils.can_reuse(output_gvcf_path, overwrite):
-            logger.info(
-                f'Adding reblock and subset jobs for sample {s_id}, gvcf {gvcf_path}'
-            )
-            gvcf = b.read_input_group(
-                **{'g.vcf.gz': gvcf_path, 'g.vcf.gz.tbi': gvcf_path + '.tbi'}
-            )
-            reblock_j = _add_reblock_gvcf_job(
-                b=b,
-                sample_name=s_id,
-                project_name=proj,
-                input_gvcf=gvcf,
-                overwrite=overwrite,
-            )
-            if depends_on:
-                reblock_j.depends_on(*depends_on)
-            jobs.append(
-                _add_subset_noalt_step(
-                    b=b,
-                    sample_name=s_id,
-                    project_name=proj,
-                    input_gvcf=reblock_j.output_gvcf,
-                    output_gvcf_path=output_gvcf_path,
-                    noalt_regions=noalt_regions,
-                    depends_on=depends_on,
-                    external_sample_id=external_id,
-                    internal_sample_id=s_id,
-                )
-            )
-            assert s_id
-        samples_df.loc[s_id, ['gvcf']] = output_gvcf_path
-        logger.info(f'Updating sample {s_id} gvcf to {output_gvcf_path}')
-    logger.info(f'Updated sample DF: {samples_df}')
-    return jobs, samples_df
-
-
-#
-# def _make_postproc_gvcf_jobs(
-#     b: hb.Batch,
-#     sample_name: str,
-#     project_name: str,
-#     input_gvcf_path: str,
-#     out_gvcf_path: str,
-#     noalt_regions: hb.ResourceFile,
-#     overwrite: bool,  # pylint: disable=unused-argument
-#     depends_on: Optional[List[Job]] = None,
-# ) -> Job:
-#     reblock_gvcf_job = _add_reblock_gvcf_job(
-#         b,
-#         sample_name=sample_name,
-#         project_name=project_name,
-#         input_gvcf=b.read_input_group(
-#             **{'g.vcf.gz': input_gvcf_path, 'g.vcf.gz.tbi': input_gvcf_path + '.tbi'}
-#         ),
-#         overwrite=overwrite,
-#     )
-#     if depends_on:
-#         reblock_gvcf_job.depends_on(*depends_on)
-#     subset_to_noalt_job = _add_subset_noalt_step(
-#         b,
-#         sample_name=sample_name,
-#         project_name=project_name,
-#         input_gvcf=reblock_gvcf_job.output_gvcf,
-#         noalt_regions=noalt_regions,
-#         overwrite=overwrite,
-#         output_gvcf_path=out_gvcf_path,
-#     )
-#     return subset_to_noalt_job
+) -> Job:
+    if utils.can_reuse(output_path, overwrite):
+        return output_path
+    logger.info(
+        f'Adding reblock and subset jobs for sample {sample_name}, gvcf {gvcf_path}'
+    )
+    gvcf = b.read_input_group(
+        **{'g.vcf.gz': gvcf_path, 'g.vcf.gz.tbi': gvcf_path + '.tbi'}
+    )
+    reblock_j = _add_reblock_gvcf_job(
+        b=b,
+        sample_name=sample_name,
+        project_name=project_name,
+        input_gvcf=gvcf,
+        overwrite=overwrite,
+    )
+    if depends_on:
+        reblock_j.depends_on(*depends_on)
+    j = _add_subset_noalt_step(
+        b=b,
+        sample_name=sample_name,
+        project_name=project_name,
+        input_gvcf=reblock_j.output_gvcf,
+        output_gvcf_path=output_path,
+        noalt_regions=b.read_input(utils.NOALT_REGIONS),
+        external_sample_id=external_id,
+        internal_sample_id=sample_name,
+        depends_on=depends_on,
+        overwrite=overwrite,
+    )
+    return j
 
 
 def _add_reblock_gvcf_job(
@@ -560,6 +566,7 @@ def _add_subset_noalt_step(
     noalt_regions: hb.ResourceFile,
     external_sample_id: str,
     internal_sample_id: str,
+    overwrite: bool,
     depends_on: Optional[List[Job]] = None,
 ) -> Job:
     """
@@ -569,6 +576,9 @@ def _add_subset_noalt_step(
     3. Renames sample name from external_sample_id to internal_sample_id
     """
     job_name = f'{project_name}/{sample_name}: SubsetToNoalt'
+    if utils.can_reuse(output_gvcf_path, overwrite):
+        return b.new_job(job_name + ' [reuse]')
+
     j = b.new_job(job_name)
     j.image(utils.BCFTOOLS_IMAGE)
     mem_gb = 8

@@ -225,6 +225,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         b=b,
         samples_df=samples_df,
         pre_combiner_bucket=pre_combiner_bucket,
+        output_suffix=output_suffix,
         overwrite=overwrite,
         analysis_project=analysis_project,
     )
