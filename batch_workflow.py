@@ -463,6 +463,7 @@ def _add_sample_qc_jobs(
             f'--out-provided-pop-ht {provided_pop_ht_path} '
             f'--out-mt {mt_for_pca_path} '
             + ('--is-test ' if is_test else '')
+            + (f'--pop {pca_pop} ' if pca_pop else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,

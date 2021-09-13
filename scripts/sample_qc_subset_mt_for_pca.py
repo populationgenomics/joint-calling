@@ -73,6 +73,10 @@ logger.setLevel(logging.INFO)
     'samples',
 )
 @click.option(
+    '--pop',
+    'pop',
+)
+@click.option(
     '--overwrite/--reuse',
     'overwrite',
     is_flag=True,
@@ -98,6 +102,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     out_hgdp_union_mt_path: str,
     out_provided_pop_ht_path: str,
     out_mt_path: str,
+    pop: Optional[str],
     overwrite: bool,
     is_test: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
@@ -105,9 +110,17 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     utils.init_hail(__file__)
 
     input_metadata_ht = hl.read_table(input_metadata_ht_path)
-    hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_MT_PATH)
-    if is_test:
-        hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_TEST_MT_PATH)
+
+    if pop and pop in utils.GNOMAD_HGDP_FOR_PCA:
+        if is_test:
+            hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_FOR_PCA[f'test_{pop}'])
+        else:
+            hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_FOR_PCA[pop])
+    else:
+        if is_test:
+            hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_FOR_PCA['test'])
+        else:
+            hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_FOR_PCA['all'])
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
     # Subset to biallelic SNPs in autosomes

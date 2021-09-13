@@ -1,10 +1,9 @@
 VERSION := v5.1
-TEST_VERSION := v6-14
+TEST_VERSION := v6-15
 SCATTER_COUNT_TEST := 50
 SCATTER_COUNT_PROD := 50
 ANALYSIS_PROJECT := tob-wgs
 REUSE_ARG := --reuse
-PRE_COMPUTED_HGDP := gs://cpg-tob-wgs-test-tmp/joint-calling/v6-11/sample_qc/mt_subset_for_pca_with_hgdp.mt
 
 default: patch package
 
