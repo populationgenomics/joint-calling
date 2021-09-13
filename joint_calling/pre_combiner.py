@@ -39,12 +39,20 @@ def add_pre_combiner_jobs(
     logger.info(f'Samples DF: {samples_df}')
     jobs = []
 
+    def get_project_bucket(_proj):
+        if proj in ['syndip', 'giab']:
+            proj_bucket = f'gs://cpg-reference/validation/{proj}'
+        else:
+            proj_bucket = f'gs://cpg-{proj}-{output_suffix}'
+        return proj_bucket
+
     # Samples for which a GVCF is provided as input:
     gvcf_df = samples_df[samples_df.gvcf.notna()]
     for s_id, proj, external_id, gvcf_path in zip(
         gvcf_df.s, gvcf_df.project, gvcf_df.external_id, gvcf_df.gvcf
     ):
-        proj_bucket = f'gs://cpg-{proj}-{output_suffix}'
+        proj_bucket = get_project_bucket(proj)
+
         output_gvcf_path = join(proj_bucket, 'gvcf', f'{s_id}.g.vcf.gz')
         if not utils.can_reuse(output_gvcf_path, overwrite):
             j = _add_postproc_gvcf_jobs(
@@ -69,7 +77,9 @@ def add_pre_combiner_jobs(
         cram_df.s, cram_df.external_id, cram_df.project, cram_df.cram, cram_df.crai
     ):
         assert isinstance(input_crai, str)
-        proj_bucket = f'gs://cpg-{proj}-{output_suffix}'
+
+        proj_bucket = get_project_bucket(proj)
+
         output_cram = join(proj_bucket, 'cram', f'{s_id}.cram')
         if not utils.can_reuse(output_cram, overwrite):
             alignment_input = sm_utils.AlignmentInput(
@@ -148,7 +158,7 @@ def _make_realign_jobs(
     j.declare_resource_group(
         output_cram={
             'cram': '{root}.cram',
-            'crai': '{root}.cram.crai',
+            'cram.crai': '{root}.cram.crai',
         }
     )
 
