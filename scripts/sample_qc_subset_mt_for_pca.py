@@ -163,16 +163,13 @@ def _make_provided_pop_ht(
     ht = ht.annotate(
         project=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), 'gnomad')
-        .default('tob-wgs'),
-        # .default(input_metadata_ht[ht.s].project),
+        .default(input_metadata_ht[ht.s].project),
         continental_pop=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), hgdp_ht[ht.s].population_inference.pop)
-        .default(''),
-        # .default(input_metadata_ht[ht.s].continental_pop),
+        .default(input_metadata_ht[ht.s].continental_pop),
         subpop=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), hgdp_ht[ht.s].labeled_subpop)
-        .default(''),
-        # .default(input_metadata_ht[ht.s].subpop),
+        .default(input_metadata_ht[ht.s].subpop),
     )
     return ht.checkpoint(out_provided_pop_ht_path, overwrite=overwrite)
 
