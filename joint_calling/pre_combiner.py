@@ -380,7 +380,7 @@ def _add_haplotype_caller_job(
     b: hb.Batch,
     sample_name: str,
     project_name: str,
-    cram: hb.ResourceGroup,
+    cram: str,
     interval: hb.ResourceFile,
     reference: hb.ResourceGroup,
     interval_idx: Optional[int] = None,
@@ -420,7 +420,7 @@ def _add_haplotype_caller_job(
     gatk --java-options "-Xms{java_mem}g -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=10" \\
       HaplotypeCaller \\
       -R {reference.base} \\
-      -I {cram['cram']} \\
+      -I {cram} \\
       -L {interval} \\
       -O {j.output_gvcf['g.vcf.gz']} \\
       -G AS_StandardAnnotation \\
