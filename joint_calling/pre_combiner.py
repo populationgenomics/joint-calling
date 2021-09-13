@@ -302,12 +302,7 @@ def _make_produce_gvcf_jobs(
                 b,
                 sample_name=sample_name,
                 project_name=project_name,
-                cram=b.read_input_group(
-                    **{
-                        'cram': cram_path,
-                        'crai': cram_path + '.crai',
-                    }
-                ),
+                cram=cram_path,
                 interval=intervals_j.intervals[f'interval_{idx}'],
                 reference=reference,
                 interval_idx=idx,
