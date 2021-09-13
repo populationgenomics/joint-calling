@@ -80,23 +80,24 @@ def add_pre_combiner_jobs(
 
         proj_bucket = get_project_bucket(proj)
 
-        output_cram = join(proj_bucket, 'cram', f'{s_id}.cram')
-        if not utils.can_reuse(output_cram, overwrite):
+        output_cram_fpath = join(proj_bucket, 'cram', f'{s_id}.cram')
+        output_crai_fpath = join(proj_bucket, 'cram', f'{s_id}.cram.crai')
+        if not utils.can_reuse(output_cram_fpath, overwrite):
             alignment_input = sm_utils.AlignmentInput(
                 bam_or_cram_path=input_cram,
                 index_path=input_crai,
             )
             cram_j = _make_realign_jobs(
                 b=b,
-                output_path=output_cram,
+                output_path=output_cram_fpath,
                 sample_name=s_id,
                 project_name=proj,
                 alignment_input=alignment_input,
             )
         else:
             cram_j = None
-        samples_df.loc[s_id, ['cram']] = output_cram
-        samples_df.loc[s_id, ['crai']] = output_cram + '.crai'
+        samples_df.loc[s_id, ['cram']] = output_cram_fpath
+        samples_df.loc[s_id, ['crai']] = output_crai_fpath
 
         output_gvcf_path = join(proj_bucket, 'gvcf', f'{s_id}.g.vcf.gz')
         if not utils.can_reuse(output_gvcf_path, overwrite):
@@ -113,7 +114,8 @@ def add_pre_combiner_jobs(
                 sample_name=s_id,
                 project_name=proj,
                 external_id=external_id,
-                cram_path=output_cram,
+                cram_fpath=output_cram_fpath,
+                crai_fpath=output_crai_fpath,
                 intervals_j=hc_intervals_j,
                 tmp_bucket=join(pre_combiner_bucket, 'tmp'),
                 overwrite=overwrite,
@@ -265,7 +267,8 @@ def _make_produce_gvcf_jobs(
     sample_name: str,
     project_name: str,
     external_id: str,
-    cram_path: str,
+    cram_fpath: str,
+    crai_fpath: str,
     intervals_j: Job,
     tmp_bucket: str,
     overwrite: bool,
@@ -302,7 +305,8 @@ def _make_produce_gvcf_jobs(
                 b,
                 sample_name=sample_name,
                 project_name=project_name,
-                cram_fpath=cram_path,
+                cram_fpath=cram_fpath,
+                crai_fpath=crai_fpath,
                 interval=intervals_j.intervals[f'interval_{idx}'],
                 reference=reference,
                 interval_idx=idx,
@@ -381,6 +385,7 @@ def _add_haplotype_caller_job(
     sample_name: str,
     project_name: str,
     cram_fpath: str,
+    crai_fpath: str,
     interval: hb.ResourceFile,
     reference: hb.ResourceGroup,
     interval_idx: Optional[int] = None,
@@ -423,6 +428,7 @@ def _add_haplotype_caller_job(
       HaplotypeCaller \\
       -R {reference.base} \\
       -I {cram_fpath} \\
+      --read-index {crai_fpath} \\
       -L {interval} \\
       -O {j.output_gvcf['g.vcf.gz']} \\
       -G AS_StandardAnnotation \\

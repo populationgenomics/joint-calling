@@ -203,8 +203,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     b = hb.Batch(
         f'Joint calling: {analysis_project}'
         f', version: {output_version}'
-        f', projects: {output_projects}'
-        + (f', limit input projects to {output_projects}' if output_projects else '')
+        f', projects: {", ".join(input_projects)}'
+        + (
+            f', limit output projects to {", ".join(output_projects)}'
+            if output_projects
+            else ''
+        )
         + f', namespace: {output_namespace}',
         backend=backend,
     )
