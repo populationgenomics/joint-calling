@@ -402,14 +402,12 @@ def _add_sample_qc_jobs(
     else:
         filter_cutoffs_param = ''
 
-    input_metadata_ht_path = join(sample_qc_bucket, 'input_metadata.ht')
     hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filtered_samples.ht')
     sex_ht_path = join(sample_qc_bucket, 'sex.ht')
     hail_sample_qc_ht_path = join(sample_qc_bucket, 'hail_sample_qc.ht')
     custom_qc_ht_path = join(sample_qc_bucket, 'custom_qc.ht')
     if not can_reuse(
         [
-            input_metadata_ht_path,
             hard_filtered_samples_ht_path,
             sex_ht_path,
             hail_sample_qc_ht_path,
@@ -423,7 +421,6 @@ def _add_sample_qc_jobs(
             f'--mt {mt_path} '
             f'--meta-csv {samples_csv_path} '
             f'{filter_cutoffs_param} '
-            f'--out-input-metadata-ht {input_metadata_ht_path} '
             f'--out-hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
             f'--out-sex-ht {sex_ht_path} '
             f'--out-hail-sample-qc-ht {hail_sample_qc_ht_path} '
@@ -458,7 +455,7 @@ def _add_sample_qc_jobs(
             f'{utils.SCRIPTS_DIR}/sample_qc_subset_mt_for_pca.py '
             + (f'--overwrite ' if overwrite else '')
             + f'--mt {mt_path} '
-            f'--input-metadata-ht {input_metadata_ht_path} '
+            f'--meta-csv {samples_csv_path} '
             + (
                 f'--pre-computed-hgdp-union-mt {pre_computed_hgdp_unuon_mt_path} '
                 if pre_computed_hgdp_unuon_mt_path
@@ -588,7 +585,7 @@ def _add_sample_qc_jobs(
         metadata_qc_job = dataproc.hail_dataproc_job(
             b,
             f'{utils.SCRIPTS_DIR}/sample_qc_write_metadata.py '
-            f'--input-metadata-ht {input_metadata_ht_path} '
+            f'--meta-csv {samples_csv_path} '
             f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
             f'--sex-ht {sex_ht_path} '
             f'--custom-qc-ht {custom_qc_ht_path} '

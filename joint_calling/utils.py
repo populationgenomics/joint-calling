@@ -7,9 +7,10 @@ import logging
 import sys
 import time
 import hashlib
-from os.path import isdir, isfile, exists, join
+from os.path import isdir, isfile, exists, join, basename
 from typing import Any, Callable, Dict, Optional, Union, Iterable
 import yaml
+import pandas as pd
 import hail as hl
 import click
 from google.cloud import storage
@@ -368,3 +369,23 @@ def get_filter_cutoffs(
             filter_cutoffs_d = yaml.safe_load(f)
 
     return filter_cutoffs_d
+
+
+def parse_input_metadata(
+    meta_csv_path: str,
+    local_tmp_dir: str,
+    out_ht_path: Optional[str] = None,
+) -> hl.Table:
+    """
+    Parse KCCG metadata (population and picard metrics)
+    """
+    local_csv_path = join(local_tmp_dir, basename(meta_csv_path))
+    subprocess.run(
+        f'gsutil cp {meta_csv_path} {local_csv_path}', check=False, shell=True
+    )
+
+    df = pd.read_table(local_csv_path)
+    ht = hl.Table.from_pandas(df).key_by('s')
+    if out_ht_path:
+        ht = ht.checkpoint(out_ht_path, overwrite=True)
+    return ht

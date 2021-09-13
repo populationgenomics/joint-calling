@@ -39,10 +39,10 @@ logger.setLevel(logging.INFO)
     help='path to the Matrix Table',
 )
 @click.option(
-    '--input-metadata-ht',
-    'input_metadata_ht_path',
+    '--meta-csv',
+    'meta_csv_path',
     required=True,
-    callback=utils.get_validation_callback(ext='ht', must_exist=True),
+    help='path to a CSV with QC and population metadata for the samples',
 )
 @click.option(
     '--pre-computed-hgdp-union-mt',
@@ -97,7 +97,7 @@ logger.setLevel(logging.INFO)
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_path: str,
-    input_metadata_ht_path: str,
+    meta_csv_path: str,
     pre_computed_hgdp_unuon_mt_path: Optional[str],
     out_hgdp_union_mt_path: str,
     out_provided_pop_ht_path: str,
@@ -107,9 +107,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     is_test: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
 ):
-    utils.init_hail(__file__)
+    local_tmp_dir = utils.init_hail(__file__)
 
-    input_metadata_ht = hl.read_table(input_metadata_ht_path)
+    input_metadata_ht = utils.parse_input_metadata(meta_csv_path, local_tmp_dir)
 
     if pop and pop in utils.GNOMAD_HGDP_FOR_PCA:
         if is_test:
