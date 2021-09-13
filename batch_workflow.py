@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 import traceback
 from os.path import join, dirname, abspath, basename
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Collection
 import logging
 import click
 import pandas as pd
@@ -99,6 +99,13 @@ logger.setLevel(logging.INFO)
     'that generates it.',
 )
 @click.option(
+    '--skip-sample',
+    '-S',
+    'skip_samples',
+    multiple=True,
+    help='Don\'t process specified samples. Can be set multiple times.',
+)
+@click.option(
     '--scatter-count',
     'scatter_count',
     type=int,
@@ -106,9 +113,24 @@ logger.setLevel(logging.INFO)
     help='Number of secondary workers for Dataproc clusters, as well as the'
     'number of shards to parition data for the AS-VQSR analysis',
 )
+@click.option(
+    '--num-ancestry-pcs',
+    'num_ancestry_pcs',
+    type=int,
+    default=20,
+)
+@click.option(
+    '--pca-pop',
+    'pca_pop',
+    help='if specified, a separate PCA will be produced with samples trained only'
+    'on this population',
+)
+@click.option(
+    '--pre-computed-hgdp-union-mt',
+    'pre_computed_hgdp_unuon_mt_path',
+    help='Useful for tests to save time on subsetting the large gnomAD matrix table',
+)
 @click.option('--dry-run', 'dry_run', is_flag=True)
-@click.option('--run-vqsr/--skip-vqsr', 'run_vqsr', is_flag=True, default=True)
-@click.option('--run-rf/--skip-rf', 'run_rf', is_flag=True, default=False)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -121,27 +143,49 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
     overwrite: bool,
+    skip_samples: Collection[str],
     scatter_count: int,
+    pca_pop: Optional[str],
+    num_ancestry_pcs: int,
+    pre_computed_hgdp_unuon_mt_path: str,
     dry_run: bool,
-    run_vqsr: bool,
-    run_rf: bool,
-):
-    """
-    Drive a Hail Batch workflow that creates and submits jobs. A job usually runs
-    either a Hail Query script from the scripts folder in this repo using a Dataproc
-    cluster; or a GATK command using the GATK or Gnarly image.
-    """
-    logger.info(f'Enable random forest: {run_rf}')
-    logger.info(f'Enable VQSR: {run_vqsr}')
-
-    billing_project = os.getenv('HAIL_BILLING_PROJECT') or analysis_project
-
+):  # pylint: disable=missing-function-docstring
+    # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
         tmp_bucket_suffix = 'test-tmp'
     else:
         tmp_bucket_suffix = 'main-tmp'
 
-    work_bucket = f'gs://cpg-{analysis_project}-{tmp_bucket_suffix}/joint-calling/{output_version}'
+    if output_namespace in ['test', 'main']:
+        output_suffix = output_namespace
+        output_analysis_suffix = f'{output_namespace}-analysis'
+        web_bucket_suffix = f'{output_namespace}-web'
+    else:
+        output_suffix = 'test-tmp'
+        output_analysis_suffix = 'test-tmp/analysis'
+        web_bucket_suffix = 'test-tmp/web'
+
+    ptrn = f'gs://cpg-{analysis_project}-{{suffix}}/joint-calling/{output_version}'
+    work_bucket = ptrn.format(suffix=tmp_bucket_suffix)
+    out_analysis_bucket = ptrn.format(suffix=output_analysis_suffix)
+    web_bucket = ptrn.format(suffix=web_bucket_suffix)
+
+    combiner_bucket = f'{work_bucket}/combiner'
+    sample_qc_bucket = f'{work_bucket}/sample_qc'
+
+    mt_output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}/mt'
+    raw_combined_mt_path = f'{combiner_bucket}/{output_version}-raw.mt'
+    filtered_combined_mt_path = f'{mt_output_bucket}/{output_version}.mt'
+    filtered_combined_nonref_mt_path = f'{mt_output_bucket}/{output_version}-nonref.mt'
+    _create_mt_readme(
+        raw_combined_mt_path,
+        filtered_combined_mt_path,
+        filtered_combined_nonref_mt_path,
+        mt_output_bucket,
+    )
+
+    # Initialize Hail Batch
+    billing_project = os.getenv('HAIL_BILLING_PROJECT') or analysis_project
     hail_bucket = os.environ.get('HAIL_BUCKET')
     if not hail_bucket or keep_scratch or reuse_scratch_run_id:
         # Scratch files are large, so we want to use the temporary bucket for them
@@ -162,50 +206,21 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         + f', namespace: {output_namespace}',
         backend=backend,
     )
+
+    # Scripts path to pass to dataproc when submitting scripts
     scripts_dir = abspath(join(dirname(__file__), 'scripts'))
-
-    if output_namespace in ['test', 'main']:
-        output_suffix = output_namespace
-        output_metadata_suffix = f'{output_namespace}-metadata'
-        web_bucket_suffix = f'{output_namespace}-web'
-    else:
-        output_suffix = 'test-tmp'
-        output_metadata_suffix = 'test-tmp'
-        web_bucket_suffix = 'test-tmp'
-
-    output_metadata_bucket = f'gs://cpg-{analysis_project}-{output_metadata_suffix}/joint-calling/{output_version}'
-    web_bucket = f'gs://cpg-{analysis_project}-{web_bucket_suffix}/joint-calling/{output_version}'
-    mt_output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}/mt'
-    combiner_bucket = f'{work_bucket}/combiner'
-    sample_qc_bucket = f'{work_bucket}/sample_qc'
-
-    raw_combined_mt_path = f'{combiner_bucket}/{output_version}-raw.mt'
-    filtered_combined_mt_path = f'{mt_output_bucket}/{output_version}.mt'
-    filtered_combined_nonref_mt_path = f'{mt_output_bucket}/{output_version}-nonref.mt'
-
-    local_tmp_dir = tempfile.mkdtemp()
-    readme_local_fpath = join(local_tmp_dir, 'README.txt')
-    readme_gcs_fpath = join(mt_output_bucket, 'README.txt')
-    with open(readme_local_fpath, 'w') as f:
-        f.write(f'Unfiltered:\n{raw_combined_mt_path}')
-        f.write(
-            f'AS-VQSR soft-filtered\n(use `mt.filter_rows(hl.is_missing(mt.filters)` to hard-filter):\n {basename(filtered_combined_mt_path)}'
-        )
-        f.write(
-            f'AS-VQSR soft-filtered, without reference blocks:\n{basename(filtered_combined_nonref_mt_path)}'
-        )
-    subprocess.run(['gsutil', 'cp', readme_local_fpath, readme_gcs_fpath], check=False)
 
     filter_cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
 
     samples_df, samples_csv_path, pre_combiner_jobs = _add_pre_combiner_jobs(
         b=b,
-        work_bucket=join(work_bucket, 'pre-combine'),
+        work_bucket=join(work_bucket, 'pre_combine'),
         output_bucket=combiner_bucket,
         overwrite=overwrite,
         input_projects=input_projects,
         analysis_project=analysis_project,
         is_test=output_namespace in ['test', 'tmp'],
+        skip_samples=skip_samples,
     )
 
     if use_gnarly_genotyper:
@@ -243,78 +258,60 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         else:
             combiner_job = b.new_job('Combine GVCFs [reuse]')
 
-    (sample_qc_job, hard_filter_ht_path, meta_ht_path,) = _add_sample_qc_jobs(
+    sample_qc_job, hard_filter_ht_path, meta_ht_path = _add_sample_qc_jobs(
         b=b,
         mt_path=raw_combined_mt_path,
         samples_csv_path=samples_csv_path,
-        work_bucket=sample_qc_bucket,
-        output_metadata_bucket=output_metadata_bucket,
+        sample_qc_bucket=sample_qc_bucket,
+        out_analysis_bucket=out_analysis_bucket,
+        out_web_bucket=web_bucket,
         filter_cutoffs_path=filter_cutoffs_path,
         scripts_dir=scripts_dir,
         overwrite=overwrite,
         scatter_count=scatter_count,
-        depends_on=[combiner_job],
+        combiner_job=combiner_job,
         billing_project=billing_project,
         sample_count=len(samples_df),
-        age_csv_path=f'gs://cpg-{analysis_project}-main-metadata/age.csv',
+        age_csv_path=f'gs://cpg-{analysis_project}-main-analysis/metadata/age.csv',
+        num_ancestry_pcs=num_ancestry_pcs,
+        pca_pop=pca_pop,
+        is_test=output_namespace in ['test', 'tmp'],
+        pre_computed_hgdp_unuon_mt_path=pre_computed_hgdp_unuon_mt_path,
     )
 
-    info_ht_path = join(work_bucket, 'info.ht')
-    info_split_ht_path = join(work_bucket, 'info-split.ht')
-    if any(not can_reuse(fp, overwrite) for fp in [info_ht_path, info_split_ht_path]):
-        dataproc.hail_dataproc_job(
+    var_qc_job, vqsr_final_filter_ht = add_variant_qc_jobs(
+        b=b,
+        work_bucket=join(work_bucket, 'variant_qc'),
+        web_bucket=join(web_bucket, 'variant_qc'),
+        raw_combined_mt_path=raw_combined_mt_path,
+        hard_filter_ht_path=hard_filter_ht_path,
+        meta_ht_path=meta_ht_path,
+        samples_df=samples_df,
+        scripts_dir=scripts_dir,
+        ped_file=ped_file,
+        overwrite=overwrite,
+        vqsr_params_d=filter_cutoffs_d['vqsr'],
+        scatter_count=scatter_count,
+        depends_on=[sample_qc_job],
+    )
+
+    if not can_reuse(filtered_combined_mt_path, overwrite):
+        var_qc_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/generate_info_ht.py --overwrite '
+            f'{scripts_dir}/make_finalised_mt.py --overwrite '
             f'--mt {raw_combined_mt_path} '
-            f'--out-info-ht {info_ht_path} '
-            f'--out-split-info-ht {info_split_ht_path}',
+            f'--final-filter-ht {vqsr_final_filter_ht} '
+            f'--out-mt {filtered_combined_mt_path} '
+            f'--out-nonref-mt {filtered_combined_nonref_mt_path} '
+            f'--meta-ht {meta_ht_path} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            # Adding more workers as this is a much longer step
             num_secondary_workers=scatter_count,
-            depends_on=[combiner_job],
-            job_name='Generate info',
+            depends_on=[var_qc_job, combiner_job],
+            job_name='Making final MT',
         )
     else:
-        b.new_job('Generate info [reuse]')
-
-    if run_rf or run_vqsr:
-        var_qc_job, vqsr_final_filter_ht = add_variant_qc_jobs(
-            b=b,
-            work_bucket=join(work_bucket, 'variant_qc'),
-            web_bucket=join(web_bucket, 'variant_qc'),
-            raw_combined_mt_path=raw_combined_mt_path,
-            info_split_ht_path=info_split_ht_path,
-            hard_filter_ht_path=hard_filter_ht_path,
-            meta_ht_path=meta_ht_path,
-            samples_df=samples_df,
-            sample_qc_job=sample_qc_job,
-            scripts_dir=scripts_dir,
-            ped_file=ped_file,
-            overwrite=overwrite,
-            run_rf=run_rf,
-            vqsr_params_d=filter_cutoffs_d['vqsr'],
-            scatter_count=scatter_count,
-        )
-        if not can_reuse(filtered_combined_mt_path, overwrite):
-            var_qc_job = dataproc.hail_dataproc_job(
-                b,
-                f'{scripts_dir}/make_finalised_mt.py --overwrite '
-                f'--mt {raw_combined_mt_path} '
-                f'--final-filter-ht {vqsr_final_filter_ht} '
-                f'--out-mt {filtered_combined_mt_path} '
-                f'--out-nonref-mt {filtered_combined_nonref_mt_path} '
-                f'--meta-ht {meta_ht_path} ',
-                max_age='8h',
-                packages=utils.DATAPROC_PACKAGES,
-                num_secondary_workers=scatter_count,
-                depends_on=[var_qc_job, combiner_job],
-                job_name='Making final MT',
-            )
-        else:
-            var_qc_job = b.new_job('Making final MT [reuse]')
-    else:
-        var_qc_job = b.new_job('Var QC [skip]')
+        var_qc_job = b.new_job('Making final MT [reuse]')
 
     # Interacting with the sample metadata server.
     aapi = AnalysisApi()
@@ -347,40 +344,141 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch, wait=False)
 
 
+def _create_mt_readme(
+    raw_combined_mt_path: str,
+    filtered_combined_mt_path: str,
+    filtered_combined_nonref_mt_path: str,
+    mt_output_bucket: str,
+):
+    local_tmp_dir = tempfile.mkdtemp()
+    readme_local_fpath = join(local_tmp_dir, 'README.txt')
+    readme_gcs_fpath = join(mt_output_bucket, 'README.txt')
+    with open(readme_local_fpath, 'w') as f:
+        f.write(f'Unfiltered:\n{raw_combined_mt_path}')
+        f.write(
+            f'AS-VQSR soft-filtered\n(use `mt.filter_rows(hl.is_missing(mt.filters)` '
+            f'to hard-filter):\n {basename(filtered_combined_mt_path)}'
+        )
+        f.write(
+            f'AS-VQSR soft-filtered, without reference blocks:\n'
+            f'{basename(filtered_combined_nonref_mt_path)}'
+        )
+    subprocess.run(['gsutil', 'cp', readme_local_fpath, readme_gcs_fpath], check=False)
+
+
 def _add_sample_qc_jobs(
     b: hb.Batch,
     mt_path: str,
     samples_csv_path: str,
-    work_bucket: str,
-    output_metadata_bucket: str,
+    sample_qc_bucket: str,
+    out_analysis_bucket: str,
+    out_web_bucket: str,
     age_csv_path: str,
     filter_cutoffs_path: Optional[str],
     scripts_dir: str,
     overwrite: bool,
     scatter_count: int,
-    sample_count: int,
-    depends_on: Optional[List[Job]] = None,
+    sample_count: int,  # pylint: disable=unused-argument
+    combiner_job: Job,
+    num_ancestry_pcs: int,
+    pca_pop: Optional[str] = None,
     billing_project: Optional[str] = None,
-    label='Sample QC',
+    is_test: bool = False,
+    pre_computed_hgdp_unuon_mt_path: Optional[str] = None,
 ) -> Tuple[Job, str, str]:
 
-    sample_qc_bucket = work_bucket
-    relatedness_ht_path = join(output_metadata_bucket, 'relatedness.ht')
+    if filter_cutoffs_path:
+        gcs_path = join(sample_qc_bucket, 'filter-cutoffs.yaml')
+        subprocess.run(['gsutil', 'cp', filter_cutoffs_path, gcs_path], check=False)
+        filter_cutoffs_param = f'--filter-cutoffs-file {gcs_path}'
+    else:
+        filter_cutoffs_param = ''
+
+    input_metadata_ht_path = join(sample_qc_bucket, 'input_metadata.ht')
+    hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filtered_samples.ht')
+    sex_ht_path = join(sample_qc_bucket, 'sex.ht')
+    hail_sample_qc_ht_path = join(sample_qc_bucket, 'hail_sample_qc.ht')
+    custom_qc_ht_path = join(sample_qc_bucket, 'custom_qc.ht')
+    if not can_reuse(
+        [
+            input_metadata_ht_path,
+            hard_filtered_samples_ht_path,
+            sex_ht_path,
+            hail_sample_qc_ht_path,
+            custom_qc_ht_path,
+        ],
+        overwrite,
+    ):
+        sample_qc_hardfilter_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/sample_qc_hard_filters.py '
+            f'--mt {mt_path} '
+            f'--meta-csv {samples_csv_path} '
+            f'{filter_cutoffs_param} '
+            f'--out-input-metadata-ht {input_metadata_ht_path} '
+            f'--out-hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
+            f'--out-sex-ht {sex_ht_path} '
+            f'--out-hail-sample-qc-ht {hail_sample_qc_ht_path} '
+            f'--out-custom-qc-ht {custom_qc_ht_path} '
+            f'--tmp-bucket {sample_qc_bucket}/tmp '
+            + (f'--overwrite ' if overwrite else '')
+            + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=scatter_count,
+            depends_on=[combiner_job],
+            job_name='Sample QC hard filters',
+        )
+    else:
+        sample_qc_hardfilter_job = b.new_job(f'Sample QC hard filters [reuse]')
+
+    mt_union_hgdp_for_pca_path = join(
+        sample_qc_bucket, 'ancestry', 'mt_union_hgdp_for_pca_path.mt'
+    )
+    mt_for_pca_path = join(sample_qc_bucket, 'ancestry', 'mt_for_pca.mt')
+    provided_pop_ht_path = join(sample_qc_bucket, 'ancestry', 'provided_pop.ht')
+    if not can_reuse(
+        [
+            mt_for_pca_path,
+            mt_union_hgdp_for_pca_path,
+            provided_pop_ht_path,
+        ],
+        overwrite,
+    ):
+        subset_for_pca_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/sample_qc_subset_mt_for_pca.py '
+            + (f'--overwrite ' if overwrite else '')
+            + f'--mt {mt_path} '
+            f'--input-metadata-ht {input_metadata_ht_path} '
+            + (
+                f'--pre-computed-hgdp-union-mt {pre_computed_hgdp_unuon_mt_path} '
+                if pre_computed_hgdp_unuon_mt_path
+                else ''
+            )
+            + f'--out-hgdp-union-mt {mt_union_hgdp_for_pca_path} '
+            f'--out-provided-pop-ht {provided_pop_ht_path} '
+            f'--out-mt {mt_for_pca_path} '
+            + ('--is-test ' if is_test else '')
+            + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=scatter_count,
+            depends_on=[combiner_job],
+            job_name='Subset MT for PCA',
+        )
+    else:
+        subset_for_pca_job = b.new_job(f'Subset MT for PCA [reuse]')
+
+    relatedness_ht_path = join(out_analysis_bucket, 'relatedness.ht')
     if not can_reuse(relatedness_ht_path, overwrite):
-        disk = 40
-        if sample_count > 300:
-            disk = 100
-        if sample_count > 2000:
-            disk = 500
-        if sample_count > 10000:
-            disk = 1000
         pcrelate_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/sample_qc_pcrelate.py '
             + (f'--overwrite ' if overwrite else '')
-            + f'--mt {mt_path} '
+            + f'--pca-mt {mt_for_pca_path} '
             f'--out-relatedness-ht {relatedness_ht_path} '
-            f'--tmp-bucket {work_bucket}/tmp '
+            f'--tmp-bucket {sample_qc_bucket}/tmp '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
@@ -388,68 +486,92 @@ def _add_sample_qc_jobs(
             # (throw SparkException: Job aborted due to stage failure: ShuffleMapStage)
             # so we use num_workers instead of num_secondary_workers here
             num_workers=scatter_count,
-            worker_boot_disk_size=disk,
-            depends_on=(depends_on or []),
-            job_name=label,
+            depends_on=[subset_for_pca_job],
+            job_name='Run pcrelate',
         )
     else:
-        pcrelate_job = b.new_job(f'{label} pcrelate [reuse]')
+        pcrelate_job = b.new_job(f'Run pcrelate [reuse]')
 
-    if filter_cutoffs_path:
-        gcs_path = join(work_bucket, 'filter-cutoffs.yaml')
-        subprocess.run(['gsutil', 'cp', filter_cutoffs_path, gcs_path], check=False)
-        filter_cutoffs_param = f'--filter-cutoffs-file {gcs_path}'
-    else:
-        filter_cutoffs_param = ''
-
-    hard_filter_ht_path = join(sample_qc_bucket, 'hard_filters.ht')
-    pop_ht_path = join(sample_qc_bucket, 'pop.ht')
-    regressed_metrics_ht_path = join(sample_qc_bucket, 'regress_metrics.ht')
-    if any(
-        not can_reuse(fp, overwrite)
-        for fp in [
-            hard_filter_ht_path,
-            pop_ht_path,
-            regressed_metrics_ht_path,
-        ]
-    ):
-        disk = 40
-        if sample_count > 300:
-            disk = 100
-        if sample_count > 2000:
-            disk = 500
-        if sample_count > 10000:
-            disk = 1000
-        sample_qc_job = dataproc.hail_dataproc_job(
+    intermediate_related_samples_to_drop_ht_path = join(
+        sample_qc_bucket, 'tmp', 'intermediate_related_samples_to_drop.ht'
+    )
+    if not can_reuse(intermediate_related_samples_to_drop_ht_path, overwrite):
+        cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
+        flag_related_job = dataproc.hail_dataproc_job(
             b,
-            f'{scripts_dir}/sample_qc_calculate.py '
-            + (f'--overwrite ' if overwrite else '')
-            + f'{filter_cutoffs_param} '
-            + f'--mt {mt_path} '
-            f'--meta-csv {samples_csv_path} '
+            f'{scripts_dir}/sample_qc_flag_related.py '
+            f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
+            f'--sex-ht {sex_ht_path} '
             f'--relatedness-ht {relatedness_ht_path} '
-            f'--out-hard-filtered-samples-ht {hard_filter_ht_path} '
-            f'--out-bucket {work_bucket} '
-            f'--tmp-bucket {work_bucket}/tmp '
+            f'--out-ht {intermediate_related_samples_to_drop_ht_path} '
+            f'--tmp-bucket {sample_qc_bucket}/tmp '
+            f'--max-kin {cutoffs_d["pca"]["max_kin"]} '
+            + (f'--overwrite ' if overwrite else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            max_age='12h',
+            max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            worker_boot_disk_size=disk,
-            depends_on=(depends_on or []) + [pcrelate_job],
-            job_name=label,
+            depends_on=[sample_qc_hardfilter_job, pcrelate_job],
+            job_name='Sample QC flag related',
         )
     else:
-        sample_qc_job = b.new_job(f'{label} [reuse]')
+        flag_related_job = b.new_job(f'Sample QC flag related [reuse]')
 
-    meta_ht_path = join(output_metadata_bucket, 'meta.ht')
-    meta_tsv_path = join(output_metadata_bucket, 'meta.tsv')
-    if any(
-        not can_reuse(fp, overwrite)
-        for fp in [
+    pca_job, pca_scores_ht_path = _add_ancestry_jobs(
+        b=b,
+        mt_union_hgdp_path=mt_union_hgdp_for_pca_path,
+        provided_pop_ht_path=provided_pop_ht_path,
+        num_ancestry_pcs=num_ancestry_pcs,
+        tmp_bucket=join(sample_qc_bucket, 'tmp'),
+        out_analysis_bucket=out_analysis_bucket,
+        out_web_bucket=out_web_bucket,
+        scripts_dir=scripts_dir,
+        overwrite=overwrite,
+        scatter_count=scatter_count,
+        depends_on=[flag_related_job],
+        related_samples_to_drop_ht_path=intermediate_related_samples_to_drop_ht_path,
+        billing_project=billing_project,
+    )
+
+    inferred_pop_ht_path = join(sample_qc_bucket, 'ancestry', 'inferred_pop.ht')
+    regressed_metrics_ht_path = join(sample_qc_bucket, 'regressed_metrics.ht')
+    if not can_reuse(
+        [
+            inferred_pop_ht_path,
+            regressed_metrics_ht_path,
+        ],
+        overwrite,
+    ):
+        regressed_filters_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/sample_qc_regressed_filters.py '
+            f'--pca-scores-ht {pca_scores_ht_path} '
+            f'--provided-pop-ht {provided_pop_ht_path} '
+            f'--hail-sample-qc-ht {hail_sample_qc_ht_path} '
+            f'{filter_cutoffs_param} '
+            f'--n-pcs {num_ancestry_pcs} '
+            f'--out-regressed-metrics-ht {regressed_metrics_ht_path} '
+            f'--out-inferred-pop-ht {inferred_pop_ht_path} '
+            f'--tmp-bucket {sample_qc_bucket}/tmp '
+            + (f'--overwrite ' if overwrite else '')
+            + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=scatter_count,
+            depends_on=[flag_related_job, pca_job, sample_qc_hardfilter_job],
+            job_name='Sample QC regressed filters',
+        )
+    else:
+        regressed_filters_job = b.new_job(f'Sample QC regressed filters [reuse]')
+
+    meta_ht_path = join(out_analysis_bucket, 'meta.ht')
+    meta_tsv_path = join(out_analysis_bucket, 'meta.tsv')
+    if not can_reuse(
+        [
             meta_ht_path,
             meta_tsv_path,
-        ]
+        ],
+        overwrite,
     ):
         if utils.file_exists(age_csv_path):
             age_csv_param = f'--age-csv {age_csv_path} '
@@ -458,25 +580,136 @@ def _add_sample_qc_jobs(
         metadata_qc_job = dataproc.hail_dataproc_job(
             b,
             f'{scripts_dir}/sample_qc_write_metadata.py '
-            + (f'--overwrite ' if overwrite else '')
-            + f'{filter_cutoffs_param} '
-            + f'--qc-bucket {work_bucket} '
-            f'--tmp-bucket {work_bucket}/tmp '
-            f'{age_csv_param}'
-            f'--hard-filtered-samples-ht {hard_filter_ht_path} '
+            f'--input-metadata-ht {input_metadata_ht_path} '
+            f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
+            f'--sex-ht {sex_ht_path} '
+            f'--custom-qc-ht {custom_qc_ht_path} '
+            f'--hail-sample-qc-ht {hail_sample_qc_ht_path} '
+            f'--regressed-filtes-ht {regressed_metrics_ht_path} '
             f'--relatedness-ht {relatedness_ht_path} '
+            f'--pop-ht {inferred_pop_ht_path} '
+            f'{age_csv_param}'
+            f'--tmp-bucket {sample_qc_bucket}/tmp '
             f'--out-meta-ht {meta_ht_path} '
             f'--out-meta-tsv {meta_tsv_path} '
+            + (f'--overwrite ' if overwrite else '')
+            + f'{filter_cutoffs_param} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            depends_on=[sample_qc_job],
-            job_name=f'{label}: write metadata',
+            depends_on=[regressed_filters_job],
+            job_name=f'Write sample QC metadata',
         )
     else:
-        metadata_qc_job = b.new_job(f'{label}: write metadata [reuse]')
+        metadata_qc_job = b.new_job(f'Write sample QC metadata [reuse]')
 
-    return metadata_qc_job, hard_filter_ht_path, meta_ht_path
+    if pca_pop:
+        _add_ancestry_jobs(
+            b=b,
+            pop=pca_pop,
+            mt_union_hgdp_path=mt_union_hgdp_for_pca_path,
+            provided_pop_ht_path=provided_pop_ht_path,
+            num_ancestry_pcs=num_ancestry_pcs,
+            tmp_bucket=join(sample_qc_bucket, 'tmp'),
+            out_analysis_bucket=out_analysis_bucket,
+            out_web_bucket=out_web_bucket,
+            scripts_dir=scripts_dir,
+            overwrite=overwrite,
+            scatter_count=scatter_count,
+            depends_on=[flag_related_job],
+            related_samples_to_drop_ht_path=intermediate_related_samples_to_drop_ht_path,
+            billing_project=billing_project,
+        )
+
+    return metadata_qc_job, hard_filtered_samples_ht_path, meta_ht_path
+
+
+def _add_ancestry_jobs(
+    b: hb.Batch,
+    mt_union_hgdp_path: str,
+    provided_pop_ht_path: str,
+    num_ancestry_pcs: int,
+    tmp_bucket: str,
+    out_analysis_bucket: str,
+    out_web_bucket: str,
+    scripts_dir: str,
+    overwrite: bool,
+    scatter_count: int,
+    pop: Optional[str] = None,
+    depends_on: Optional[List[Job]] = None,
+    related_samples_to_drop_ht_path: Optional[str] = None,
+    billing_project: Optional[str] = None,
+) -> Tuple[Job, str]:
+    """
+    Run PCA and make PCA and loadings plots.
+
+    Returns the PCA job, and the path to PCA scores Table
+    """
+    pop_tag = pop or 'all'
+
+    ancestry_analysis_bucket = join(out_analysis_bucket, 'ancestry', pop_tag)
+    ancestry_web_bucket = join(out_web_bucket, 'ancestry', pop_tag)
+
+    eigenvalues_path = join(ancestry_analysis_bucket, f'eigenvalues_{pop_tag}.txt')
+    scores_ht_path = join(ancestry_analysis_bucket, f'scores_{pop_tag}.ht')
+    loadings_ht_path = join(ancestry_analysis_bucket, f'loadings_{pop_tag}.ht')
+    job_name = f'PCA ({pop or "all"})'
+    if not can_reuse([eigenvalues_path, scores_ht_path, loadings_ht_path], overwrite):
+        pca_job = dataproc.hail_dataproc_job(
+            b,
+            f'{scripts_dir}/ancestry_pca.py '
+            + f'--hgdp-union-mt {mt_union_hgdp_path} '
+            + (f'--pop {pop} ' if pop else '')
+            + f'--n-pcs {num_ancestry_pcs} '
+            f'--out-eigenvalues {eigenvalues_path} '
+            f'--out-scores-ht {scores_ht_path} '
+            f'--out-loadings-ht {loadings_ht_path} '
+            + (
+                f'--related-samples-to-drop-ht {related_samples_to_drop_ht_path} '
+                if related_samples_to_drop_ht_path
+                else ''
+            )
+            + f'--tmp-bucket {tmp_bucket} '
+            + (f'--overwrite ' if overwrite else '')
+            + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=scatter_count,
+            depends_on=depends_on or [],
+            job_name=job_name,
+        )
+    else:
+        pca_job = b.new_job(f'{job_name} [reuse]')
+
+    out_path_ptn = join(ancestry_web_bucket, '{scope}_pc{pci}.{ext}')
+    paths = []
+    for scope in ['study', 'continental_pop', 'subpop', 'loadings']:
+        for ext in ['png', 'html']:
+            paths.append(
+                out_path_ptn.format(scope=scope, pci=num_ancestry_pcs - 1, ext=ext)
+            )
+    job_name = f'Plot PCA and loadings ({pop_tag})'
+    if not can_reuse(paths, overwrite):
+        dataproc.hail_dataproc_job(
+            b,
+            f'{join(utils.SCRIPTS_DIR, "ancestry_plot.py")} '
+            f'--eigenvalues {eigenvalues_path} '
+            f'--scores-ht {scores_ht_path} '
+            f'--loadings-ht {loadings_ht_path} '
+            f'--provided-pop-ht {provided_pop_ht_path} '
+            + f'--out-path-pattern {out_path_ptn} '
+            + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES + ['selenium'],
+            init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
+            num_secondary_workers=scatter_count,
+            depends_on=[pca_job],
+            job_name=job_name,
+        )
+    else:
+        b.new_job(f'{job_name} [reuse]')
+
+    return pca_job, scores_ht_path
 
 
 def _add_pre_combiner_jobs(
@@ -485,8 +718,9 @@ def _add_pre_combiner_jobs(
     output_bucket: str,
     overwrite: bool,
     input_projects: List[str],
-    analysis_project: str,
+    analysis_project: str,  # pylint: disable=unused-argument
     is_test: bool,
+    skip_samples: Optional[Collection[str]] = None,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
@@ -525,13 +759,13 @@ def _add_pre_combiner_jobs(
             )
         else:
             logger.info(
-                f'Reading data from the projects: {input_projects} '
-                f'from the SM server'
+                f'Querying samples from the sample-metadata server '
+                f'for the projects: {", ".join(input_projects)}'
             )
-            samples_df = sm_utils.find_inputs_from_db(
+            samples_df = sm_utils.find_inputs(
                 input_projects,
-                analysis_project,
                 is_test=is_test,
+                skip_samples=skip_samples,
             )
             samples_df.to_csv(
                 input_samples_tsv_path, index=False, sep='\t', na_rep='NA'

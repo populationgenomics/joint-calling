@@ -23,24 +23,9 @@ from gnomad.utils.sparse_mt import filter_ref_blocks
 from joint_calling import utils
 
 
-GNOMAD_HT_PATH = (
-    'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'
-)
-
-
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
 logger.setLevel(logging.INFO)
-
-
-INPUT_METADATA_HT_NAME = 'input_metadata.ht'
-HAIL_SAMPLE_QC_HT_NAME = 'hail_sample_qc.ht'
-NONGNOMAD_SNPS_HT_NAME = 'nongnomad_snps.ht'
-HARD_FILTERED_SAMPLES_HT_NAME = 'hard_filtered_samples.ht'
-SEX_HT_NAME = 'sex.ht'
-POP_HT_NAME = 'pop.ht'
-REGRESSED_METRICS_HT_NAME = 'regressed_metrics.ht'
-RELATED_SAMPLES_TO_DROP_HT_NAME = 'related_samples_to_drop.ht'
 
 
 def compute_hail_sample_qc(
@@ -107,7 +92,7 @@ def snps_not_in_gnomad(
     tmp_bucket: str,
     out_ht_path: Optional[str] = None,
     overwrite: bool = False,
-    gnomad_path: str = GNOMAD_HT_PATH,
+    gnomad_path: str = utils.GNOMAD_HT_PATH,
 ) -> hl.Table:
     """
     Count the number of variants per sample that do not occur in gnomAD
@@ -183,38 +168,61 @@ def infer_sex(
 
 
 def run_pca_ancestry_analysis(
-    mt_biall: hl.MatrixTable,
-    sample_to_drop_ht: hl.Table,
+    mt: hl.MatrixTable,
+    sample_to_drop_ht: Optional[hl.Table],
     tmp_bucket: str,
     n_pcs: int,
+    out_eigenvalues_path: Optional[str] = None,
+    out_scores_ht_path: Optional[str] = None,
+    out_loadings_ht_path: Optional[str] = None,
     overwrite: bool = False,
 ) -> hl.Table:
     """
-    :param mt_biall: variants usable for PCA analysis
-        of the same type, identifying the pair of samples for each row
+    :param mt: variants usable for PCA analysis, combined with samples
+        with known populations (HGDP, 1KG, etc)
     :param tmp_bucket: bucket path to write checkpoints
     :param sample_to_drop_ht: table with samples to drop based on
         previous relatedness analysis. With a `rank` row field
     :param n_pcs: maximum number of principal components
     :param overwrite: overwrite checkpoints if they exist
+    :param out_eigenvalues_path: path to a txt file to write PCA eigenvalues
+    :param out_scores_ht_path: path to write PCA scores
+    :param out_loadings_ht_path: path to write PCA loadings
     :return: a Table with a row field:
         'scores': array<float64>
     """
     logger.info('Running PCA ancestry analysis')
-    scores_ht_path = join(tmp_bucket, 'pop_pca_scores.ht')
-    if utils.can_reuse(scores_ht_path, overwrite):
-        return hl.read_table(scores_ht_path)
+    out_scores_ht_path = out_scores_ht_path or join(tmp_bucket, 'pop_pca_scores.ht')
+    if all(
+        not fp or utils.can_reuse(fp, overwrite)
+        for fp in [
+            out_eigenvalues_path,
+            out_scores_ht_path,
+            out_loadings_ht_path,
+        ]
+    ):
+        return hl.read_table(out_scores_ht_path)
 
     # Adjusting the number of principal components not to exceed the
     # number of samples
-    n_pcs = min(n_pcs, mt_biall.cols().count() - sample_to_drop_ht.count())
-    _, scores_ht, _ = run_pca_with_relateds(mt_biall, sample_to_drop_ht, n_pcs=n_pcs)
-    return scores_ht.checkpoint(scores_ht_path, overwrite=True)
+    samples_to_drop_num = 0 if sample_to_drop_ht is None else sample_to_drop_ht.count()
+    n_pcs = min(n_pcs, mt.cols().count() - samples_to_drop_num)
+    eigenvalues, scores_ht, loadings_ht = run_pca_with_relateds(
+        mt, sample_to_drop_ht, n_pcs=n_pcs
+    )
+
+    if out_eigenvalues_path:
+        hl.Table.from_pandas(pd.DataFrame(eigenvalues)).export(out_eigenvalues_path)
+    if out_loadings_ht_path:
+        loadings_ht.write(out_loadings_ht_path, overwrite=True)
+    scores_ht.write(out_scores_ht_path, overwrite=True)
+    scores_ht = hl.read_table(out_scores_ht_path)
+    return scores_ht
 
 
-def assign_pops(
+def infer_pop_labels(
     pop_pca_scores_ht: hl.Table,
-    assigned_pop_ht: pd.DataFrame,
+    provided_pop_ht: hl.Table,
     tmp_bucket: str,
     min_prob: float,
     max_mislabeled_training_samples: int = 50,
@@ -228,7 +236,7 @@ def assign_pops(
 
     :param pop_pca_scores_ht: output table of `_run_pca_ancestry_analysis()`
         with a row field 'scores': array<float64>
-    :param assigned_pop_ht: table with a `population` field. Samples for which
+    :param provided_pop_ht: table with a `continental_pop` field. Samples for which
         the latter is defined will be used to train the random forest
     :param tmp_bucket: bucket to write checkpoints and intermediate files
     :param min_prob: min probability of belonging to a given population
@@ -248,13 +256,16 @@ def assign_pops(
         ... (prob_*: float64 for each population label)
     """
     logger.info('Assigning global population labels')
-    out_ht_path = out_ht_path or join(tmp_bucket, 'pop.ht')
+    out_ht_path = out_ht_path or join(tmp_bucket, 'inferred_pop.ht')
     if utils.can_reuse(out_ht_path, overwrite):
         return hl.read_table(out_ht_path)
 
-    samples_with_pop_ht = assigned_pop_ht.filter(assigned_pop_ht.population != '')
+    samples_with_pop_ht = provided_pop_ht.filter(
+        hl.is_defined(provided_pop_ht.continental_pop)
+        & (provided_pop_ht.continental_pop != '')
+    )
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
-        training_pop=samples_with_pop_ht[pop_pca_scores_ht.key].population
+        training_pop=samples_with_pop_ht[pop_pca_scores_ht.key].continental_pop
     )
 
     def _run_assign_population_pcs(pop_pca_scores_ht, min_prob):

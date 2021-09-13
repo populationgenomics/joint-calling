@@ -8,12 +8,13 @@ import sys
 import time
 import hashlib
 from os.path import isdir, isfile, exists, join
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union, Iterable
 import yaml
 import hail as hl
 import click
 from google.cloud import storage
 from joint_calling import _version, get_package_path
+from joint_calling import __name__ as package_name
 
 
 logger = logging.getLogger(__file__)
@@ -56,6 +57,20 @@ SEG_DUP_INTERVALS_HT_PATH = join(
     REF_BUCKET, 'gnomad/seg_dup_intervals/GRCh38_segdups.ht'
 )
 CLINVAR_HT_PATH = join(REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
+
+GNOMAD_HT_PATH = (
+    'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'
+)
+GNOMAD_HGDP_1KG_MT_PATH = (
+    'gs://gcp-public-data--gnomad/release/3.1/mt/genomes/'
+    'gnomad.genomes.v3.1.hgdp_1kg_subset_dense.mt'
+)
+GNOMAD_HGDP_1KG_TEST_MT_PATH = join(
+    REF_BUCKET, 'mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_test.mt'
+)
+
+SCRIPTS_DIR = 'scripts'
+PACKAGE_DIR = package_name
 
 NUMBER_OF_HAPLOTYPE_CALLER_INTERVALS = 50
 NUMBER_OF_GENOMICS_DB_INTERVALS = 50
@@ -145,12 +160,23 @@ def file_exists(path: str) -> bool:
     return os.path.exists(path)
 
 
-def can_reuse(fpath: Optional[str], overwrite: bool, silent=False) -> bool:
+def can_reuse(
+    fpath: Optional[Union[Iterable[str], str]],
+    overwrite: bool,
+    silent=False,
+) -> bool:
     """
-    Checks if the file `fpath` exists and we are not overwriting
+    Checks if `fpath` is good to reuse in the analysis: it exists
+    and `overwrite` is False.
+
+    If `fpath` is a collection, it requires all files in it to exist.
     """
     if not fpath:
         return False
+
+    if not isinstance(fpath, str):
+        return all(can_reuse(fp, overwrite) for fp in fpath)
+
     if not file_exists(fpath):
         return False
 
@@ -229,7 +255,6 @@ def get_mt(
     add_meta: bool = False,
     release_only: bool = False,
     passing_sites_only: bool = False,
-    biallelic_snps_only: bool = False,
 ) -> hl.MatrixTable:
     """
     Wrapper function to get data with desired filtering and metadata annotations
@@ -247,7 +272,6 @@ def get_mt(
         release (can only be used if metadata is present)
     :param passing_sites_only: whether to filter the MT to only variants with
         nothing in the filter field (e.g. passing soft filters)
-    :param biallelic_snps_only: remove all multiallelic calls and all indels
     :return: MatrixTable with chosen annotations and filters
     """
     mt = hl.read_matrix_table(mt_path)
@@ -283,11 +307,6 @@ def get_mt(
         )
         # Will use GT instead of LGT
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
-
-    if biallelic_snps_only:
-        mt = mt.filter_rows(
-            (hl.len(mt.alleles) == 2) & hl.is_snp(mt.alleles[0], mt.alleles[1])
-        )
 
     return mt
 
@@ -332,9 +351,9 @@ def get_filter_cutoffs(
 
     if path.startswith('gs://'):
         contents = subprocess.check_output(['gsutil', 'cat', path])
-        filter_cutoffs_d = yaml.load(contents)
+        filter_cutoffs_d = yaml.safe_load(contents)
     else:
         with open(path) as f:
-            filter_cutoffs_d = yaml.load(f)
+            filter_cutoffs_d = yaml.safe_load(f)
 
     return filter_cutoffs_d

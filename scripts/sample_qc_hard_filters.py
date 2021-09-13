@@ -50,9 +50,9 @@ logger.setLevel(logging.INFO)
     help=f'YAML file with filtering cutoffs',
 )
 @click.option(
-    '--relatedness-ht',
-    'relatedness_ht_path',
-    callback=utils.get_validation_callback(ext='ht', must_exist=True),
+    '--out-input-metadata-ht',
+    'out_input_metadata_ht_path',
+    callback=utils.get_validation_callback(ext='ht', must_exist=False),
     required=True,
 )
 @click.option(
@@ -62,13 +62,29 @@ logger.setLevel(logging.INFO)
     required=True,
 )
 @click.option(
-    '--out-bucket', 'out_bucket', required=True, help='bucket location to write results'
+    '--out-sex-ht',
+    'out_sex_ht_path',
+    callback=utils.get_validation_callback(ext='ht', must_exist=False),
+    required=True,
+)
+@click.option(
+    '--out-hail-sample-qc-ht',
+    'out_hail_sample_qc_ht_path',
+    callback=utils.get_validation_callback(ext='ht', must_exist=False),
+    required=True,
+)
+@click.option(
+    '--out-custom-qc-ht',
+    'out_custom_qc_ht_path',
+    callback=utils.get_validation_callback(ext='ht', must_exist=False),
+    required=True,
 )
 @click.option(
     '--tmp-bucket',
     'tmp_bucket',
     required=True,
-    help='path to write temporary intermediate output and checkpoints',
+    help='path to write temporary intermediate files and checkpoints '
+    '(usually a temporary bucket)',
 )
 @click.option(
     '--local-tmp-dir',
@@ -83,14 +99,6 @@ logger.setLevel(logging.INFO)
     'that generates it.',
 )
 @click.option(
-    '--n-pcs', 'n_pcs', default=30, help='number of PCs to compute for ancestry PCA.'
-)
-@click.option(
-    '--target-bed',
-    'target_bed',
-    help='for exomes, target regions in a BED file format.',
-)
-@click.option(
     '--hail-billing',
     'hail_billing',
     required=True,
@@ -100,24 +108,17 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     mt_path: str,
     meta_csv_path: str,
     filter_cutoffs_path: str,
-    relatedness_ht_path: str,
+    out_input_metadata_ht_path: str,
     out_hard_filtered_samples_ht_path: str,
-    out_bucket: str,
+    out_sex_ht_path: str,
+    out_hail_sample_qc_ht_path: str,
+    out_custom_qc_ht_path: str,
     tmp_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,
-    n_pcs: int,
-    target_bed: str,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
-    input_metadata_ht_path = join(out_bucket, sqc.INPUT_METADATA_HT_NAME)
-    hail_sample_qc_ht_path = join(out_bucket, sqc.HAIL_SAMPLE_QC_HT_NAME)
-    nongnomad_snps_ht_path = join(out_bucket, sqc.NONGNOMAD_SNPS_HT_NAME)
-    sex_ht_path = join(out_bucket, sqc.SEX_HT_NAME)
-    pop_ht_path = join(out_bucket, sqc.POP_HT_NAME)
-    regressed_metrics_ht_path = join(out_bucket, sqc.REGRESSED_METRICS_HT_NAME)
-
-    local_tmp_dir = utils.init_hail('sample_qc', local_tmp_dir)
+    local_tmp_dir = utils.init_hail(__file__, local_tmp_dir)
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
     mt_split = utils.get_mt(mt_path, passing_sites_only=True, split=True)
@@ -127,14 +128,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     input_metadata_ht = _parse_input_metadata(
         meta_csv_path=meta_csv_path,
         local_tmp_dir=local_tmp_dir,
-        out_ht_path=input_metadata_ht_path,
+        out_ht_path=out_input_metadata_ht_path,
     )
 
     # `hail_sample_qc_ht` row fields: sample_qc, bi_allelic_sample_qc
     hail_sample_qc_ht = sqc.compute_hail_sample_qc(
         mt=mt_split,
         tmp_bucket=tmp_bucket,
-        out_ht_path=hail_sample_qc_ht_path,
+        out_ht_path=out_hail_sample_qc_ht_path,
         overwrite=overwrite,
     )
 
@@ -142,7 +143,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     sqc.snps_not_in_gnomad(
         mt=mt_split,
         tmp_bucket=tmp_bucket,
-        out_ht_path=nongnomad_snps_ht_path,
+        out_ht_path=out_custom_qc_ht_path,
         overwrite=overwrite,
     )
 
@@ -150,67 +151,19 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     sex_ht = sqc.infer_sex(
         mt=mt,
         tmp_bucket=tmp_bucket,
-        out_ht_path=sex_ht_path,
+        out_ht_path=out_sex_ht_path,
         overwrite=overwrite,
-        target_regions=hl.import_bed(target_bed) if target_bed else None,
     )
 
-    # `hard_filtered_samples_ht` row fields: hard_filters;
+    # `out_hard_filtered_samples_ht_path` row fields: hard_filters;
     # also includes only failed samples
-    hard_filtered_samples_ht = sqc.compute_hard_filters(
+    sqc.compute_hard_filters(
         mt=mt,
         picard_metrics_ht=input_metadata_ht,
         sex_ht=sex_ht,
         hail_sample_qc_ht=hail_sample_qc_ht,
         cutoffs_d=cutoffs_d['hardfiltering'],
         out_ht_path=out_hard_filtered_samples_ht_path,
-        overwrite=overwrite,
-    )
-
-    # We don't want to include related samples into the
-    # ancestry PCA analysis
-    intermediate_related_samples_to_drop_ht = sqc.flag_related_samples(
-        hard_filtered_samples_ht=hard_filtered_samples_ht,
-        sex_ht=sex_ht,
-        relatedness_ht=hl.read_table(relatedness_ht_path),
-        regressed_metrics_ht=None,
-        tmp_bucket=tmp_bucket,
-        kin_threshold=cutoffs_d['pca']['max_kin'],
-        overwrite=overwrite,
-    )
-
-    # For PCA (which includes pc-relate and ancestry PCA), we need to use
-    # biallelic SNPs only:
-    mt_biall = utils.get_mt(mt_path, passing_sites_only=True, biallelic_snps_only=True)
-    # PCA also assumes annotation with GT instead of LGT:
-    mt_biall = mt_biall.select_entries('END', GT=mt_biall.LGT)
-
-    pop_pca_scores_ht = sqc.run_pca_ancestry_analysis(
-        mt_biall=mt_biall,
-        sample_to_drop_ht=intermediate_related_samples_to_drop_ht,
-        tmp_bucket=tmp_bucket,
-        n_pcs=n_pcs,
-        overwrite=overwrite,
-    )
-
-    # Using calculated PCA scores as well as training samples with known
-    # `population` tag, to assign population tags to remaining samples
-    sqc.assign_pops(
-        pop_pca_scores_ht=pop_pca_scores_ht,
-        assigned_pop_ht=input_metadata_ht,
-        tmp_bucket=tmp_bucket,
-        min_prob=cutoffs_d['pca']['min_pop_prob'],
-        n_pcs=n_pcs,
-        out_ht_path=pop_ht_path,
-        overwrite=overwrite,
-    )
-
-    # Re-computing QC metrics per population and annotating failing samples
-    sqc.apply_regressed_filters(
-        sample_qc_ht=hail_sample_qc_ht,
-        pop_pca_scores_ht=pop_pca_scores_ht,
-        tmp_bucket=tmp_bucket,
-        out_ht_path=regressed_metrics_ht_path,
         overwrite=overwrite,
     )
 

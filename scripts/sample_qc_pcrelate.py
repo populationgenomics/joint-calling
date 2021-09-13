@@ -23,11 +23,11 @@ logger.setLevel(logging.INFO)
 @click.command()
 @click.version_option(_version.__version__)
 @click.option(
-    '--mt',
-    'mt_path',
+    '--pca-mt',
+    'pca_mt_path',
     required=True,
     callback=utils.get_validation_callback(ext='mt', must_exist=True),
-    help='path to the Matrix Table ready for PC relate',
+    help='path to the Matrix Table ready for PC relate. Dense and GT-annotated',
 )
 @click.option(
     '--out-relatedness-ht',
@@ -53,14 +53,16 @@ logger.setLevel(logging.INFO)
     help='Hail billing account ID.',
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
-    mt_path: str,
+    pca_mt_path: str,
     out_relatedness_ht_path: str,
     tmp_bucket: str,
     overwrite: bool,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
-    mt = utils.get_mt(mt_path, passing_sites_only=True, biallelic_snps_only=True)
-    mt = mt.select_entries('END', GT=mt.LGT)
+    utils.init_hail(__file__)
+
+    mt = hl.read_matrix_table(pca_mt_path)
+    mt = mt.select_entries('GT')
 
     _compute_relatedness(
         mt=mt,

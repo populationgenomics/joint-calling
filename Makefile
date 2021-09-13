@@ -1,9 +1,10 @@
 VERSION := v5.1
-TEST_VERSION := v6-9
-SCATTER_COUNT_TEST := 10
+TEST_VERSION := v6-13
+SCATTER_COUNT_TEST := 50
 SCATTER_COUNT_PROD := 50
 ANALYSIS_PROJECT := tob-wgs
 REUSE_ARG := --reuse
+PRE_COMPUTED_HGDP := gs://cpg-tob-wgs-test-tmp/joint-calling/v6-11/sample_qc/mt_subset_for_pca_with_hgdp.mt
 
 default: patch package
 
@@ -34,7 +35,9 @@ test_to_tmp:
 	--analysis-project $(ANALYSIS_PROJECT) \
 	--input-project tob-wgs \
 	--output-version ${TEST_VERSION} \
+	--pca-pop nfe \
 	--keep-scratch \
+	--pre-computed-hgdp-union-mt $(PRE_COMPUTED_HGDP) \
 	$(REUSE_ARG)
 
 .PHONY: test_to_test
@@ -51,6 +54,7 @@ test_to_test:
 	--analysis-project $(ANALYSIS_PROJECT) \
 	--input-project tob-wgs \
 	--output-version $(VERSION) \
+	--pca-pop nfe \
 	--keep-scratch \
 	$(REUSE_ARG)
 
@@ -68,4 +72,5 @@ main_to_main:
 	--analysis-project $(ANALYSIS_PROJECT) \
 	--input-project tob-wgs \
 	--output-version $(VERSION) \
+	--pca-pop nfe \
 	$(REUSE_ARG)
