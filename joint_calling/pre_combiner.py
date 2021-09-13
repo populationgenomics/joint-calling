@@ -302,7 +302,7 @@ def _make_produce_gvcf_jobs(
                 b,
                 sample_name=sample_name,
                 project_name=project_name,
-                cram=cram_path,
+                cram_fpath=cram_path,
                 interval=intervals_j.intervals[f'interval_{idx}'],
                 reference=reference,
                 interval_idx=idx,
@@ -380,7 +380,7 @@ def _add_haplotype_caller_job(
     b: hb.Batch,
     sample_name: str,
     project_name: str,
-    cram: str,
+    cram_fpath: str,
     interval: hb.ResourceFile,
     reference: hb.ResourceGroup,
     interval_idx: Optional[int] = None,
@@ -417,10 +417,12 @@ def _add_haplotype_caller_job(
         f"""set -e
     (while true; do df -h; pwd; du -sh $(dirname {j.output_gvcf['g.vcf.gz']}); free -m; sleep 300; done) &
 
+    export GOOGLE_APPLICATION_CREDENTIALS=/gsa-key/key.json
+
     gatk --java-options "-Xms{java_mem}g -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=10" \\
       HaplotypeCaller \\
       -R {reference.base} \\
-      -I {cram} \\
+      -I {cram_fpath} \\
       -L {interval} \\
       -O {j.output_gvcf['g.vcf.gz']} \\
       -G AS_StandardAnnotation \\
