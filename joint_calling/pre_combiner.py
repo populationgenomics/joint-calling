@@ -47,7 +47,7 @@ def add_pre_combiner_jobs(
         return proj_bucket
 
     # Samples for which a GVCF is provided as input:
-    gvcf_df = samples_df[samples_df.gvcf.notna()]
+    gvcf_df = samples_df[samples_df.gvcf != '-']
     for s_id, proj, external_id, gvcf_path in zip(
         gvcf_df.s, gvcf_df.project, gvcf_df.external_id, gvcf_df.gvcf
     ):
@@ -72,7 +72,7 @@ def add_pre_combiner_jobs(
 
     # Samples for which a CRAM is provided as input:
     hc_intervals_j = None
-    cram_df = samples_df[samples_df.cram.notna()]
+    cram_df = samples_df[samples_df.cram != '-']
     for s_id, external_id, proj, input_cram, input_crai in zip(
         cram_df.s, cram_df.external_id, cram_df.project, cram_df.cram, cram_df.crai
     ):

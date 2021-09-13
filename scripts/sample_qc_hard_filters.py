@@ -180,6 +180,7 @@ def _parse_input_metadata(
     subprocess.run(
         f'gsutil cp {meta_csv_path} {local_csv_path}', check=False, shell=True
     )
+
     df = pd.read_table(local_csv_path)
     ht = hl.Table.from_pandas(df).key_by('s')
     return ht.checkpoint(out_ht_path, overwrite=True)

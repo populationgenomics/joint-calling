@@ -6,7 +6,6 @@ import uuid
 from os.path import join
 from typing import List, Optional, Dict, Tuple
 import logging
-import pandas as pd
 import hailtop.batch as hb
 from hailtop.batch.job import Job
 
@@ -26,7 +25,7 @@ def add_variant_qc_jobs(
     raw_combined_mt_path: str,
     hard_filter_ht_path: str,
     meta_ht_path: str,
-    samples_df: pd.DataFrame,
+    sample_count: int,
     ped_file: Optional[str],
     overwrite: bool,
     vqsr_params_d: Dict,
@@ -178,7 +177,7 @@ def add_variant_qc_jobs(
                 combined_mt_path=raw_combined_mt_path,
                 hard_filter_ht_path=hard_filter_ht_path,
                 meta_ht_path=meta_ht_path,
-                gvcf_count=len(samples_df),
+                gvcf_count=sample_count,
                 work_bucket=vqsr_bucket,
                 web_bucket=join(web_bucket, 'vqsr'),
                 depends_on=depends_on or [],

@@ -4,12 +4,9 @@
 Run sample QC on a MatrixTable, hard filter samples, add soft filter labels.
 """
 
-from os.path import join, basename
-import subprocess
 import logging
 import click
 import hail as hl
-import pandas as pd
 
 from joint_calling import utils
 from joint_calling import sample_qc as sqc
@@ -117,23 +114,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         out_ht_path=out_regressed_metrics_ht_path,
         overwrite=overwrite,
     )
-
-
-def _parse_input_metadata(
-    meta_csv_path: str,
-    local_tmp_dir: str,
-    out_ht_path: str,
-) -> hl.Table:
-    """
-    Parse KCCG metadata (population and picard metrics)
-    """
-    local_csv_path = join(local_tmp_dir, basename(meta_csv_path))
-    subprocess.run(
-        f'gsutil cp {meta_csv_path} {local_csv_path}', check=False, shell=True
-    )
-    df = pd.read_table(local_csv_path)
-    ht = hl.Table.from_pandas(df).key_by('s')
-    return ht.checkpoint(out_ht_path, overwrite=True)
 
 
 if __name__ == '__main__':

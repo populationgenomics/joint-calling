@@ -213,6 +213,28 @@ def replace_paths_to_test(s: Dict) -> Optional[Dict]:
         return None
 
 
+default_entry = {
+    's': None,
+    'external_id': None,
+    'project': None,
+    'continental_pop': '-',
+    'subpop': '-',
+    'gvcf': '-',
+    'cram': '-',
+    'crai': '-',
+    'batch': '-',
+    'operation': 'add',
+    'flowcell_lane': '-',
+    'library_id': '-',
+    'platform': '-',
+    'centre': '-',
+    'r_contamination': None,
+    'r_chimera': None,
+    'r_duplication': None,
+    'median_insert_size': None,
+}
+
+
 def find_inputs_from_db(
     input_projects: List[str],
     is_test: bool = False,
@@ -355,25 +377,24 @@ def find_inputs_from_db(
                     f'does not have a corresponding tbi index: {gvcf_path}.tbi'
                 )
                 continue
-            sample_information = {
-                's': sample_id,
-                'external_id': external_id,
-                'project': proj,
-                'continental_pop': None,
-                'subpop': None,
-                'gvcf': gvcf_path,
-                'cram': None,
-                'batch': seq_meta.get('batch'),
-                'r_contamination': seq_meta.get('raw_data.FREEMIX'),
-                'r_chimera': seq_meta.get('raw_data.PCT_CHIMERAS'),
-                'r_duplication': seq_meta.get('raw_data.PERCENT_DUPLICATION'),
-                'median_insert_size': seq_meta.get('raw_data.MEDIAN_INSERT_SIZE'),
-                'flowcell_lane': seq_meta.get('sample.flowcell_lane'),
-                'library_id': seq_meta.get('sample.library_id'),
-                'platform': seq_meta.get('sample.platform'),
-                'centre': seq_meta.get('sample.centre'),
-                'operation': 'add',
-            }
+            sample_information = default_entry.copy()
+            sample_information.update(
+                {
+                    's': sample_id,
+                    'external_id': external_id,
+                    'project': proj,
+                    'gvcf': gvcf_path,
+                    'batch': seq_meta.get('batch', '-'),
+                    'flowcell_lane': seq_meta.get('sample.flowcell_lane', '-'),
+                    'library_id': seq_meta.get('sample.library_id', '-'),
+                    'platform': seq_meta.get('sample.platform', '-'),
+                    'centre': seq_meta.get('sample.centre', '-'),
+                    'r_contamination': seq_meta.get('raw_data.FREEMIX'),
+                    'r_chimera': seq_meta.get('raw_data.PCT_CHIMERAS'),
+                    'r_duplication': seq_meta.get('raw_data.PERCENT_DUPLICATION'),
+                    'median_insert_size': seq_meta.get('raw_data.MEDIAN_INSERT_SIZE'),
+                }
+            )
             inputs.append(sample_information)
 
     if not inputs:
@@ -389,22 +410,24 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
     Add NA12878 GVCFs and syndip BAM into the dataframe.
     """
     if 'syndip' not in df.s:
-        df = df.append(
+        sample_information = default_entry.copy()
+        sample_information.update(
             {
                 's': 'syndip',
                 'external_id': 'syndip',
                 'project': 'validation',
-                'cram': 'gs://cpg-reference/syndip/CHM1_CHM13_2.bam',
-                'crai': 'gs://cpg-reference/syndip/CHM1_CHM13_2.bam.bai',
-            },
-            ignore_index=True,
+                'cram': 'gs://cpg-reference/validation/syndip/raw/CHM1_CHM13_2.bam',
+                'crai': 'gs://cpg-reference/validation/syndip/raw/CHM1_CHM13_2.bam.bai',
+            }
         )
+        df = df.append(sample_information, ignore_index=True)
 
     giab_samples = ['NA12878', 'NA12891', 'NA12892']
     if not any(sn not in df.s for sn in giab_samples):
         for sn in giab_samples:
-            cram = f'https://ftp-trace.ncbi.nih.gov/1000genomes/ftp/phase3/data/{sn}/high_coverage_alignment/{sn}.mapped.ILLUMINA.bwa.CEU.high_coverage_pcr_free.20130906.bam.cram'
-            df = df.append(
+            cram = f'gs://cpg-reference/validation/giab/cram/{sn}.cram'
+            sample_information = default_entry.copy()
+            sample_information.update(
                 {
                     's': sn,
                     'external_id': sn,
@@ -413,6 +436,7 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
                     'crai': cram + '.crai',
                 }
             )
+            df = df.append(sample_information)
     return df
 
 
