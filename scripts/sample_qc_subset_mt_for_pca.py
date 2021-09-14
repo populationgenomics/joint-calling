@@ -13,6 +13,7 @@ This script will produce two matrix tables:
    `--out-hgdp-union-mt` (so only high-quality sites shared with HGDP-1KG).
 """
 
+from os.path import join
 import logging
 from typing import Optional
 
@@ -46,7 +47,7 @@ logger.setLevel(logging.INFO)
 )
 @click.option(
     '--pre-computed-hgdp-union-mt',
-    'pre_computed_hgdp_unuon_mt_path',
+    'pre_computed_hgdp_union_mt_path',
     help='Useful for tests to save time on subsetting the large gnomAD matrix table',
 )
 @click.option(
@@ -72,6 +73,7 @@ logger.setLevel(logging.INFO)
     'The difference with --out-hgdp-union-mt is that it contains only the dataset '
     'samples',
 )
+@click.option('--tmp-bucket', 'tmp_bucket')
 @click.option(
     '--pop',
     'pop',
@@ -98,10 +100,11 @@ logger.setLevel(logging.INFO)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_path: str,
     meta_csv_path: str,
-    pre_computed_hgdp_unuon_mt_path: Optional[str],
+    pre_computed_hgdp_union_mt_path: Optional[str],
     out_hgdp_union_mt_path: str,
     out_provided_pop_ht_path: str,
     out_mt_path: str,
+    tmp_bucket: str,
     pop: Optional[str],
     overwrite: bool,
     is_test: bool,  # pylint: disable=unused-argument
@@ -133,13 +136,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     mt = hl.experimental.densify(mt)  # drops mt.END
     mt = mt.select_entries(GT=lgt_to_gt(mt.LGT, mt.LA))
 
-    if pre_computed_hgdp_unuon_mt_path:
-        hgdp_union_mt = hl.read_matrix_table(pre_computed_hgdp_unuon_mt_path)
+    if pre_computed_hgdp_union_mt_path:
+        hgdp_union_mt = hl.read_matrix_table(pre_computed_hgdp_union_mt_path)
     else:
         hgdp_union_mt = get_sites_shared_with_hgdp(
             mt=mt,
             hgdp_mt=hgdp_mt,
             overwrite=overwrite,
+            out_mt_path=join(tmp_bucket, 'mt_union_hgdp_for_pca_prefiltered.mt'),
         )
 
     _make_provided_pop_ht(
@@ -179,10 +183,14 @@ def _make_provided_pop_ht(
         .default(input_metadata_ht[ht.s].project),
         continental_pop=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), hgdp_ht[ht.s].population_inference.pop)
-        .default(input_metadata_ht[ht.s].continental_pop),
+        .when(
+            input_metadata_ht[ht.s].population != '-',
+            input_metadata_ht[ht.s].population,
+        )
+        .default(''),
         subpop=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), hgdp_ht[ht.s].labeled_subpop)
-        .default(input_metadata_ht[ht.s].subpop),
+        .default(''),
     )
     return ht.checkpoint(out_provided_pop_ht_path, overwrite=overwrite)
 

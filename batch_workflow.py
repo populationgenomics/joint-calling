@@ -438,7 +438,7 @@ def _add_sample_qc_jobs(
         sample_qc_hardfilter_job = b.new_job(f'Sample QC hard filters [reuse]')
 
     mt_union_hgdp_for_pca_path = join(
-        sample_qc_bucket, 'ancestry', 'mt_union_hgdp_for_pca_path.mt'
+        sample_qc_bucket, 'ancestry', 'mt_union_hgdp_for_pca.mt'
     )
     mt_for_pca_path = join(sample_qc_bucket, 'ancestry', 'mt_for_pca.mt')
     provided_pop_ht_path = join(sample_qc_bucket, 'ancestry', 'provided_pop.ht')
@@ -464,6 +464,7 @@ def _add_sample_qc_jobs(
             + f'--out-hgdp-union-mt {mt_union_hgdp_for_pca_path} '
             f'--out-provided-pop-ht {provided_pop_ht_path} '
             f'--out-mt {mt_for_pca_path} '
+            f'--tmp-bucket {join(sample_qc_bucket, "tmp")} '
             + ('--is-test ' if is_test else '')
             + (f'--pop {pca_pop} ' if pca_pop else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
