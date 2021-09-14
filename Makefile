@@ -10,16 +10,22 @@ default: patch package
 .PHONY: patch
 patch:
 	bump2version patch
+	git push
 
 .PHONY: minor
 minor:
 	bump2version minor
+	git push
 
 .PHONY: package
 package:
 	rm -rf dist/*
 	python setup.py sdist bdist_wheel
 	twine upload dist/*
+
+.PHONY: sleep
+sleep:
+	sleep 60
 
 .PHONY: test_to_tmp
 test_to_tmp:

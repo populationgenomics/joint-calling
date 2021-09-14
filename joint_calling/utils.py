@@ -67,12 +67,12 @@ GNOMAD_HT_PATH = (
     'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'
 )
 
-GNOMAD_HGDP_FOR_PCA = {
+GNOMAD_HGDP_FOR_PCA = {k: join(REF_BUCKET, v) for k, v in {
     'all': 'mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_hq.mt',
     'nfe': 'mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_nfe_hq.mt',
     'test': 'mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_test_hq.mt',
     'test_nfe': 'mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_test_nfe_hq.mt',
-}
+}.items()}
 
 GNOMAD_HGDP_1KG_TEST_MT_PATH = join(
     REF_BUCKET, 'mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_test_hq.mt'
