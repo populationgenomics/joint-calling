@@ -7,7 +7,7 @@ import setuptools
 
 setuptools.setup(
     name='joint-calling',
-    version='0.3.13',
+    version='0.3.14',
     description='Pipeline for joint calling, sample and variant QC for WGS germline '
     'variant calling data',
     long_description=open('README.md').read(),
