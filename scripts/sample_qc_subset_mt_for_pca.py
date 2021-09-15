@@ -13,7 +13,6 @@ This script will produce two matrix tables:
    `--out-hgdp-union-mt` (so only high-quality sites shared with HGDP-1KG).
 """
 
-from os.path import join
 import logging
 from typing import Optional
 
@@ -73,7 +72,6 @@ logger.setLevel(logging.INFO)
     'The difference with --out-hgdp-union-mt is that it contains only the dataset '
     'samples',
 )
-@click.option('--tmp-bucket', 'tmp_bucket')
 @click.option(
     '--pop',
     'pop',
@@ -104,7 +102,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     out_hgdp_union_mt_path: str,
     out_provided_pop_ht_path: str,
     out_mt_path: str,
-    tmp_bucket: str,
     pop: Optional[str],
     overwrite: bool,
     is_test: bool,  # pylint: disable=unused-argument
@@ -143,7 +140,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
             mt=mt,
             hgdp_mt=hgdp_mt,
             overwrite=overwrite,
-            out_mt_path=join(tmp_bucket, 'mt_union_hgdp_for_pca_prefiltered.mt'),
+            out_mt_path=out_hgdp_union_mt_path,
         )
 
     _make_provided_pop_ht(
@@ -154,14 +151,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         overwrite=overwrite,
     )
 
-    hgdp_union_hq_sites_mt = filter_high_quality_sites(
-        hgdp_union_mt,
-        out_mt_path=out_hgdp_union_mt_path,
-        overwrite=overwrite,
-    )
     generate_subset_mt(
         mt=mt,
-        hgdp_union_hq_sites_mt=hgdp_union_hq_sites_mt,
+        hgdp_union_hq_sites_mt=hgdp_union_mt,
         out_mt_path=out_mt_path,
         overwrite=overwrite,
     )
@@ -236,7 +228,6 @@ def get_sites_shared_with_hgdp(
 
 def filter_high_quality_sites(
     mt: hl.MatrixTable,
-    num_rows_before_ld_prune: int = 200_000,
     out_mt_path: Optional[str] = None,
     overwrite: bool = False,
 ) -> hl.MatrixTable:
@@ -261,20 +252,6 @@ def filter_high_quality_sites(
         & (mt.variant_qc.call_rate > 0.99)
         & (mt.IB.f_stat > -0.25)
     )
-
-    # Randomly subsampling the matrix table to `num_rows_before_ld_prune` sites
-    # before feeding it into LD prunning
-    mt = mt.cache()
-    nrows = mt.count_rows()
-    logger.info(f'Number of rows after filtering: {nrows}')
-    if nrows > num_rows_before_ld_prune:
-        logger.info(f'Number of rows {nrows} > {num_rows_before_ld_prune}, subsetting')
-        mt = mt.sample_rows(num_rows_before_ld_prune / nrows, seed=12345)
-
-    # LD prunning
-    pruned_variant_ht = hl.ld_prune(mt.GT, r2=0.1, bp_window_size=500000)
-    mt = mt.filter_rows(hl.is_defined(pruned_variant_ht[mt.row_key]))
-    logger.info(f'Number of rows after prunning: {mt.count_rows()}')
 
     if out_mt_path:
         mt.write(out_mt_path, overwrite=True)

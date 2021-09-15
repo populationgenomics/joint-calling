@@ -39,8 +39,11 @@ def main(
             ncols = mt.count_cols()
             target_ncols = 50
             mt = mt.sample_cols(p=target_ncols / ncols, seed=42)
+            mt = mt.repartition(100, shuffle=False)
             mt.write(out_fpath, overwrite=True)
         mt = hl.read_matrix_table(out_fpath)
+    else:
+        mt = mt.repartition(1000, shuffle=False)
 
     if pop:
         suf = f'{suf}_{pop}'
