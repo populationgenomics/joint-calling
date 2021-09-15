@@ -176,8 +176,8 @@ def _make_provided_pop_ht(
         continental_pop=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), hgdp_ht[ht.s].population_inference.pop)
         .when(
-            input_metadata_ht[ht.s].population != '-',
-            input_metadata_ht[ht.s].population,
+            input_metadata_ht[ht.s].continental_pop != '-',
+            input_metadata_ht[ht.s].continental_pop,
         )
         .default(''),
         subpop=hl.case()

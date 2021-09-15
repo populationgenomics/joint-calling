@@ -370,7 +370,7 @@ def parse_input_metadata(
     out_ht_path: Optional[str] = None,
 ) -> hl.Table:
     """
-    Parse KCCG metadata (population and picard metrics)
+    Parse KCCG metadata (continental_pop and picard metrics)
     """
     local_csv_path = join(local_tmp_dir, basename(meta_csv_path))
     subprocess.run(

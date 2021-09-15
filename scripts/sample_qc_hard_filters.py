@@ -31,14 +31,10 @@ logger.setLevel(logging.INFO)
     '--meta-csv',
     'meta_csv_path',
     required=True,
-    help='path to a CSV with QC and population metadata for the samples '
-    'in the input Matrix Table. The following columns are expected: '
-    's,population,gvcf,freemix,pct_chimeras,'
-    'duplication,median_insert_size,mean_coverage. '
-    'Must be keyed by "s". Samples with non-empty entries in '
-    'the "population" column will be used to train the random forest '
-    'for population inference of remaining samples. Other colums are '
-    'used to apply QC hard filters to samples.',
+    help='path to a CSV with QC metadata for the samples in the input Matrix Table. '
+    'The following columns are expected: '
+    's,freemix,pct_chimeras,duplication,median_insert_size. '
+    'Must be keyed by "s".',
 )
 @click.option(
     '--filter-cutoffs-file',
