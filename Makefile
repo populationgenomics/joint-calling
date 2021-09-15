@@ -1,9 +1,11 @@
+ANALYSIS_PROJECT := tob-wgs
 VERSION := v5.1
 TEST_VERSION := v6-17
 SCATTER_COUNT_TEST := 50
 SCATTER_COUNT_PROD := 50
-ANALYSIS_PROJECT := tob-wgs
 REUSE_ARG := --reuse
+# Seprately generate a specific PCA plots for this continental population
+PCA_POP := nfe
 
 default: patch package
 
@@ -41,6 +43,7 @@ test_to_tmp:
 	--input-project tob-wgs \
 	--output-version ${TEST_VERSION} \
 	--keep-scratch \
+	--pca-pop ${PCA_POP} \
 	$(REUSE_ARG)
 
 .PHONY: test_to_test
@@ -58,6 +61,7 @@ test_to_test:
 	--input-project tob-wgs \
 	--output-version $(VERSION) \
 	--keep-scratch \
+	--pca-pop ${PCA_POP} \
 	$(REUSE_ARG)
 
 .PHONY: main_to_main
@@ -74,4 +78,5 @@ main_to_main:
 	--analysis-project $(ANALYSIS_PROJECT) \
 	--input-project tob-wgs \
 	--output-version $(VERSION) \
+	--pca-pop ${PCA_POP} \
 	$(REUSE_ARG)
