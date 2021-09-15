@@ -377,8 +377,8 @@ def find_inputs_from_db(
                     f'does not have a corresponding tbi index: {gvcf_path}.tbi'
                 )
                 continue
-            sample_information = default_entry.copy()
-            sample_information.update(
+            entry = default_entry.copy()
+            entry.update(
                 {
                     's': sample_id,
                     'external_id': external_id,
@@ -395,7 +395,7 @@ def find_inputs_from_db(
                     'median_insert_size': seq_meta.get('raw_data.MEDIAN_INSERT_SIZE'),
                 }
             )
-            inputs.append(sample_information)
+            inputs.append(entry)
 
     if not inputs:
         logger.error('No found any projects with samples good for processing')
@@ -410,8 +410,8 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
     Add NA12878 GVCFs and syndip BAM into the dataframe.
     """
     if 'syndip' not in df.s:
-        sample_information = default_entry.copy()
-        sample_information.update(
+        entry = default_entry.copy()
+        entry.update(
             {
                 's': 'syndip',
                 'external_id': 'syndip',
@@ -420,14 +420,15 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
                 'crai': 'gs://cpg-reference/validation/syndip/raw/CHM1_CHM13_2.bam.bai',
             }
         )
-        df = df.append(sample_information, ignore_index=True)
+        # Can only append a dict if ignore_index=True. So then need to set index back.
+        df = df.append(entry, ignore_index=True).set_index('s', drop=False)
 
     giab_samples = ['NA12878', 'NA12891', 'NA12892']
     if not any(sn not in df.s for sn in giab_samples):
         for sn in giab_samples:
             cram = f'gs://cpg-reference/validation/giab/cram/{sn}.cram'
-            sample_information = default_entry.copy()
-            sample_information.update(
+            entry = default_entry.copy()
+            entry.update(
                 {
                     's': sn,
                     'external_id': sn,
@@ -436,7 +437,8 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
                     'crai': cram + '.crai',
                 }
             )
-            df = df.append(sample_information)
+            # Can only append a dict if ignore_index=True. So then need to set index back.
+            df = df.append(entry, ignore_index=True).set_index('s', drop=False)
     return df
 
 
