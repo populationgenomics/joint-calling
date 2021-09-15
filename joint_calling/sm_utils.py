@@ -415,7 +415,7 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
             {
                 's': 'syndip',
                 'external_id': 'syndip',
-                'project': 'validation',
+                'project': 'syndip',
                 'cram': 'gs://cpg-reference/validation/syndip/raw/CHM1_CHM13_2.bam',
                 'crai': 'gs://cpg-reference/validation/syndip/raw/CHM1_CHM13_2.bam.bai',
             }
@@ -432,7 +432,7 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
                 {
                     's': sn,
                     'external_id': sn,
-                    'project': 'validation',
+                    'project': 'giab',
                     'cram': cram,
                     'crai': cram + '.crai',
                 }
