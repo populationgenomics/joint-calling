@@ -167,22 +167,17 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         web_bucket_suffix = 'test-tmp/web'
 
     ptrn = f'gs://cpg-{analysis_project}-{{suffix}}/joint-calling/{output_version}'
-    work_bucket = ptrn.format(suffix=tmp_bucket_suffix)
-    out_analysis_bucket = ptrn.format(suffix=output_analysis_suffix)
+    tmp_bucket = ptrn.format(suffix=tmp_bucket_suffix)
+    analysis_bucket = ptrn.format(suffix=output_analysis_suffix)
     web_bucket = ptrn.format(suffix=web_bucket_suffix)
 
-    pre_combiner_bucket = f'{work_bucket}/pre_combiner'
-    combiner_bucket = f'{work_bucket}/combiner'
-    sample_qc_bucket = f'{work_bucket}/sample_qc'
-
-    mt_output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}/mt'
+    combiner_bucket = f'{tmp_bucket}/combiner'
     raw_combined_mt_path = f'{combiner_bucket}/{output_version}-raw.mt'
+    mt_output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}/mt'
     filtered_combined_mt_path = f'{mt_output_bucket}/{output_version}.mt'
-    filtered_combined_nonref_mt_path = f'{mt_output_bucket}/{output_version}-nonref.mt'
     _create_mt_readme(
         raw_combined_mt_path,
         filtered_combined_mt_path,
-        filtered_combined_nonref_mt_path,
         mt_output_bucket,
     )
 
@@ -191,7 +186,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     hail_bucket = os.environ.get('HAIL_BUCKET')
     if not hail_bucket or keep_scratch or reuse_scratch_run_id:
         # Scratch files are large, so we want to use the temporary bucket for them
-        hail_bucket = f'{work_bucket}/hail'
+        hail_bucket = f'{tmp_bucket}/hail'
     logger.info(
         f'Starting hail Batch with the project {billing_project}, '
         f'bucket {hail_bucket}'
@@ -214,7 +209,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     )
 
     samples_df = find_inputs(
-        output_bucket=work_bucket,
+        tmp_bucket=tmp_bucket,
         overwrite=overwrite,
         input_projects=input_projects,
         is_test=output_namespace in ['test', 'tmp'],
@@ -228,7 +223,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     ) = pre_combiner.add_pre_combiner_jobs(
         b=b,
         samples_df=samples_df,
-        pre_combiner_bucket=pre_combiner_bucket,
+        pre_combiner_bucket=join(tmp_bucket, 'pre_combiner'),
         output_suffix=output_suffix,
         overwrite=overwrite,
         analysis_project=analysis_project,
@@ -273,9 +268,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         b=b,
         mt_path=raw_combined_mt_path,
         samples_csv_path=samples_csv_path,
-        sample_qc_bucket=sample_qc_bucket,
-        out_analysis_bucket=out_analysis_bucket,
-        out_web_bucket=web_bucket,
+        sample_qc_bucket=join(analysis_bucket, 'sample_qc'),
+        ancestry_bucket=join(analysis_bucket, 'ancestry'),
+        tmp_bucket=tmp_bucket,
+        analysis_bucket=analysis_bucket,
+        relatedness_bucket=join(analysis_bucket, 'relatedness'),
+        web_bucket=web_bucket,
         filter_cutoffs_path=filter_cutoffs_path,
         overwrite=overwrite,
         scatter_count=scatter_count,
@@ -291,7 +289,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     var_qc_job, vqsr_final_filter_ht = add_variant_qc_jobs(
         b=b,
-        work_bucket=join(work_bucket, 'variant_qc'),
+        work_bucket=join(tmp_bucket, 'variant_qc'),
         web_bucket=join(web_bucket, 'variant_qc'),
         raw_combined_mt_path=raw_combined_mt_path,
         hard_filter_ht_path=hard_filter_ht_path,
@@ -311,7 +309,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--mt {raw_combined_mt_path} '
             f'--final-filter-ht {vqsr_final_filter_ht} '
             f'--out-mt {filtered_combined_mt_path} '
-            f'--out-nonref-mt {filtered_combined_nonref_mt_path} '
             f'--meta-ht {meta_ht_path} ',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
@@ -327,7 +324,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     # 1. Create a "queued" analysis
     am = AnalysisModel(
         type='joint-calling',
-        output=filtered_combined_nonref_mt_path,
+        output=filtered_combined_mt_path,
         status='queued',
         sample_ids=samples_df.s,
     )
@@ -356,7 +353,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 def _create_mt_readme(
     raw_combined_mt_path: str,
     filtered_combined_mt_path: str,
-    filtered_combined_nonref_mt_path: str,
     mt_output_bucket: str,
 ):
     local_tmp_dir = tempfile.mkdtemp()
@@ -368,10 +364,6 @@ def _create_mt_readme(
             f'AS-VQSR soft-filtered\n(use `mt.filter_rows(hl.is_missing(mt.filters)` '
             f'to hard-filter):\n {basename(filtered_combined_mt_path)}'
         )
-        f.write(
-            f'AS-VQSR soft-filtered, without reference blocks:\n'
-            f'{basename(filtered_combined_nonref_mt_path)}'
-        )
     subprocess.run(['gsutil', 'cp', readme_local_fpath, readme_gcs_fpath], check=False)
 
 
@@ -380,8 +372,11 @@ def _add_sample_qc_jobs(
     mt_path: str,
     samples_csv_path: str,
     sample_qc_bucket: str,
-    out_analysis_bucket: str,
-    out_web_bucket: str,
+    ancestry_bucket: str,
+    tmp_bucket: str,
+    analysis_bucket: str,
+    relatedness_bucket: str,
+    web_bucket: str,
     age_csv_path: str,
     filter_cutoffs_path: Optional[str],
     overwrite: bool,
@@ -425,7 +420,7 @@ def _add_sample_qc_jobs(
             f'--out-sex-ht {sex_ht_path} '
             f'--out-hail-sample-qc-ht {hail_sample_qc_ht_path} '
             f'--out-custom-qc-ht {custom_qc_ht_path} '
-            f'--tmp-bucket {sample_qc_bucket}/tmp '
+            f'--tmp-bucket {tmp_bucket} '
             + (f'--overwrite ' if overwrite else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
@@ -437,11 +432,9 @@ def _add_sample_qc_jobs(
     else:
         sample_qc_hardfilter_job = b.new_job(f'Sample QC hard filters [reuse]')
 
-    mt_union_hgdp_for_pca_path = join(
-        sample_qc_bucket, 'ancestry', 'mt_union_hgdp_for_pca.mt'
-    )
-    mt_for_pca_path = join(sample_qc_bucket, 'ancestry', 'mt_for_pca.mt')
-    provided_pop_ht_path = join(sample_qc_bucket, 'ancestry', 'provided_pop.ht')
+    mt_union_hgdp_for_pca_path = join(ancestry_bucket, 'mt_union_hgdp_for_pca.mt')
+    mt_for_pca_path = join(ancestry_bucket, 'mt_for_pca.mt')
+    provided_pop_ht_path = join(ancestry_bucket, 'provided_pop.ht')
     if not can_reuse(
         [
             mt_for_pca_path,
@@ -476,7 +469,7 @@ def _add_sample_qc_jobs(
     else:
         subset_for_pca_job = b.new_job(f'Subset MT for PCA [reuse]')
 
-    relatedness_ht_path = join(out_analysis_bucket, 'relatedness.ht')
+    relatedness_ht_path = join(relatedness_bucket, 'relatedness.ht')
     if not can_reuse(relatedness_ht_path, overwrite):
         pcrelate_job = dataproc.hail_dataproc_job(
             b,
@@ -484,7 +477,7 @@ def _add_sample_qc_jobs(
             + (f'--overwrite ' if overwrite else '')
             + f'--pca-mt {mt_for_pca_path} '
             f'--out-relatedness-ht {relatedness_ht_path} '
-            f'--tmp-bucket {sample_qc_bucket}/tmp '
+            f'--tmp-bucket {tmp_bucket} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
@@ -499,7 +492,7 @@ def _add_sample_qc_jobs(
         pcrelate_job = b.new_job(f'Run pcrelate [reuse]')
 
     intermediate_related_samples_to_drop_ht_path = join(
-        sample_qc_bucket, 'tmp', 'intermediate_related_samples_to_drop.ht'
+        relatedness_bucket, 'intermediate_related_samples_to_drop.ht'
     )
     if not can_reuse(intermediate_related_samples_to_drop_ht_path, overwrite):
         cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
@@ -510,7 +503,7 @@ def _add_sample_qc_jobs(
             f'--sex-ht {sex_ht_path} '
             f'--relatedness-ht {relatedness_ht_path} '
             f'--out-ht {intermediate_related_samples_to_drop_ht_path} '
-            f'--tmp-bucket {sample_qc_bucket}/tmp '
+            f'--tmp-bucket {tmp_bucket} '
             f'--max-kin {cutoffs_d["pca"]["max_kin"]} '
             + (f'--overwrite ' if overwrite else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
@@ -528,9 +521,9 @@ def _add_sample_qc_jobs(
         mt_union_hgdp_path=mt_union_hgdp_for_pca_path,
         provided_pop_ht_path=provided_pop_ht_path,
         num_ancestry_pcs=num_ancestry_pcs,
-        tmp_bucket=join(sample_qc_bucket, 'tmp'),
-        out_analysis_bucket=out_analysis_bucket,
-        out_web_bucket=out_web_bucket,
+        tmp_bucket=tmp_bucket,
+        ancestry_bucket=analysis_bucket,
+        web_bucket=web_bucket,
         overwrite=overwrite,
         scatter_count=scatter_count,
         depends_on=[flag_related_job],
@@ -538,7 +531,7 @@ def _add_sample_qc_jobs(
         billing_project=billing_project,
     )
 
-    inferred_pop_ht_path = join(sample_qc_bucket, 'ancestry', 'inferred_pop.ht')
+    inferred_pop_ht_path = join(ancestry_bucket, 'inferred_pop.ht')
     regressed_metrics_ht_path = join(sample_qc_bucket, 'regressed_metrics.ht')
     if not can_reuse(
         [
@@ -557,7 +550,7 @@ def _add_sample_qc_jobs(
             f'--n-pcs {num_ancestry_pcs} '
             f'--out-regressed-metrics-ht {regressed_metrics_ht_path} '
             f'--out-inferred-pop-ht {inferred_pop_ht_path} '
-            f'--tmp-bucket {sample_qc_bucket}/tmp '
+            f'--tmp-bucket {tmp_bucket} '
             + (f'--overwrite ' if overwrite else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             max_age='8h',
@@ -569,8 +562,8 @@ def _add_sample_qc_jobs(
     else:
         regressed_filters_job = b.new_job(f'Sample QC regressed filters [reuse]')
 
-    meta_ht_path = join(out_analysis_bucket, 'meta.ht')
-    meta_tsv_path = join(out_analysis_bucket, 'meta.tsv')
+    meta_ht_path = join(analysis_bucket, 'meta.ht')
+    meta_tsv_path = join(analysis_bucket, 'meta.tsv')
     if not can_reuse(
         [
             meta_ht_path,
@@ -594,7 +587,7 @@ def _add_sample_qc_jobs(
             f'--relatedness-ht {relatedness_ht_path} '
             f'--pop-ht {inferred_pop_ht_path} '
             f'{age_csv_param}'
-            f'--tmp-bucket {sample_qc_bucket}/tmp '
+            f'--tmp-bucket {tmp_bucket} '
             f'--out-meta-ht {meta_ht_path} '
             f'--out-meta-tsv {meta_tsv_path} '
             + (f'--overwrite ' if overwrite else '')
@@ -615,9 +608,9 @@ def _add_sample_qc_jobs(
             mt_union_hgdp_path=mt_union_hgdp_for_pca_path,
             provided_pop_ht_path=provided_pop_ht_path,
             num_ancestry_pcs=num_ancestry_pcs,
-            tmp_bucket=join(sample_qc_bucket, 'tmp'),
-            out_analysis_bucket=out_analysis_bucket,
-            out_web_bucket=out_web_bucket,
+            tmp_bucket=tmp_bucket,
+            ancestry_bucket=analysis_bucket,
+            web_bucket=web_bucket,
             overwrite=overwrite,
             scatter_count=scatter_count,
             depends_on=[flag_related_job],
@@ -634,8 +627,8 @@ def _add_ancestry_jobs(
     provided_pop_ht_path: str,
     num_ancestry_pcs: int,
     tmp_bucket: str,
-    out_analysis_bucket: str,
-    out_web_bucket: str,
+    ancestry_bucket: str,
+    web_bucket: str,
     overwrite: bool,
     scatter_count: int,
     pop: Optional[str] = None,
@@ -650,8 +643,8 @@ def _add_ancestry_jobs(
     """
     pop_tag = pop or 'all'
 
-    ancestry_analysis_bucket = join(out_analysis_bucket, 'ancestry', pop_tag)
-    ancestry_web_bucket = join(out_web_bucket, 'ancestry', pop_tag)
+    ancestry_analysis_bucket = join(ancestry_bucket, pop_tag)
+    ancestry_web_bucket = join(web_bucket, 'ancestry', pop_tag)
 
     eigenvalues_path = join(ancestry_analysis_bucket, f'eigenvalues_{pop_tag}.txt')
     scores_ht_path = join(ancestry_analysis_bucket, f'scores_{pop_tag}.ht')
@@ -716,7 +709,7 @@ def _add_ancestry_jobs(
 
 
 def find_inputs(
-    output_bucket: str,
+    tmp_bucket: str,
     overwrite: bool,
     input_projects: List[str],
     is_test: bool,
@@ -725,7 +718,7 @@ def find_inputs(
     """
     Find inputs, make a sample data DataFrame, save to a TSV file
     """
-    output_tsv_path = join(output_bucket, 'samples.tsv')
+    output_tsv_path = join(tmp_bucket, 'samples.tsv')
 
     if utils.can_reuse(output_tsv_path, overwrite):
         logger.info(f'Reading already found DB inputs from {output_tsv_path}')
