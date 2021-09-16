@@ -70,10 +70,10 @@ GNOMAD_HT_PATH = (
 )
 
 ANCESTRY_SITES_MTS = {
-    'all': f'{REF_BUCKET}/ancestry/gnomad_sites.mt',
-    'nfe': f'{REF_BUCKET}/ancestry/gnomad_sites_nfe.mt',
-    'test': f'{REF_BUCKET}/ancestry/gnomad_sites_test_hq.mt',
-    'test_nfe': f'{REF_BUCKET}/ancestry/gnomad_sites_test_nfe_hq.mt',
+    'all': f'{REF_BUCKET}/ancestry/v0/gnomad_sites.mt',
+    'nfe': f'{REF_BUCKET}/ancestry/v0/gnomad_sites_nfe.mt',
+    'test': f'{REF_BUCKET}/ancestry/v0/gnomad_sites_test.mt',
+    'test_nfe': f'{REF_BUCKET}/ancestry/v0/gnomad_sites_test_nfe.mt',
 }
 
 SCRIPTS_DIR = 'scripts'
