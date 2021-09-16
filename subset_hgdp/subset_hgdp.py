@@ -13,7 +13,7 @@ GNOMAD_HGDP_1KG_MT_PATH = (
     'gnomad.genomes.v3.1.hgdp_1kg_subset_dense.mt'
 )
 
-BUCKET = 'gs://cpg-reference/hg38/ancestry/v1'
+BUCKET = 'gs://cpg-reference/hg38/ancestry/v0'
 # - gnomad_sites.mt          - 105489 rows, 3942 cols
 # - gnomad_sites_test.mt     - 62247 rows, 52 cols
 # - gnomad_sites_test_nfe.mt - 23900 rows, 8 cols
