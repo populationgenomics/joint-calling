@@ -424,8 +424,8 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
         df = df.append(entry, ignore_index=True).set_index('s', drop=False)
 
     giab_samples = ['NA12878', 'NA12891', 'NA12892']
-    if not any(sn not in df.s for sn in giab_samples):
-        for sn in giab_samples:
+    for sn in giab_samples:
+        if sn not in df.s:
             cram = f'gs://cpg-reference/validation/giab/cram/{sn}.cram'
             entry = default_entry.copy()
             entry.update(
