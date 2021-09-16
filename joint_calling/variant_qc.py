@@ -38,13 +38,13 @@ def add_variant_qc_jobs(
     """
     Add variant QC related hail-query jobs
     """
-    max_age = '2h' if is_test else '24h'
-    cluster = dataproc.setup_dataproc(
+    max_age = '1h' if is_test else '12h'
+    cluster1 = dataproc.setup_dataproc(
         b,
         max_age=max_age,
         packages=utils.DATAPROC_PACKAGES,
         num_secondary_workers=scatter_count,
-        cluster_name='VarQC',
+        cluster_name='VarQC1',
         depends_on=depends_on,
     )
 
@@ -62,7 +62,7 @@ def add_variant_qc_jobs(
     if any(
         not utils.can_reuse(fp, overwrite) for fp in [info_ht_path, info_split_ht_path]
     ):
-        info_job = cluster.add_job(
+        info_job = cluster1.add_job(
             f'{utils.SCRIPTS_DIR}/generate_info_ht.py --overwrite '
             f'--mt {raw_combined_mt_path} '
             f'--out-info-ht {info_ht_path} '
@@ -74,12 +74,22 @@ def add_variant_qc_jobs(
     else:
         info_job = b.new_job(f'{job_name} [reuse]')
 
+    max_age = '1h' if is_test else '12h'
+    cluster2 = dataproc.setup_dataproc(
+        b,
+        max_age=max_age,
+        packages=utils.DATAPROC_PACKAGES,
+        num_secondary_workers=scatter_count,
+        cluster_name='VarQC2',
+        depends_on=depends_on,
+    )
+
     job_name = 'Var QC: generate annotations'
     if any(
         not utils.can_reuse(fp, overwrite)
         for fp in [allele_data_ht_path, qc_ac_ht_path]
     ):
-        var_qc_anno_job = cluster.add_job(
+        var_qc_anno_job = cluster2.add_job(
             f'{utils.SCRIPTS_DIR}/generate_variant_qc_annotations.py '
             + f'{"--overwrite " if overwrite else ""}'
             + f'--mt {raw_combined_mt_path} '
@@ -98,10 +108,20 @@ def add_variant_qc_jobs(
     else:
         var_qc_anno_job = b.new_job(f'{job_name} [reuse]')
 
+    max_age = '2h' if is_test else '24h'
+    cluster3 = dataproc.setup_dataproc(
+        b,
+        max_age=max_age,
+        packages=utils.DATAPROC_PACKAGES,
+        num_secondary_workers=scatter_count,
+        cluster_name='VarQC3',
+        depends_on=depends_on,
+    )
+
     job_name = 'Var QC: generate frequencies'
     freq_ht_path = join(work_bucket, 'frequencies.ht')
     if overwrite or not utils.file_exists(freq_ht_path):
-        freq_job = cluster.add_job(
+        freq_job = cluster3.add_job(
             f'{utils.SCRIPTS_DIR}/generate_freq_data.py --overwrite '
             f'--mt {raw_combined_mt_path} '
             f'--hard-filtered-samples-ht {hard_filter_ht_path} '
@@ -118,7 +138,7 @@ def add_variant_qc_jobs(
     job_name = 'Var QC: create RF annotations'
     rf_annotations_ht_path = join(work_bucket, 'rf-annotations.ht')
     if overwrite or not utils.file_exists(rf_annotations_ht_path):
-        rf_anno_job = cluster.add_job(
+        rf_anno_job = cluster3.add_job(
             f'{utils.SCRIPTS_DIR}/create_rf_annotations.py --overwrite '
             f'--info-split-ht {info_split_ht_path} '
             f'--freq-ht {freq_ht_path} '
@@ -136,20 +156,11 @@ def add_variant_qc_jobs(
         rf_anno_job = b.new_job(f'{job_name} [reuse]')
 
     if run_rf:
-        max_age = '2h' if is_test else '24h'
-        cluster = dataproc.setup_dataproc(
-            b,
-            max_age=max_age,
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            cluster_name=f'RF',
-        )
-
         job_name = 'Random forest'
         rf_result_ht_path = join(work_bucket, 'rf-result.ht')
         rf_model_id = f'rf_{str(uuid.uuid4())[:8]}'
         if overwrite or not utils.file_exists(rf_result_ht_path):
-            rf_job = cluster.add_job(
+            rf_job = cluster3.add_job(
                 f'{utils.SCRIPTS_DIR}/random_forest.py --overwrite '
                 f'--annotations-ht {rf_annotations_ht_path} '
                 f'--bucket {work_bucket} '
@@ -158,13 +169,13 @@ def add_variant_qc_jobs(
                 f'--out-model-id {rf_model_id} ',
                 job_name=job_name,
             )
-            rf_job.depends_on(*rf_anno_job)
+            rf_job.depends_on(rf_anno_job)
         else:
             rf_job = b.new_job(f'{job_name} [reuse]')
 
         eval_job, final_filter_ht_path = make_rf_eval_jobs(
             b=b,
-            cluster=cluster,
+            cluster=cluster3,
             combined_mt_path=raw_combined_mt_path,
             info_split_ht_path=info_split_ht_path,
             rf_result_ht_path=rf_result_ht_path,
@@ -174,13 +185,13 @@ def add_variant_qc_jobs(
             rf_model_id=rf_model_id,
             work_bucket=rf_bucket,
             overwrite=overwrite,
-            depends_on=[rf_job],
+            depends_on=[rf_job, freq_job, rf_anno_job],
         )
 
     else:
         vqsred_vcf_path = join(vqsr_bucket, 'output.vcf.gz')
         if overwrite or not utils.file_exists(vqsred_vcf_path):
-            final_gathered_vcf_job = make_vqsr_jobs(
+            vqsr_vcf_job = make_vqsr_jobs(
                 b,
                 combined_mt_path=raw_combined_mt_path,
                 hard_filter_ht_path=hard_filter_ht_path,
@@ -195,21 +206,21 @@ def add_variant_qc_jobs(
                 overwrite=overwrite,
             )
         else:
-            final_gathered_vcf_job = b.new_job('AS-VQSR [reuse]')
+            vqsr_vcf_job = b.new_job('AS-VQSR [reuse]')
 
         max_age = '1h' if is_test else '12h'
-        cluster = dataproc.setup_dataproc(
+        cluster3 = dataproc.setup_dataproc(
             b,
             max_age=max_age,
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            cluster_name='VQSR-e',
-            depends_on=[final_gathered_vcf_job],
+            cluster_name='VQeval',
+            depends_on=[vqsr_vcf_job],
         )
         final_filter_ht_path = join(vqsr_bucket, 'final-filter.ht')
         eval_job = make_vqsr_eval_jobs(
             b=b,
-            cluster=cluster,
+            cluster=cluster3,
             combined_mt_path=raw_combined_mt_path,
             rf_annotations_ht_path=rf_annotations_ht_path,
             info_split_ht_path=info_split_ht_path,
@@ -220,15 +231,15 @@ def add_variant_qc_jobs(
             work_bucket=vqsr_bucket,
             analysis_bucket=join(web_bucket, 'vqsr'),
             overwrite=overwrite,
-            final_gathered_vcf_job=final_gathered_vcf_job,
+            final_gathered_vcf_job=vqsr_vcf_job,
             rf_anno_job=rf_anno_job,
             output_ht_path=final_filter_ht_path,
         )
-        eval_job.depends_on(final_gathered_vcf_job)
+        eval_job.depends_on(vqsr_vcf_job, rf_anno_job, info_job)
 
     job_name = 'Making final MT'
     if not utils.can_reuse(out_filtered_combined_mt_path, overwrite):
-        final_job = cluster.add_job(
+        final_job = cluster3.add_job(
             f'{utils.SCRIPTS_DIR}/make_finalised_mt.py --overwrite '
             f'--mt {raw_combined_mt_path} '
             f'--final-filter-ht {final_filter_ht_path} '
