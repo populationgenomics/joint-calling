@@ -607,6 +607,7 @@ def _add_sample_qc_jobs(
             pop=pca_pop,
             mt_union_hgdp_path=mt_union_hgdp_for_pca_path,
             provided_pop_ht_path=provided_pop_ht_path,
+            inferred_pop_ht_path=inferred_pop_ht_path,
             num_ancestry_pcs=num_ancestry_pcs,
             tmp_bucket=tmp_bucket,
             ancestry_bucket=analysis_bucket,
@@ -625,6 +626,7 @@ def _add_ancestry_jobs(
     cluster,
     mt_union_hgdp_path: str,
     provided_pop_ht_path: str,
+    inferred_pop_ht_path: str,
     num_ancestry_pcs: int,
     tmp_bucket: str,
     ancestry_bucket: str,
@@ -688,6 +690,7 @@ def _add_ancestry_jobs(
             f'--scores-ht {scores_ht_path} '
             f'--loadings-ht {loadings_ht_path} '
             f'--provided-pop-ht {provided_pop_ht_path} '
+            f'--inferred-pop-ht {inferred_pop_ht_path} '
             + f'--out-path-pattern {out_path_ptn} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             job_name=job_name,
