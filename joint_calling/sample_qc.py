@@ -416,16 +416,17 @@ def flag_related_samples(
     if utils.can_reuse(out_ht_path, overwrite):
         return hl.read_table(out_ht_path)
 
-    rank_ht = _compute_sample_rankings(
-        hard_filtered_samples_ht,
-        sex_ht,
-        use_qc_metrics_filters=regressed_metrics_ht is not None,
-        regressed_metrics_ht=regressed_metrics_ht,
-    ).checkpoint(
-        join(tmp_bucket, f'{label}_samples_rankings.ht'),
-        overwrite=overwrite,
-        _read_if_exists=not overwrite,
-    )
+    rankings_ht_path = join(tmp_bucket, f'{label}_samples_rankings.ht')
+    if utils.can_reuse(rankings_ht_path, overwrite):
+        rank_ht = hl.read_table(rankings_ht_path)
+    else:
+        rank_ht = _compute_sample_rankings(
+            hard_filtered_samples_ht,
+            sex_ht,
+            use_qc_metrics_filters=regressed_metrics_ht is not None,
+            regressed_metrics_ht=regressed_metrics_ht,
+        ).checkpoint(rankings_ht_path, overwrite=True)
+
     try:
         filtered_samples = hl.literal(
             rank_ht.aggregate(
@@ -436,6 +437,7 @@ def flag_related_samples(
         # Hail doesn't handle it with `aggregate` when none of
         # the samples is 'filtered'
         filtered_samples = hl.empty_array('tstr')
+
     samples_to_drop_ht = compute_related_samples_to_drop(
         relatedness_ht,
         rank_ht,
