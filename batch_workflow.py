@@ -454,6 +454,8 @@ def _add_sample_qc_jobs(
             job_name=job_name,
         )
         subset_for_pca_job.depends_on(combiner_job)
+        # To avoid submitting multiple jobs at the same time to the same cluster
+        subset_for_pca_job.depends_on(sample_qc_hardfilter_job)
     else:
         subset_for_pca_job = b.new_job(f'{job_name} [reuse]')
 
@@ -518,20 +520,34 @@ def _add_sample_qc_jobs(
     else:
         flag_related_job = b.new_job(f'{job_name} [reuse]')
 
-    pca_job, pca_scores_ht_path = _add_ancestry_jobs(
-        b=b,
-        cluster=cluster_after_pc_relate,
-        mt_union_hgdp_path=mt_union_hgdp_for_pca_path,
-        provided_pop_ht_path=provided_pop_ht_path,
-        num_ancestry_pcs=num_ancestry_pcs,
-        tmp_bucket=tmp_bucket,
-        ancestry_bucket=analysis_bucket,
-        web_bucket=web_bucket,
-        overwrite=overwrite,
-        depends_on=[flag_related_job],
-        related_samples_to_drop_ht_path=intermediate_related_samples_to_drop_ht_path,
-        billing_project=billing_project,
-    )
+    pop_tag = 'all'
+    job_name = f'PCA ({pop_tag})'
+    ancestry_analysis_bucket = join(ancestry_bucket, pop_tag)
+    ancestry_web_bucket = join(web_bucket, 'ancestry', pop_tag)
+    eigenvalues_path = join(ancestry_analysis_bucket, f'eigenvalues_{pop_tag}.txt')
+    scores_ht_path = join(ancestry_analysis_bucket, f'scores_{pop_tag}.ht')
+    loadings_ht_path = join(ancestry_analysis_bucket, f'loadings_{pop_tag}.ht')
+    if not can_reuse([eigenvalues_path, scores_ht_path, loadings_ht_path], overwrite):
+        pca_job = cluster_after_pc_relate.add_job(
+            f'{utils.SCRIPTS_DIR}/ancestry_pca.py '
+            f'--hgdp-union-mt {mt_union_hgdp_for_pca_path} '
+            f'--n-pcs {num_ancestry_pcs} '
+            f'--out-eigenvalues {eigenvalues_path} '
+            f'--out-scores-ht {scores_ht_path} '
+            f'--out-loadings-ht {loadings_ht_path} '
+            + (
+                f'--related-samples-to-drop-ht {intermediate_related_samples_to_drop_ht_path} '
+                if intermediate_related_samples_to_drop_ht_path
+                else ''
+            )
+            + f'--tmp-bucket {join(tmp_bucket, pop_tag)} '
+            + (f'--overwrite ' if overwrite else '')
+            + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            job_name=job_name,
+        )
+        pca_job.depends_on(flag_related_job)
+    else:
+        pca_job = b.new_job(f'{job_name} [reuse]')
 
     inferred_pop_ht_path = join(ancestry_bucket, 'inferred_pop.ht')
     regressed_metrics_ht_path = join(sample_qc_bucket, 'regressed_metrics.ht')
@@ -545,7 +561,7 @@ def _add_sample_qc_jobs(
     ):
         regressed_filters_job = cluster_after_pc_relate.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_regressed_filters.py '
-            f'--pca-scores-ht {pca_scores_ht_path} '
+            f'--pca-scores-ht {scores_ht_path} '
             f'--provided-pop-ht {provided_pop_ht_path} '
             f'--hail-sample-qc-ht {hail_sample_qc_ht_path} '
             f'{filter_cutoffs_param} '
@@ -562,6 +578,30 @@ def _add_sample_qc_jobs(
         )
     else:
         regressed_filters_job = b.new_job(f'{job_name} [reuse]')
+
+    job_name = f'Plot PCA and loadings ({pop_tag})'
+    out_path_ptn = join(ancestry_web_bucket, '{scope}_pc{pci}.{ext}')
+    paths = []
+    for scope in ['study', 'continental_pop', 'subpop', 'loadings']:
+        for ext in ['png', 'html']:
+            paths.append(
+                out_path_ptn.format(scope=scope, pci=num_ancestry_pcs - 1, ext=ext)
+            )
+    if not can_reuse(paths, overwrite):
+        plot_job = cluster_after_pc_relate.add_job(
+            f'{join(utils.SCRIPTS_DIR, "ancestry_plot.py")} '
+            f'--eigenvalues {eigenvalues_path} '
+            f'--scores-ht {scores_ht_path} '
+            f'--loadings-ht {loadings_ht_path} '
+            f'--provided-pop-ht {provided_pop_ht_path} '
+            f'--inferred-pop-ht {inferred_pop_ht_path} '
+            + f'--out-path-pattern {out_path_ptn} '
+            + (f'--hail-billing {billing_project} ' if billing_project else ''),
+            job_name=job_name,
+        )
+        plot_job.depends_on(pca_job)
+    else:
+        b.new_job(f'{job_name} [reuse]')
 
     job_name = f'Write sample QC metadata'
     meta_ht_path = join(analysis_bucket, 'meta.ht')
@@ -601,105 +641,63 @@ def _add_sample_qc_jobs(
         metadata_qc_job = b.new_job(f'{job_name} [reuse]')
 
     if pca_pop:
-        _add_ancestry_jobs(
-            b=b,
-            cluster=cluster_after_pc_relate,
-            pop=pca_pop,
-            mt_union_hgdp_path=mt_union_hgdp_for_pca_path,
-            provided_pop_ht_path=provided_pop_ht_path,
-            inferred_pop_ht_path=inferred_pop_ht_path,
-            num_ancestry_pcs=num_ancestry_pcs,
-            tmp_bucket=tmp_bucket,
-            ancestry_bucket=analysis_bucket,
-            web_bucket=web_bucket,
-            overwrite=overwrite,
-            depends_on=[flag_related_job],
-            related_samples_to_drop_ht_path=intermediate_related_samples_to_drop_ht_path,
-            billing_project=billing_project,
-        )
+        pop_tag = pca_pop
+        ancestry_analysis_bucket = join(ancestry_bucket, pop_tag)
+        ancestry_web_bucket = join(web_bucket, 'ancestry', pop_tag)
+        job_name = f'PCA ({pop_tag})'
+        eigenvalues_path = join(ancestry_analysis_bucket, f'eigenvalues_{pop_tag}.txt')
+        scores_ht_path = join(ancestry_analysis_bucket, f'scores_{pop_tag}.ht')
+        loadings_ht_path = join(ancestry_analysis_bucket, f'loadings_{pop_tag}.ht')
+        if not can_reuse(
+            [eigenvalues_path, scores_ht_path, loadings_ht_path], overwrite
+        ):
+            pca_job = cluster_after_pc_relate.add_job(
+                f'{utils.SCRIPTS_DIR}/ancestry_pca.py '
+                f'--hgdp-union-mt {mt_union_hgdp_for_pca_path} '
+                f'--pop {pca_pop} '
+                f'--n-pcs {num_ancestry_pcs} '
+                f'--out-eigenvalues {eigenvalues_path} '
+                f'--out-scores-ht {scores_ht_path} '
+                f'--out-loadings-ht {loadings_ht_path} '
+                + (
+                    f'--related-samples-to-drop-ht {intermediate_related_samples_to_drop_ht_path} '
+                    if intermediate_related_samples_to_drop_ht_path
+                    else ''
+                )
+                + f'--tmp-bucket {join(tmp_bucket, pop_tag)} '
+                + (f'--overwrite ' if overwrite else '')
+                + (f'--hail-billing {billing_project} ' if billing_project else ''),
+                job_name=job_name,
+            )
+            pca_job.depends_on(flag_related_job)
+        else:
+            pca_job = b.new_job(f'{job_name} [reuse]')
+
+        job_name = f'Plot PCA and loadings ({pca_pop})'
+        out_path_ptn = join(ancestry_web_bucket, '{scope}_pc{pci}.{ext}')
+        paths = []
+        for scope in ['study', 'continental_pop', 'subpop', 'loadings']:
+            for ext in ['png', 'html']:
+                paths.append(
+                    out_path_ptn.format(scope=scope, pci=num_ancestry_pcs - 1, ext=ext)
+                )
+        if not can_reuse(paths, overwrite):
+            plot_job = cluster_after_pc_relate.add_job(
+                f'{join(utils.SCRIPTS_DIR, "ancestry_plot.py")} '
+                f'--eigenvalues {eigenvalues_path} '
+                f'--scores-ht {scores_ht_path} '
+                f'--loadings-ht {loadings_ht_path} '
+                f'--provided-pop-ht {provided_pop_ht_path} '
+                f'--inferred-pop-ht {inferred_pop_ht_path} '
+                + f'--out-path-pattern {out_path_ptn} '
+                + (f'--hail-billing {billing_project} ' if billing_project else ''),
+                job_name=job_name,
+            )
+            plot_job.depends_on(pca_job)
+        else:
+            b.new_job(f'{job_name} [reuse]')
 
     return metadata_qc_job, hard_filtered_samples_ht_path, meta_ht_path
-
-
-def _add_ancestry_jobs(
-    b: hb.Batch,
-    cluster,
-    mt_union_hgdp_path: str,
-    provided_pop_ht_path: str,
-    inferred_pop_ht_path: str,
-    num_ancestry_pcs: int,
-    tmp_bucket: str,
-    ancestry_bucket: str,
-    web_bucket: str,
-    overwrite: bool,
-    pop: Optional[str] = None,
-    depends_on: Optional[List[Job]] = None,
-    related_samples_to_drop_ht_path: Optional[str] = None,
-    billing_project: Optional[str] = None,
-) -> Tuple[Job, str]:
-    """
-    Run PCA and make PCA and loadings plots.
-
-    Returns the PCA job, and the path to PCA scores Table
-    """
-    pop_tag = pop or 'all'
-
-    ancestry_analysis_bucket = join(ancestry_bucket, pop_tag)
-    ancestry_web_bucket = join(web_bucket, 'ancestry', pop_tag)
-
-    job_name = f'PCA ({pop or "all"})'
-    eigenvalues_path = join(ancestry_analysis_bucket, f'eigenvalues_{pop_tag}.txt')
-    scores_ht_path = join(ancestry_analysis_bucket, f'scores_{pop_tag}.ht')
-    loadings_ht_path = join(ancestry_analysis_bucket, f'loadings_{pop_tag}.ht')
-    if not can_reuse([eigenvalues_path, scores_ht_path, loadings_ht_path], overwrite):
-        pca_job = cluster.add_job(
-            f'{utils.SCRIPTS_DIR}/ancestry_pca.py '
-            + f'--hgdp-union-mt {mt_union_hgdp_path} '
-            + (f'--pop {pop} ' if pop else '')
-            + f'--n-pcs {num_ancestry_pcs} '
-            f'--out-eigenvalues {eigenvalues_path} '
-            f'--out-scores-ht {scores_ht_path} '
-            f'--out-loadings-ht {loadings_ht_path} '
-            + (
-                f'--related-samples-to-drop-ht {related_samples_to_drop_ht_path} '
-                if related_samples_to_drop_ht_path
-                else ''
-            )
-            + f'--tmp-bucket {tmp_bucket} '
-            + (f'--overwrite ' if overwrite else '')
-            + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            job_name=job_name,
-        )
-        if depends_on:
-            pca_job.depends_on(*depends_on)
-    else:
-        pca_job = b.new_job(f'{job_name} [reuse]')
-
-    job_name = f'Plot PCA and loadings ({pop_tag})'
-    out_path_ptn = join(ancestry_web_bucket, '{scope}_pc{pci}.{ext}')
-    paths = []
-    for scope in ['study', 'continental_pop', 'subpop', 'loadings']:
-        for ext in ['png', 'html']:
-            paths.append(
-                out_path_ptn.format(scope=scope, pci=num_ancestry_pcs - 1, ext=ext)
-            )
-    if not can_reuse(paths, overwrite):
-        plot_job = cluster.add_job(
-            f'{join(utils.SCRIPTS_DIR, "ancestry_plot.py")} '
-            f'--eigenvalues {eigenvalues_path} '
-            f'--scores-ht {scores_ht_path} '
-            f'--loadings-ht {loadings_ht_path} '
-            f'--provided-pop-ht {provided_pop_ht_path} '
-            f'--inferred-pop-ht {inferred_pop_ht_path} '
-            + f'--out-path-pattern {out_path_ptn} '
-            + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            job_name=job_name,
-        )
-        plot_job.depends_on(pca_job)
-    else:
-        b.new_job(f'{job_name} [reuse]')
-
-    return pca_job, scores_ht_path
 
 
 def find_inputs(
