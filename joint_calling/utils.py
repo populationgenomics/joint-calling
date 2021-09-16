@@ -25,7 +25,8 @@ logger.setLevel(logging.INFO)
 
 DEFAULT_REF = 'GRCh38'
 
-REF_BUCKET = 'gs://cpg-reference/hg38/v1'
+REF_BUCKET = 'gs://cpg-reference/hg38'
+GATK_REF_BUCKET = f'{REF_BUCKET}/v1'
 
 DATAPROC_PACKAGES = [
     'joint-calling',
@@ -51,27 +52,28 @@ SM_IMAGE = f'{AR_REPO}/sm-api:2.0.3'
 ALIGNMENT_IMAGE = f'{AR_REPO}/alignment:v4'
 PICARD_IMAGE = f'{AR_REPO}/picard-cloud:2.23.8'
 
-REF_FASTA = join(REF_BUCKET, 'Homo_sapiens_assembly38.fasta')
-UNPADDED_INTERVALS = join(REF_BUCKET, 'hg38.even.handcurated.20k.intervals')
-NOALT_REGIONS = join(REF_BUCKET, 'noalt.bed')
+REF_FASTA = join(GATK_REF_BUCKET, 'Homo_sapiens_assembly38.fasta')
+UNPADDED_INTERVALS = join(GATK_REF_BUCKET, 'hg38.even.handcurated.20k.intervals')
+NOALT_REGIONS = join(GATK_REF_BUCKET, 'noalt.bed')
 TEL_AND_CENT_HT_PATH = join(
-    REF_BUCKET, 'gnomad/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht'
+    GATK_REF_BUCKET,
+    'gnomad/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht',
 )
-LCR_INTERVALS_HT_PATH = join(REF_BUCKET, 'gnomad/lcr_intervals/LCRFromHengHg38.ht')
+LCR_INTERVALS_HT_PATH = join(GATK_REF_BUCKET, 'gnomad/lcr_intervals/LCRFromHengHg38.ht')
 SEG_DUP_INTERVALS_HT_PATH = join(
-    REF_BUCKET, 'gnomad/seg_dup_intervals/GRCh38_segdups.ht'
+    GATK_REF_BUCKET, 'gnomad/seg_dup_intervals/GRCh38_segdups.ht'
 )
-CLINVAR_HT_PATH = join(REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
+CLINVAR_HT_PATH = join(GATK_REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
 
 GNOMAD_HT_PATH = (
     'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'
 )
 
-GNOMAD_HGDP_FOR_PCA = {
-    'all': f'{REF_BUCKET}/mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_hq.mt',
-    'nfe': f'{REF_BUCKET}/mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_nfe_hq.mt',
-    'test': f'{REF_BUCKET}/mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_test_hq.mt',
-    'test_nfe': f'{REF_BUCKET}/mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_test_nfe_hq.mt',
+ANCESTRY_SITES_MTS = {
+    'all': f'{REF_BUCKET}/ancestry/gnomad_sites.mt',
+    'nfe': f'{REF_BUCKET}/ancestry/gnomad_sites_nfe.mt',
+    'test': f'{REF_BUCKET}/ancestry/gnomad_sites_test.mt',
+    'test_nfe': f'{REF_BUCKET}/ancestry/gnomad_sites_test_nfe.mt',
 }
 
 SCRIPTS_DIR = 'scripts'

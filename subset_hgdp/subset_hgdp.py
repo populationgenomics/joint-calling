@@ -12,7 +12,7 @@ GNOMAD_HGDP_1KG_MT_PATH = (
     'gnomad.genomes.v3.1.hgdp_1kg_subset_dense.mt'
 )
 
-BASE_NAME = 'gs://cpg-reference/hg38/ancestry/gnomad_sites'
+REF_BUCKET = 'gs://cpg-reference/hg38'
 
 NUM_TEST_SAMPLES = 50
 
@@ -26,12 +26,18 @@ def main(
 ):  # pylint: disable=missing-function-docstring
     hl.init(default_reference='GRCh38')
     mt = hl.read_matrix_table(GNOMAD_HGDP_1KG_MT_PATH)
-    suf = ''
+
+    if is_test and pop:
+        out_fpath = f'{REF_BUCKET}/ancestry/gnomad_sites_test_{pop}.mt'
+    elif is_test and not pop:
+        out_fpath = f'{REF_BUCKET}/ancestry/gnomad_sites_test.mt'
+    elif not is_test and pop:
+        out_fpath = f'{REF_BUCKET}/ancestry/gnomad_sites_{pop}.mt'
+    else:
+        out_fpath = f'{REF_BUCKET}/ancestry/gnomad_sites.mt'
 
     if is_test:
         # Subset to 50 samples
-        suf = 'test'
-        out_fpath = f'{BASE_NAME}_{suf}.mt'
         if not hl.hadoop_exists(out_fpath):
             ncols = mt.count_cols()
             target_ncols = 50
@@ -43,16 +49,12 @@ def main(
         mt = mt.repartition(1000, shuffle=False)
 
     if pop:
-        suf = f'{suf}_{pop}'
-        out_fpath = f'{BASE_NAME}_{suf}.mt'
         if not hl.hadoop_exists(out_fpath):
             # Get samples from the specified population only
             mt = mt.filter_cols(mt.population_inference.pop == pop.lower())
             mt.write(out_fpath, overwrite=True)
         mt = hl.read_matrix_table(out_fpath)
 
-    suf = f'{suf}_hq'
-    out_fpath = f'{BASE_NAME}_{suf}.mt'
     if not hl.hadoop_exists(out_fpath):
         filter_high_quality_sites(
             mt,

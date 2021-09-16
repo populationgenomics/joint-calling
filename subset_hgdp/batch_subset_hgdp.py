@@ -22,7 +22,7 @@ make_full_hq_j = dataproc.hail_dataproc_job(
     max_age='12h',
     packages=['selenium'],
     init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
-    job_name='subset-gnomad-hgdp-1kg',
+    job_name='subset-gnomad-hgdp-1kg all',
     num_secondary_workers=50,
 )
 
@@ -32,7 +32,7 @@ make_test_hq_j = dataproc.hail_dataproc_job(
     max_age='12h',
     packages=['selenium'],
     init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
-    job_name='subset-gnomad-hgdp-1kg',
+    job_name='subset-gnomad-hgdp-1kg test',
     num_secondary_workers=50,
     depends_on=[make_full_hq_j],
 )
@@ -43,7 +43,7 @@ make_pop_hq_j = dataproc.hail_dataproc_job(
     max_age='12h',
     packages=['selenium'],
     init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
-    job_name='subset-gnomad-hgdp-1kg',
+    job_name=f'subset-gnomad-hgdp-1kg {POP}',
     num_secondary_workers=50,
     depends_on=[make_full_hq_j],
 )
@@ -54,7 +54,7 @@ dataproc.hail_dataproc_job(
     max_age='12h',
     packages=['selenium'],
     init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
-    job_name='subset-gnomad-hgdp-1kg',
+    job_name=f'subset-gnomad-hgdp-1kg test {POP}',
     num_secondary_workers=50,
     depends_on=[make_test_hq_j],
 )

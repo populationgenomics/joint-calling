@@ -111,27 +111,33 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     input_metadata_ht = utils.parse_input_metadata(meta_csv_path, local_tmp_dir)
 
-    if pop and pop in utils.GNOMAD_HGDP_FOR_PCA:
+    if pop and pop in utils.ANCESTRY_SITES_MTS:
         if is_test:
-            hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_FOR_PCA[f'test_{pop}'])
+            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS[f'test_{pop}'])
         else:
-            hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_FOR_PCA[pop])
+            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS[pop])
     else:
         if is_test:
-            hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_FOR_PCA['test'])
+            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS['test'])
         else:
-            hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_FOR_PCA['all'])
+            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS['all'])
+    logger.info(f'124 hgdp_mt cols: {hgdp_mt.count_cols()}')
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
+    logger.info(f'127 mt cols: {mt.count_cols()}')
     # Subset to biallelic SNPs in autosomes
     mt = mt.filter_rows(
         (hl.len(mt.alleles) == 2)
         & hl.is_snp(mt.alleles[0], mt.alleles[1])
         & (mt.locus.in_autosome())
     )
+    logger.info(f'134 mt cols: {mt.count_cols()}')
     mt = mt.key_rows_by('locus', 'alleles')
+    logger.info(f'136 mt cols: {mt.count_cols()}')
     mt = hl.experimental.densify(mt)  # drops mt.END
+    logger.info(f'138 mt cols: {mt.count_cols()}')
     mt = mt.select_entries(GT=lgt_to_gt(mt.LGT, mt.LA))
+    logger.info(f'140 mt cols: {mt.count_cols()}')
 
     if pre_computed_hgdp_union_mt_path:
         hgdp_union_mt = hl.read_matrix_table(pre_computed_hgdp_union_mt_path)
@@ -169,6 +175,7 @@ def _make_provided_pop_ht(
     if utils.can_reuse(out_provided_pop_ht_path, overwrite):
         return hl.read_table(out_provided_pop_ht_path)
     ht = hgdp_union_mt.cols().select_globals().select()
+    logger.info(f'178: {ht.count()}')
     ht = ht.annotate(
         project=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), 'gnomad')
@@ -184,6 +191,7 @@ def _make_provided_pop_ht(
         .when(hl.is_defined(hgdp_ht[ht.s]), hgdp_ht[ht.s].labeled_subpop)
         .default(''),
     )
+    logger.info(f'194: {ht.count()}')
     return ht.checkpoint(out_provided_pop_ht_path, overwrite=overwrite)
 
 
@@ -208,16 +216,22 @@ def get_sites_shared_with_hgdp(
 
     # Entries and columns must be identical, so stripping all column-level data,
     # and all entry-level data except GT.
+    logger.info(f'219 mt cols: {mt.count_cols()}')
     mt = mt.select_entries('GT')
+    logger.info(f'221 mt cols: {mt.count_cols()}')
     hgdp_cols_ht = hgdp_mt.cols()  # saving the column data to re-add later
+    logger.info(f'223 hgdp_cols_ht cols: {hgdp_cols_ht.count()}')
     hgdp_mt = hgdp_mt.select_entries(hgdp_mt.GT).select_cols()
+    logger.info(f'225 hgdp_mt cols: {hgdp_mt.count_cols()}')
 
     # Join samples between two datasets. It will also subset rows to the rows
     # shared between datasets.
     mt = hgdp_mt.union_cols(mt)
+    logger.info(f'230 mt cols: {mt.count_cols()}')
 
     # Add in back the sample-level metadata
     mt = mt.annotate_cols(hgdp_1kg_metadata=hgdp_cols_ht[mt.s])
+    logger.info(f'234 mt cols: {mt.count_cols()}')
 
     if out_mt_path:
         mt.write(out_mt_path, overwrite=True)
