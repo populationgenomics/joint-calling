@@ -38,12 +38,13 @@ def add_variant_qc_jobs(
     """
     Add variant QC related hail-query jobs
     """
+    max_age = '2h' if is_test else '24h'
     cluster = dataproc.setup_dataproc(
         b,
-        max_age='2h' if is_test else '24h',
+        max_age=max_age,
         packages=utils.DATAPROC_PACKAGES,
         num_secondary_workers=scatter_count,
-        cluster_name='Variant QC',
+        cluster_name=f'Variant QC, max_age={max_age}, secondary-workers={scatter_count}',
     )
 
     rf_bucket = join(work_bucket, 'rf')
@@ -134,12 +135,13 @@ def add_variant_qc_jobs(
         rf_anno_job = b.new_job(f'{job_name} [reuse]')
 
     if run_rf:
+        max_age = '2h' if is_test else '24h'
         cluster = dataproc.setup_dataproc(
             b,
-            max_age='2h' if is_test else '12h',
+            max_age=max_age,
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            cluster_name='RF',
+            cluster_name=f'Random forest, max_age={max_age}, secondary-workers={scatter_count}',
         )
 
         job_name = 'Random forest'
@@ -194,12 +196,13 @@ def add_variant_qc_jobs(
         else:
             final_gathered_vcf_job = b.new_job('AS-VQSR [reuse]')
 
+        max_age = '1h' if is_test else '12h'
         cluster = dataproc.setup_dataproc(
             b,
-            max_age='1h' if is_test else '12h',
+            max_age=max_age,
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            cluster_name='AS-VQSR eval',
+            cluster_name=f'AS-VQSR eval, max_age={max_age}, secondary-workers={scatter_count}',
         )
         final_filter_ht_path = join(vqsr_bucket, 'final-filter.ht')
         eval_job = make_vqsr_eval_jobs(

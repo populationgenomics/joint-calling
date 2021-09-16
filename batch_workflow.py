@@ -381,12 +381,13 @@ def _add_sample_qc_jobs(
     else:
         filter_cutoffs_param = ''
 
+    max_age = '1h' if is_test else '12h'
     cluster_before_pc_relate = dataproc.setup_dataproc(
         b,
-        max_age='2h' if is_test else '24h',
+        max_age=max_age,
         packages=utils.DATAPROC_PACKAGES,
         num_secondary_workers=scatter_count,
-        cluster_name='Sample QC 1',
+        cluster_name=f'Sample QC 1, max_age={max_age}, secondary-workers={scatter_count}',
     )
 
     job_name = 'Sample QC hard filters'
@@ -458,33 +459,38 @@ def _add_sample_qc_jobs(
     job_name = 'Run pc_relate'
     relatedness_ht_path = join(relatedness_bucket, 'relatedness.ht')
     if not can_reuse(relatedness_ht_path, overwrite):
-        pcrelate_job = dataproc.hail_dataproc_job(
+        max_age = '1h' if is_test else '8h'
+        cluster = dataproc.setup_dataproc(
             b,
+            max_age=max_age,
+            packages=utils.DATAPROC_PACKAGES,
+            # Spark would have problems shuffling on pre-emptible workers
+            # (throw SparkException: Job aborted due to stage failure: ShuffleMapStage)
+            # so we use num_workers instead of num_secondary_workers here
+            num_workers=scatter_count,
+            cluster_name=f'pc_relate, max_age={max_age}, workers={scatter_count}',
+        )
+        pcrelate_job = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_pcrelate.py '
             + (f'--overwrite ' if overwrite else '')
             + f'--pca-mt {mt_for_pca_path} '
             f'--out-relatedness-ht {relatedness_ht_path} '
             f'--tmp-bucket {tmp_bucket} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            # Spark would have problems shuffling on pre-emptible workers
-            # (throw SparkException: Job aborted due to stage failure: ShuffleMapStage)
-            # so we use num_workers instead of num_secondary_workers here
-            num_workers=scatter_count,
-            depends_on=[subset_for_pca_job],
             job_name=job_name,
         )
+        pcrelate_job.depends_on(subset_for_pca_job)
     else:
         pcrelate_job = b.new_job(f'{job_name} [reuse]')
 
+    max_age = '2h' if is_test else '24h'
     cluster_after_pc_relate = dataproc.setup_dataproc(
         b,
-        max_age='2h' if is_test else '24h',
+        max_age=max_age,
         packages=utils.DATAPROC_PACKAGES + ['selenium'],
         num_secondary_workers=scatter_count,
         init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
-        cluster_name='Sample QC 2',
+        cluster_name=f'Sample QC 2, max_age={max_age}, secondary-workers={scatter_count}',
     )
 
     job_name = 'Sample QC flag related'
