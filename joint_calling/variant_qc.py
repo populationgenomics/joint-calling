@@ -286,7 +286,6 @@ def make_rf_eval_jobs(
     final_filter_ht_path = join(work_bucket, 'final-filter.ht')
     if overwrite or not utils.file_exists(final_filter_ht_path):
         final_filter_job = cluster.add_job(
-            b,
             f'{utils.SCRIPTS_DIR}/final_filter.py --overwrite '
             f'--out-final-filter-ht {final_filter_ht_path} '
             f'--model-id {rf_model_id} '
@@ -331,7 +330,6 @@ def make_vqsr_eval_jobs(
     vqsr_filters_split_ht_path = join(work_bucket, 'vqsr-filters-split.ht')
     if overwrite or not utils.file_exists(vqsr_filters_split_ht_path):
         load_vqsr_job = cluster.add_job(
-            b,
             f'{utils.SCRIPTS_DIR}/load_vqsr.py --overwrite '
             f'--split-multiallelic '
             f'--out-path {vqsr_filters_split_ht_path} '
