@@ -313,8 +313,8 @@ def _truth_concordance(
         logger.info('Filtering out low confidence regions and segdups...')
         lcr = hl.read_table(utils.LCR_INTERVALS_HT_PATH)
         segdup = hl.read_table(utils.SEG_DUP_INTERVALS_HT_PATH)
-        ht = ht.filter(hl.is_missing(lcr[mt.locus]))
-        ht = ht.filter(hl.is_missing(segdup[mt.locus]))
+        ht = ht.filter(hl.is_missing(lcr[ht.locus]))
+        ht = ht.filter(hl.is_missing(segdup[ht.locus]))
 
         logger.info(
             'Loading HT containing RF or VQSR scores annotated with a bin based '
