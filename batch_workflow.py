@@ -387,7 +387,8 @@ def _add_sample_qc_jobs(
         max_age=max_age,
         packages=utils.DATAPROC_PACKAGES,
         num_secondary_workers=scatter_count,
-        cluster_name=f'SamQC2',
+        cluster_name=f'SamQC1',
+        depends_on=[combiner_job],
     )
 
     job_name = 'Sample QC hard filters'
@@ -468,7 +469,8 @@ def _add_sample_qc_jobs(
             # (throw SparkException: Job aborted due to stage failure: ShuffleMapStage)
             # so we use num_workers instead of num_secondary_workers here
             num_workers=scatter_count,
-            cluster_name=f'pc_rel',
+            cluster_name='pc_rel',
+            depends_on=[subset_for_pca_job],
         )
         pcrelate_job = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_pcrelate.py '
@@ -490,7 +492,8 @@ def _add_sample_qc_jobs(
         packages=utils.DATAPROC_PACKAGES + ['selenium'],
         num_secondary_workers=scatter_count,
         init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
-        cluster_name=f'SamQC1',
+        cluster_name='SamQC2',
+        depends_on=[sample_qc_hardfilter_job, pcrelate_job],
     )
 
     job_name = 'Sample QC flag related'

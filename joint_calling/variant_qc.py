@@ -44,7 +44,8 @@ def add_variant_qc_jobs(
         max_age=max_age,
         packages=utils.DATAPROC_PACKAGES,
         num_secondary_workers=scatter_count,
-        cluster_name=f'VarQC',
+        cluster_name='VarQC',
+        depends_on=depends_on,
     )
 
     rf_bucket = join(work_bucket, 'rf')
@@ -202,7 +203,8 @@ def add_variant_qc_jobs(
             max_age=max_age,
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            cluster_name=f'VQSR-e',
+            cluster_name='VQSR-e',
+            depends_on=[final_gathered_vcf_job],
         )
         final_filter_ht_path = join(vqsr_bucket, 'final-filter.ht')
         eval_job = make_vqsr_eval_jobs(
@@ -222,6 +224,7 @@ def add_variant_qc_jobs(
             rf_anno_job=rf_anno_job,
             output_ht_path=final_filter_ht_path,
         )
+        eval_job.depends_on(final_gathered_vcf_job)
 
     job_name = 'Making final MT'
     if not utils.can_reuse(out_filtered_combined_mt_path, overwrite):
@@ -320,7 +323,7 @@ def make_vqsr_eval_jobs(
     final_gathered_vcf_job: Job,
     rf_anno_job: Job,
     output_ht_path: str,
-) -> Tuple[Job, str]:
+) -> Job:
     """
     Make jobs that do evaluation VQSR model and applies the final filters
 
