@@ -286,37 +286,22 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         pre_computed_hgdp_unuon_mt_path=pre_computed_hgdp_unuon_mt_path,
     )
 
-    var_qc_job, vqsr_final_filter_ht = add_variant_qc_jobs(
+    var_qc_job = add_variant_qc_jobs(
         b=b,
         work_bucket=join(tmp_bucket, 'variant_qc'),
         web_bucket=join(web_bucket, 'variant_qc'),
         raw_combined_mt_path=raw_combined_mt_path,
         hard_filter_ht_path=hard_filter_ht_path,
         meta_ht_path=meta_ht_path,
+        out_filtered_combined_mt_path=filtered_combined_mt_path,
         sample_count=len(samples_df),
         ped_file=ped_file,
         overwrite=overwrite,
         vqsr_params_d=utils.get_filter_cutoffs(filter_cutoffs_path)['vqsr'],
         scatter_count=scatter_count,
+        is_test=output_namespace in ['test', 'tmp'],
         depends_on=[sample_qc_job],
     )
-
-    if not can_reuse(filtered_combined_mt_path, overwrite):
-        var_qc_job = dataproc.hail_dataproc_job(
-            b,
-            f'{utils.SCRIPTS_DIR}/make_finalised_mt.py --overwrite '
-            f'--mt {raw_combined_mt_path} '
-            f'--final-filter-ht {vqsr_final_filter_ht} '
-            f'--out-mt {filtered_combined_mt_path} '
-            f'--meta-ht {meta_ht_path} ',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=[var_qc_job, combiner_job],
-            job_name='Making final MT',
-        )
-    else:
-        var_qc_job = b.new_job('Making final MT [reuse]')
 
     # Interacting with the sample metadata server.
     aapi = AnalysisApi()
@@ -396,6 +381,15 @@ def _add_sample_qc_jobs(
     else:
         filter_cutoffs_param = ''
 
+    cluster_before_pc_relate = dataproc.setup_dataproc(
+        b,
+        max_age='2h' if is_test else '24h',
+        packages=utils.DATAPROC_PACKAGES,
+        num_secondary_workers=scatter_count,
+        cluster_name='Sample QC 1',
+    )
+
+    job_name = 'Sample QC hard filters'
     hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filtered_samples.ht')
     sex_ht_path = join(sample_qc_bucket, 'sex.ht')
     hail_sample_qc_ht_path = join(sample_qc_bucket, 'hail_sample_qc.ht')
@@ -409,8 +403,7 @@ def _add_sample_qc_jobs(
         ],
         overwrite,
     ):
-        sample_qc_hardfilter_job = dataproc.hail_dataproc_job(
-            b,
+        sample_qc_hardfilter_job = cluster_before_pc_relate.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_hard_filters.py '
             f'--mt {mt_path} '
             f'--meta-csv {samples_csv_path} '
@@ -422,15 +415,13 @@ def _add_sample_qc_jobs(
             f'--tmp-bucket {tmp_bucket} '
             + (f'--overwrite ' if overwrite else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=[combiner_job],
-            job_name='Sample QC hard filters',
+            job_name=job_name,
         )
+        sample_qc_hardfilter_job.depends_on(combiner_job)
     else:
-        sample_qc_hardfilter_job = b.new_job(f'Sample QC hard filters [reuse]')
+        sample_qc_hardfilter_job = b.new_job(f'{job_name} [reuse]')
 
+    job_name = 'Subset MT for PCA'
     mt_union_hgdp_for_pca_path = join(ancestry_bucket, 'mt_union_hgdp_for_pca.mt')
     mt_for_pca_path = join(ancestry_bucket, 'mt_for_pca.mt')
     provided_pop_ht_path = join(ancestry_bucket, 'provided_pop.ht')
@@ -442,8 +433,7 @@ def _add_sample_qc_jobs(
         ],
         overwrite,
     ):
-        subset_for_pca_job = dataproc.hail_dataproc_job(
-            b,
+        subset_for_pca_job = cluster_before_pc_relate.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_subset_mt_for_pca.py '
             + (f'--overwrite ' if overwrite else '')
             + f'--mt {mt_path} '
@@ -459,15 +449,13 @@ def _add_sample_qc_jobs(
             + ('--is-test ' if is_test else '')
             + (f'--pop {pca_pop} ' if pca_pop else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=[combiner_job],
-            job_name='Subset MT for PCA',
+            job_name=job_name,
         )
+        subset_for_pca_job.depends_on(combiner_job)
     else:
-        subset_for_pca_job = b.new_job(f'Subset MT for PCA [reuse]')
+        subset_for_pca_job = b.new_job(f'{job_name} [reuse]')
 
+    job_name = 'Run pc_relate'
     relatedness_ht_path = join(relatedness_bucket, 'relatedness.ht')
     if not can_reuse(relatedness_ht_path, overwrite):
         pcrelate_job = dataproc.hail_dataproc_job(
@@ -485,18 +473,27 @@ def _add_sample_qc_jobs(
             # so we use num_workers instead of num_secondary_workers here
             num_workers=scatter_count,
             depends_on=[subset_for_pca_job],
-            job_name='Run pcrelate',
+            job_name=job_name,
         )
     else:
-        pcrelate_job = b.new_job(f'Run pcrelate [reuse]')
+        pcrelate_job = b.new_job(f'{job_name} [reuse]')
 
+    cluster_after_pc_relate = dataproc.setup_dataproc(
+        b,
+        max_age='2h' if is_test else '24h',
+        packages=utils.DATAPROC_PACKAGES + ['selenium'],
+        num_secondary_workers=scatter_count,
+        init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
+        cluster_name='Sample QC 2',
+    )
+
+    job_name = 'Sample QC flag related'
     intermediate_related_samples_to_drop_ht_path = join(
         relatedness_bucket, 'intermediate_related_samples_to_drop.ht'
     )
     if not can_reuse(intermediate_related_samples_to_drop_ht_path, overwrite):
         cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
-        flag_related_job = dataproc.hail_dataproc_job(
-            b,
+        flag_related_job = cluster_after_pc_relate.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_flag_related.py '
             f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
             f'--sex-ht {sex_ht_path} '
@@ -506,17 +503,15 @@ def _add_sample_qc_jobs(
             f'--max-kin {cutoffs_d["pca"]["max_kin"]} '
             + (f'--overwrite ' if overwrite else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=[sample_qc_hardfilter_job, pcrelate_job],
-            job_name='Sample QC flag related',
+            job_name=job_name,
         )
+        flag_related_job.depends_on(sample_qc_hardfilter_job, pcrelate_job)
     else:
-        flag_related_job = b.new_job(f'Sample QC flag related [reuse]')
+        flag_related_job = b.new_job(f'{job_name} [reuse]')
 
     pca_job, pca_scores_ht_path = _add_ancestry_jobs(
         b=b,
+        cluster=cluster_after_pc_relate,
         mt_union_hgdp_path=mt_union_hgdp_for_pca_path,
         provided_pop_ht_path=provided_pop_ht_path,
         num_ancestry_pcs=num_ancestry_pcs,
@@ -524,7 +519,6 @@ def _add_sample_qc_jobs(
         ancestry_bucket=analysis_bucket,
         web_bucket=web_bucket,
         overwrite=overwrite,
-        scatter_count=scatter_count,
         depends_on=[flag_related_job],
         related_samples_to_drop_ht_path=intermediate_related_samples_to_drop_ht_path,
         billing_project=billing_project,
@@ -532,6 +526,7 @@ def _add_sample_qc_jobs(
 
     inferred_pop_ht_path = join(ancestry_bucket, 'inferred_pop.ht')
     regressed_metrics_ht_path = join(sample_qc_bucket, 'regressed_metrics.ht')
+    job_name = 'Sample QC regressed filters'
     if not can_reuse(
         [
             inferred_pop_ht_path,
@@ -539,8 +534,7 @@ def _add_sample_qc_jobs(
         ],
         overwrite,
     ):
-        regressed_filters_job = dataproc.hail_dataproc_job(
-            b,
+        regressed_filters_job = cluster_after_pc_relate.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_regressed_filters.py '
             f'--pca-scores-ht {pca_scores_ht_path} '
             f'--provided-pop-ht {provided_pop_ht_path} '
@@ -552,15 +546,15 @@ def _add_sample_qc_jobs(
             f'--tmp-bucket {tmp_bucket} '
             + (f'--overwrite ' if overwrite else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=[flag_related_job, pca_job, sample_qc_hardfilter_job],
-            job_name='Sample QC regressed filters',
+            job_name=job_name,
+        )
+        regressed_filters_job.depends_on(
+            flag_related_job, pca_job, sample_qc_hardfilter_job
         )
     else:
-        regressed_filters_job = b.new_job(f'Sample QC regressed filters [reuse]')
+        regressed_filters_job = b.new_job(f'{job_name} [reuse]')
 
+    job_name = f'Write sample QC metadata'
     meta_ht_path = join(analysis_bucket, 'meta.ht')
     meta_tsv_path = join(analysis_bucket, 'meta.tsv')
     if not can_reuse(
@@ -574,8 +568,7 @@ def _add_sample_qc_jobs(
             age_csv_param = f'--age-csv {age_csv_path} '
         else:
             age_csv_param = ''
-        metadata_qc_job = dataproc.hail_dataproc_job(
-            b,
+        metadata_qc_job = cluster_after_pc_relate.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_write_metadata.py '
             f'--meta-csv {samples_csv_path} '
             f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
@@ -592,17 +585,16 @@ def _add_sample_qc_jobs(
             + (f'--overwrite ' if overwrite else '')
             + f'{filter_cutoffs_param} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            depends_on=[regressed_filters_job],
-            job_name=f'Write sample QC metadata',
+            job_name=job_name,
         )
+        metadata_qc_job.depends_on(regressed_filters_job)
     else:
-        metadata_qc_job = b.new_job(f'Write sample QC metadata [reuse]')
+        metadata_qc_job = b.new_job(f'{job_name} [reuse]')
 
     if pca_pop:
         _add_ancestry_jobs(
             b=b,
+            cluster=cluster_after_pc_relate,
             pop=pca_pop,
             mt_union_hgdp_path=mt_union_hgdp_for_pca_path,
             provided_pop_ht_path=provided_pop_ht_path,
@@ -611,7 +603,6 @@ def _add_sample_qc_jobs(
             ancestry_bucket=analysis_bucket,
             web_bucket=web_bucket,
             overwrite=overwrite,
-            scatter_count=scatter_count,
             depends_on=[flag_related_job],
             related_samples_to_drop_ht_path=intermediate_related_samples_to_drop_ht_path,
             billing_project=billing_project,
@@ -622,6 +613,7 @@ def _add_sample_qc_jobs(
 
 def _add_ancestry_jobs(
     b: hb.Batch,
+    cluster,
     mt_union_hgdp_path: str,
     provided_pop_ht_path: str,
     num_ancestry_pcs: int,
@@ -629,7 +621,6 @@ def _add_ancestry_jobs(
     ancestry_bucket: str,
     web_bucket: str,
     overwrite: bool,
-    scatter_count: int,
     pop: Optional[str] = None,
     depends_on: Optional[List[Job]] = None,
     related_samples_to_drop_ht_path: Optional[str] = None,
@@ -645,13 +636,12 @@ def _add_ancestry_jobs(
     ancestry_analysis_bucket = join(ancestry_bucket, pop_tag)
     ancestry_web_bucket = join(web_bucket, 'ancestry', pop_tag)
 
+    job_name = f'PCA ({pop or "all"})'
     eigenvalues_path = join(ancestry_analysis_bucket, f'eigenvalues_{pop_tag}.txt')
     scores_ht_path = join(ancestry_analysis_bucket, f'scores_{pop_tag}.ht')
     loadings_ht_path = join(ancestry_analysis_bucket, f'loadings_{pop_tag}.ht')
-    job_name = f'PCA ({pop or "all"})'
     if not can_reuse([eigenvalues_path, scores_ht_path, loadings_ht_path], overwrite):
-        pca_job = dataproc.hail_dataproc_job(
-            b,
+        pca_job = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/ancestry_pca.py '
             + f'--hgdp-union-mt {mt_union_hgdp_path} '
             + (f'--pop {pop} ' if pop else '')
@@ -667,15 +657,14 @@ def _add_ancestry_jobs(
             + f'--tmp-bucket {tmp_bucket} '
             + (f'--overwrite ' if overwrite else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=depends_on or [],
             job_name=job_name,
         )
+        if depends_on:
+            pca_job.depends_on(*depends_on)
     else:
         pca_job = b.new_job(f'{job_name} [reuse]')
 
+    job_name = f'Plot PCA and loadings ({pop_tag})'
     out_path_ptn = join(ancestry_web_bucket, '{scope}_pc{pci}.{ext}')
     paths = []
     for scope in ['study', 'continental_pop', 'subpop', 'loadings']:
@@ -683,10 +672,8 @@ def _add_ancestry_jobs(
             paths.append(
                 out_path_ptn.format(scope=scope, pci=num_ancestry_pcs - 1, ext=ext)
             )
-    job_name = f'Plot PCA and loadings ({pop_tag})'
     if not can_reuse(paths, overwrite):
-        dataproc.hail_dataproc_job(
-            b,
+        plot_job = cluster.add_job(
             f'{join(utils.SCRIPTS_DIR, "ancestry_plot.py")} '
             f'--eigenvalues {eigenvalues_path} '
             f'--scores-ht {scores_ht_path} '
@@ -694,13 +681,9 @@ def _add_ancestry_jobs(
             f'--provided-pop-ht {provided_pop_ht_path} '
             + f'--out-path-pattern {out_path_ptn} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES + ['selenium'],
-            init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
-            num_secondary_workers=scatter_count,
-            depends_on=[pca_job],
             job_name=job_name,
         )
+        plot_job.depends_on(pca_job)
     else:
         b.new_job(f'{job_name} [reuse]')
 
