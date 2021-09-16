@@ -45,17 +45,16 @@ logger.setLevel(logging.INFO)
     help='path to a CSV with QC and population metadata for the samples',
 )
 @click.option(
-    '--pre-computed-hgdp-union-mt',
-    'pre_computed_hgdp_union_mt_path',
-    help='Useful for tests to save time on subsetting the large gnomAD matrix table',
-)
-@click.option(
     '--out-hgdp-union-mt',
     'out_hgdp_union_mt_path',
     required=True,
     callback=utils.get_validation_callback(ext='mt'),
     help='path to write the combined Matrix Table with HGDP-1KG. '
     'The difference with `--out-mt` is that it also contains HGDP-1KG samples',
+)
+@click.option(
+    '--pop',
+    'pop',
 )
 @click.option(
     '--out-provided-pop-ht',
@@ -66,15 +65,10 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--out-mt',
     'out_mt_path',
-    required=True,
     callback=utils.get_validation_callback(ext='mt'),
     help='path to write the Matrix Table after subsetting to selected rows. '
     'The difference with --out-hgdp-union-mt is that it contains only the dataset '
     'samples',
-)
-@click.option(
-    '--pop',
-    'pop',
 )
 @click.option(
     '--overwrite/--reuse',
@@ -98,11 +92,10 @@ logger.setLevel(logging.INFO)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_path: str,
     meta_csv_path: str,
-    pre_computed_hgdp_union_mt_path: Optional[str],
     out_hgdp_union_mt_path: str,
-    out_provided_pop_ht_path: str,
-    out_mt_path: str,
     pop: Optional[str],
+    out_provided_pop_ht_path: Optional[str],
+    out_mt_path: Optional[str],
     overwrite: bool,
     is_test: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
@@ -121,48 +114,41 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
             hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS['test'])
         else:
             hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS['all'])
-    logger.info(f'124 hgdp_mt cols: {hgdp_mt.count_cols()}')
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
-    logger.info(f'127 mt cols: {mt.count_cols()}')
     # Subset to biallelic SNPs in autosomes
     mt = mt.filter_rows(
         (hl.len(mt.alleles) == 2)
         & hl.is_snp(mt.alleles[0], mt.alleles[1])
         & (mt.locus.in_autosome())
     )
-    logger.info(f'134 mt cols: {mt.count_cols()}')
     mt = mt.key_rows_by('locus', 'alleles')
-    logger.info(f'136 mt cols: {mt.count_cols()}')
     mt = hl.experimental.densify(mt)  # drops mt.END
-    logger.info(f'138 mt cols: {mt.count_cols()}')
     mt = mt.select_entries(GT=lgt_to_gt(mt.LGT, mt.LA))
-    logger.info(f'140 mt cols: {mt.count_cols()}')
 
-    if pre_computed_hgdp_union_mt_path:
-        hgdp_union_mt = hl.read_matrix_table(pre_computed_hgdp_union_mt_path)
-    else:
-        hgdp_union_mt = get_sites_shared_with_hgdp(
-            mt=mt,
-            hgdp_mt=hgdp_mt,
+    hgdp_union_mt = get_sites_shared_with_hgdp(
+        mt=mt,
+        hgdp_mt=hgdp_mt,
+        overwrite=overwrite,
+        out_mt_path=out_hgdp_union_mt_path,
+    )
+
+    if out_provided_pop_ht_path:
+        _make_provided_pop_ht(
+            hgdp_union_mt=hgdp_union_mt,
+            input_metadata_ht=input_metadata_ht,
+            hgdp_ht=hgdp_mt.cols(),
+            out_provided_pop_ht_path=out_provided_pop_ht_path,
             overwrite=overwrite,
-            out_mt_path=out_hgdp_union_mt_path,
         )
 
-    _make_provided_pop_ht(
-        hgdp_union_mt=hgdp_union_mt,
-        input_metadata_ht=input_metadata_ht,
-        hgdp_ht=hgdp_mt.cols(),
-        out_provided_pop_ht_path=out_provided_pop_ht_path,
-        overwrite=overwrite,
-    )
-
-    generate_subset_mt(
-        mt=mt,
-        hgdp_union_hq_sites_mt=hgdp_union_mt,
-        out_mt_path=out_mt_path,
-        overwrite=overwrite,
-    )
+    if out_mt_path:
+        generate_subset_mt(
+            mt=mt,
+            hgdp_union_hq_sites_mt=hgdp_union_mt,
+            out_mt_path=out_mt_path,
+            overwrite=overwrite,
+        )
 
 
 def _make_provided_pop_ht(

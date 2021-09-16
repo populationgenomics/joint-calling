@@ -125,11 +125,6 @@ logger.setLevel(logging.INFO)
     help='if specified, a separate PCA will be produced with samples trained only'
     'on this population',
 )
-@click.option(
-    '--pre-computed-hgdp-union-mt',
-    'pre_computed_hgdp_unuon_mt_path',
-    help='Useful for tests to save time on subsetting the large gnomAD matrix table',
-)
 @click.option('--dry-run', 'dry_run', is_flag=True)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
@@ -147,7 +142,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     scatter_count: int,
     pca_pop: Optional[str],
     num_ancestry_pcs: int,
-    pre_computed_hgdp_unuon_mt_path: str,
     dry_run: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
@@ -283,7 +277,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         num_ancestry_pcs=num_ancestry_pcs,
         pca_pop=pca_pop,
         is_test=output_namespace in ['test', 'tmp'],
-        pre_computed_hgdp_unuon_mt_path=pre_computed_hgdp_unuon_mt_path,
     )
 
     var_qc_job = add_variant_qc_jobs(
@@ -371,7 +364,6 @@ def _add_sample_qc_jobs(
     pca_pop: Optional[str] = None,
     billing_project: Optional[str] = None,
     is_test: bool = False,
-    pre_computed_hgdp_unuon_mt_path: Optional[str] = None,
 ) -> Tuple[Job, str, str]:
 
     if filter_cutoffs_path:
@@ -423,14 +415,14 @@ def _add_sample_qc_jobs(
     else:
         sample_qc_hardfilter_job = b.new_job(f'{job_name} [reuse]')
 
-    job_name = 'Subset MT for PCA'
-    mt_union_hgdp_for_pca_path = join(ancestry_bucket, 'mt_union_hgdp_for_pca.mt')
+    job_name = 'Subset MT for PCA - all'
+    mt_union_hgdp_path = join(ancestry_bucket, 'mt_union_hgdp.mt')
     mt_for_pca_path = join(ancestry_bucket, 'mt_for_pca.mt')
     provided_pop_ht_path = join(ancestry_bucket, 'provided_pop.ht')
     if not can_reuse(
         [
             mt_for_pca_path,
-            mt_union_hgdp_for_pca_path,
+            mt_union_hgdp_path,
             provided_pop_ht_path,
         ],
         overwrite,
@@ -440,16 +432,10 @@ def _add_sample_qc_jobs(
             + (f'--overwrite ' if overwrite else '')
             + f'--mt {mt_path} '
             f'--meta-csv {samples_csv_path} '
-            + (
-                f'--pre-computed-hgdp-union-mt {pre_computed_hgdp_unuon_mt_path} '
-                if pre_computed_hgdp_unuon_mt_path
-                else ''
-            )
-            + f'--out-hgdp-union-mt {mt_union_hgdp_for_pca_path} '
+            f'--out-hgdp-union-mt {mt_union_hgdp_path} '
             f'--out-provided-pop-ht {provided_pop_ht_path} '
             f'--out-mt {mt_for_pca_path} '
             + ('--is-test ' if is_test else '')
-            + (f'--pop {pca_pop} ' if pca_pop else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             job_name=job_name,
         )
@@ -530,7 +516,7 @@ def _add_sample_qc_jobs(
     if not can_reuse([eigenvalues_path, scores_ht_path, loadings_ht_path], overwrite):
         pca_job = cluster_after_pc_relate.add_job(
             f'{utils.SCRIPTS_DIR}/ancestry_pca.py '
-            f'--hgdp-union-mt {mt_union_hgdp_for_pca_path} '
+            f'--hgdp-union-mt {mt_union_hgdp_path} '
             f'--n-pcs {num_ancestry_pcs} '
             f'--out-eigenvalues {eigenvalues_path} '
             f'--out-scores-ht {scores_ht_path} '
@@ -641,6 +627,26 @@ def _add_sample_qc_jobs(
         metadata_qc_job = b.new_job(f'{job_name} [reuse]')
 
     if pca_pop:
+        job_name = f'Subset MT for PCA - {pca_pop}'
+        mt_union_hgdp_pop_path = join(ancestry_bucket, f'mt_union_hgdp_{pca_pop}.mt')
+        if not can_reuse(mt_union_hgdp_pop_path, overwrite):
+            subset_for_pca_job = cluster_after_pc_relate.add_job(
+                f'{utils.SCRIPTS_DIR}/sample_qc_subset_mt_for_pca.py '
+                + (f'--overwrite ' if overwrite else '')
+                + f'--mt {mt_path} '
+                f'--meta-csv {samples_csv_path} '
+                f'--out-hgdp-union-mt {mt_union_hgdp_pop_path} '
+                f'--pop {pca_pop} '
+                + ('--is-test ' if is_test else '')
+                + (f'--hail-billing {billing_project} ' if billing_project else ''),
+                job_name=job_name,
+            )
+            subset_for_pca_job.depends_on(combiner_job)
+            # To avoid submitting multiple jobs at the same time to the same cluster
+            subset_for_pca_job.depends_on(sample_qc_hardfilter_job)
+        else:
+            subset_for_pca_job = b.new_job(f'{job_name} [reuse]')
+
         pop_tag = pca_pop
         ancestry_analysis_bucket = join(ancestry_bucket, pop_tag)
         ancestry_web_bucket = join(web_bucket, 'ancestry', pop_tag)
@@ -653,7 +659,7 @@ def _add_sample_qc_jobs(
         ):
             pca_job = cluster_after_pc_relate.add_job(
                 f'{utils.SCRIPTS_DIR}/ancestry_pca.py '
-                f'--hgdp-union-mt {mt_union_hgdp_for_pca_path} '
+                f'--hgdp-union-mt {mt_union_hgdp_pop_path} '
                 f'--pop {pca_pop} '
                 f'--n-pcs {num_ancestry_pcs} '
                 f'--out-eigenvalues {eigenvalues_path} '
@@ -669,7 +675,7 @@ def _add_sample_qc_jobs(
                 + (f'--hail-billing {billing_project} ' if billing_project else ''),
                 job_name=job_name,
             )
-            pca_job.depends_on(flag_related_job)
+            pca_job.depends_on(flag_related_job, subset_for_pca_job)
         else:
             pca_job = b.new_job(f'{job_name} [reuse]')
 
