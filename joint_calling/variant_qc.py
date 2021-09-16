@@ -44,7 +44,7 @@ def add_variant_qc_jobs(
         max_age=max_age,
         packages=utils.DATAPROC_PACKAGES,
         num_secondary_workers=scatter_count,
-        cluster_name=f'Variant QC, max_age={max_age}, secondary-workers={scatter_count}',
+        cluster_name=f'VarQC',
     )
 
     rf_bucket = join(work_bucket, 'rf')
@@ -141,7 +141,7 @@ def add_variant_qc_jobs(
             max_age=max_age,
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            cluster_name=f'Random forest, max_age={max_age}, secondary-workers={scatter_count}',
+            cluster_name=f'RF',
         )
 
         job_name = 'Random forest'
@@ -202,7 +202,7 @@ def add_variant_qc_jobs(
             max_age=max_age,
             packages=utils.DATAPROC_PACKAGES,
             num_secondary_workers=scatter_count,
-            cluster_name=f'AS-VQSR eval, max_age={max_age}, secondary-workers={scatter_count}',
+            cluster_name=f'VQSR-e',
         )
         final_filter_ht_path = join(vqsr_bucket, 'final-filter.ht')
         eval_job = make_vqsr_eval_jobs(
