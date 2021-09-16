@@ -585,7 +585,7 @@ def _add_sample_qc_jobs(
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             job_name=job_name,
         )
-        plot_job.depends_on(pca_job)
+        plot_job.depends_on(pca_job, regressed_filters_job)
     else:
         b.new_job(f'{job_name} [reuse]')
 
