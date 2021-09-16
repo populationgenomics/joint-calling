@@ -37,7 +37,6 @@ logger.setLevel(logging.INFO)
 
 
 @click.command()
-# @click.option('--dataset-version', 'dataset_version', type=str, required=True)
 @click.option(
     '-n',
     '--namespace',
