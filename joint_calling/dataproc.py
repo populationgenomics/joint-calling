@@ -18,7 +18,7 @@ def get_cluster(
     long: bool = False,
     is_test: bool = False,
     phantomjs: bool = False,
-    preempt: bool = False,
+    preempt: bool = True,
     depends_on: Optional[List[Job]] = None,
 ):
     """
