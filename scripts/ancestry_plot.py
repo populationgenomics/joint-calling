@@ -118,7 +118,7 @@ def produce_plots(
 
     # plot by study
     labels = scores.study.collect()
-    study = list(set(labels))
+    labels = list(dict.fromkeys(labels))  # remove duplicates
     tooltips = [('labels', '@label'), ('samples', '@samples')]
     eigenvalues = hl.import_table(
         eigenvalues_path, no_header=True, types={'f0': hl.tfloat}
@@ -153,7 +153,7 @@ def produce_plots(
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap('label', ['#1b9e77', '#d95f02'], study),
+            color=factor_cmap('label', ['#1b9e77', '#d95f02'], labels),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')
@@ -167,7 +167,7 @@ def produce_plots(
 
     # plot by continental population
     labels = scores.continental_pop.collect()
-    continental_population = list(set(labels))
+    labels = list(dict.fromkeys(labels))  # remove duplicates
     tooltips = [('labels', '@label'), ('samples', '@samples')]
 
     for i in range(number_of_pcs - 1):
@@ -194,7 +194,7 @@ def produce_plots(
             source=source,
             size=4,
             color=factor_cmap(
-                'label', turbo(len(continental_population)), continental_population
+                'label', turbo(len(labels)), labels
             ),
             legend_group='label',
         )
@@ -213,7 +213,7 @@ def produce_plots(
 
     # plot by subpopulation
     labels = scores.subpop.collect()
-    sub_population = list(set(labels))
+    labels = list(dict.fromkeys(labels))  # remove duplicates
     tooltips = [('labels', '@label'), ('samples', '@samples')]
 
     for i in range(number_of_pcs - 1):
@@ -239,7 +239,7 @@ def produce_plots(
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap('label', turbo(len(sub_population)), sub_population),
+            color=factor_cmap('label', turbo(len(labels)), labels),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')

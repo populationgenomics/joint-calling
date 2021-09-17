@@ -1,7 +1,7 @@
 ANALYSIS_PROJECT := tob-wgs
 VERSION := v5.1
 TEST_VERSION := v6-22
-SCATTER_COUNT_TEST := 50
+SCATTER_COUNT_TEST := 20
 SCATTER_COUNT_PROD := 50
 REUSE_ARG := --reuse
 # Seprately generate a specific PCA plots for this continental population
