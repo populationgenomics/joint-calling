@@ -14,7 +14,7 @@ clusters_by_name = dict()
 def get_cluster(
     b: Batch,
     name,
-    scatter_count: int,
+    num_workers: int,
     long: bool = False,
     is_test: bool = False,
     phantomjs: bool = False,
@@ -33,8 +33,8 @@ def get_cluster(
             b,
             max_age=max_age,
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count if preempt else 0,
-            num_workers=2 if preempt else scatter_count,
+            num_secondary_workers=num_workers if preempt else 0,
+            num_workers=2 if preempt else num_workers,
             cluster_name=name,
             depends_on=depends_on,
             init=['gs://cpg-reference/hail_dataproc/install_phantomjs.sh']

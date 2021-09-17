@@ -117,7 +117,7 @@ def add_sample_qc_jobs(
         pcrelate_job = get_cluster(
             b,
             'pc_rel',
-            scatter_count,
+            scatter_count // 3,
             is_test=is_test,
             depends_on=[subset_for_pca_job],
             # Spark would have problems shuffling on pre-emptible workers
