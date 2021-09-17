@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# pylint: skip-file
 
 """
 Run Random Forest variant QC
