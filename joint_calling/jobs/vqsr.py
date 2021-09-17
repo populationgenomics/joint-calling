@@ -65,7 +65,7 @@ INDEL_RECALIBRATION_ANNOTATION_VALUES = [
 ]
 
 
-def make_vqsr_jobs(
+def add_vqsr_jobs(
     b: hb.Batch,
     combined_mt_path: str,
     hard_filter_ht_path: str,

@@ -21,7 +21,6 @@ make_pop_hq_j = dataproc.hail_dataproc_job(
     f'subset_hgdp.py --pop {POP}',
     max_age='12h',
     packages=['selenium'],
-    init=['gs://cpg-reference/hail_dataproc/install_common.sh'],
     job_name=f'subset-gnomad-hgdp-1kg {POP}',
     num_secondary_workers=50,
 )

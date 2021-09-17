@@ -87,7 +87,7 @@ def add_pre_combiner_jobs(
                 bam_or_cram_path=input_cram,
                 index_path=input_crai,
             )
-            cram_j = _make_realign_jobs(
+            cram_j = _add_realign_jobs(
                 b=b,
                 output_path=output_cram_fpath,
                 sample_name=s_id,
@@ -108,7 +108,7 @@ def add_pre_combiner_jobs(
                     scatter_count=utils.NUMBER_OF_HAPLOTYPE_CALLER_INTERVALS,
                     ref_fasta=utils.REF_FASTA,
                 )
-            gvcf_j = _make_produce_gvcf_jobs(
+            gvcf_j = _add_produce_gvcf_jobs(
                 b=b,
                 output_path=output_gvcf_path,
                 sample_name=s_id,
@@ -131,7 +131,7 @@ def add_pre_combiner_jobs(
     return samples_df, gvcfs_tsv_path, jobs
 
 
-def _make_realign_jobs(
+def _add_realign_jobs(
     b: hb.Batch,
     output_path: str,
     sample_name: str,
@@ -261,7 +261,7 @@ df -h; pwd; du -sh {work_dir}
     return j
 
 
-def _make_produce_gvcf_jobs(
+def _add_produce_gvcf_jobs(
     b: hb.Batch,
     output_path: str,
     sample_name: str,

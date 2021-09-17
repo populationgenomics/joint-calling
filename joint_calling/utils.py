@@ -1,4 +1,6 @@
-"""Utility functions for the joint_calling module"""
+"""
+Utility functions for the joint_calling module.
+"""
 
 import os
 import subprocess
@@ -37,6 +39,7 @@ DATAPROC_PACKAGES = [
     'fsspec',
     'sklearn',
     'gcloud',
+    'selenium',
 ]
 
 DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
