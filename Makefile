@@ -38,7 +38,7 @@ sleep:
 	--access-level test \
 	batch_workflow.py \
 	--scatter-count 20 \
-	--namespace tmp \
+	--namespace test \
 	--analysis-project thousand-genomes \
 	--input-project thousand-genomes \
 	--output-version 1kg_concordance_test \
