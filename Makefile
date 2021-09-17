@@ -29,6 +29,21 @@ package:
 sleep:
 	sleep 60
 
+.PHONY: 1kg_concordance_test
+1kg_concordance_test:
+	analysis-runner \
+	--dataset thousand-genomes \
+	--output-dir "joint-calling/1kg_concordance_test" \
+	--description "Joint calling 1kg_concordance_test" \
+	--access-level test \
+	batch_workflow.py \
+	--scatter-count 20 \
+	--namespace tmp \
+	--analysis-project thousand-genomes \
+	--input-project thousand-genomes \
+	--output-version 1kg_concordance_test \
+	--keep-scratch	
+
 .PHONY: test_to_tmp
 test_to_tmp:
 	analysis-runner \

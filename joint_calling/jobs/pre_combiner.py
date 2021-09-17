@@ -76,7 +76,7 @@ def add_pre_combiner_jobs(
     for s_id, external_id, proj, input_cram, input_crai in zip(
         cram_df.s, cram_df.external_id, cram_df.project, cram_df.cram, cram_df.crai
     ):
-        assert isinstance(input_crai, str)
+        assert isinstance(input_crai, str), (s_id, input_crai)
 
         proj_bucket = get_project_bucket(proj)
 
@@ -244,7 +244,7 @@ bamsormadup inputformat=sam threads={bamsormadup_cpu} SO=coordinate \\
     tmpfile=$(dirname {j.output_cram.cram})/bamsormadup-tmp | \\
 samtools view -T {reference.base} -O cram -o {j.output_cram.cram}
 
-samtools index -@{total_cpu} {j.output_cram.cram} {j.output_cram.crai}
+samtools index -@{total_cpu} {j.output_cram.cram} {j.output_cram['cram.crai']}
 
 df -h; pwd; du -sh {work_dir}
     """
