@@ -2,7 +2,7 @@
 QC of newly-selected variants
 """
 
-import os
+from os.path import join
 from typing import Optional
 import click
 import hail as hl
@@ -13,56 +13,63 @@ GNOMAD_HGDP_1KG_MT_PATH = (
     'gnomad.genomes.v3.1.hgdp_1kg_subset_dense.mt'
 )
 
-REF_BUCKET = 'gs://cpg-reference/hg38/v1'
+BUCKET = 'gs://cpg-reference/hg38/ancestry/v0'
+# - gnomad_sites.mt          - 105489 rows, 3942 cols
+# - gnomad_sites_test.mt     - 62247 rows, 52 cols
+# - gnomad_sites_test_nfe.mt - 23900 rows, 8 cols
+# - gnomad_sites_nfe.mt      - 87344 rows, 675 cols
+#
+# Without subsetting to HQ sites:
+# - all_sites/gnomad_sites_nfe.mt      - 175312130 rows, 675 cols
+# - all_sites/gnomad_sites_test.mt     - 175312130 rows, 52 cols
+# - all_sites/gnomad_sites_test_nfe.mt - 175312130 rows, 8 cols
 
-OUTPUT_PATH = os.path.join(
-    REF_BUCKET, 'mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense{suf}.mt'
-)
+NUM_TEST_SAMPLES = 50
 
 
 @click.command()
-@click.option('--test', 'test', is_flag=True)
 @click.option('--pop', 'pop')
-def main(
-    test: bool,
-    pop: Optional[str],
-):  # pylint: disable=missing-function-docstring
+def main(pop: Optional[str]):  # pylint: disable=missing-function-docstring
     hl.init(default_reference='GRCh38')
     mt = hl.read_matrix_table(GNOMAD_HGDP_1KG_MT_PATH)
-    suf = ''
 
-    if test:
-        suf = '_test'
-        # Subset to 50 samples
-        out_fpath = OUTPUT_PATH.format(suf=suf)
-        if not hl.hadoop_exists(out_fpath):
-            ncols = mt.count_cols()
-            target_ncols = 50
-            mt = mt.sample_cols(p=target_ncols / ncols, seed=42)
-            mt.write(out_fpath, overwrite=True)
-        mt = hl.read_matrix_table(out_fpath)
+    gnomad_sites_fpath = join(BUCKET, 'gnomad_sites.mt')
+    if not hl.hadoop_exists(gnomad_sites_fpath):
+        mt = filter_high_quality_sites(mt)
+        mt = mt.repartition(5000, shuffle=False)
+        mt.write(gnomad_sites_fpath, overwrite=True)
+    mt = hl.read_matrix_table(gnomad_sites_fpath)
+
+    gnomad_sites_test_fpath = join(BUCKET, 'gnomad_sites_test.mt')
+    # Subset to 50 samples
+    if not hl.hadoop_exists(gnomad_sites_test_fpath):
+        ncols = mt.count_cols()
+        target_ncols = NUM_TEST_SAMPLES
+        test_mt = mt.sample_cols(p=target_ncols / ncols, seed=42)
+        test_mt = test_mt.repartition(1000, shuffle=False)
+        test_mt.write(gnomad_sites_test_fpath, overwrite=True)
+    test_mt = hl.read_matrix_table(gnomad_sites_test_fpath)
 
     if pop:
-        suf = f'{suf}_{pop}'
-        out_fpath = OUTPUT_PATH.format(suf=suf)
-        if not hl.hadoop_exists(out_fpath):
+        pop_fpath = join(BUCKET, f'gnomad_sites_{pop}.mt')
+        if not hl.hadoop_exists(pop_fpath):
             # Get samples from the specified population only
             mt = mt.filter_cols(mt.population_inference.pop == pop.lower())
-            mt.write(out_fpath, overwrite=True)
-        mt = hl.read_matrix_table(out_fpath)
+            mt = mt.repartition(1000, shuffle=False)
+            mt.write(pop_fpath, overwrite=True)
 
-    out_fpath = OUTPUT_PATH.format(suf=f'{suf}_hq')
-    if not hl.hadoop_exists(out_fpath):
-        filter_high_quality_sites(
-            mt,
-            out_mt_path=out_fpath,
-        )
+        test_pop_fpath = join(BUCKET, f'gnomad_sites_test_{pop}.mt')
+        if not hl.hadoop_exists(test_pop_fpath):
+            test_mt = test_mt.filter_cols(
+                test_mt.population_inference.pop == pop.lower()
+            )
+            test_mt = test_mt.repartition(1000, shuffle=False)
+            test_mt.write(test_pop_fpath, overwrite=True)
 
 
 def filter_high_quality_sites(
     mt: hl.MatrixTable,
     num_rows_before_ld_prune: int = 200_000,
-    out_mt_path: str = None,
 ) -> hl.MatrixTable:
     """
     1. Run `hl.variant_qc()` to calculate metrics such as AF, call rate
@@ -96,10 +103,6 @@ def filter_high_quality_sites(
     pruned_variant_ht = hl.ld_prune(mt.GT, r2=0.1, bp_window_size=500000)
     mt = mt.filter_rows(hl.is_defined(pruned_variant_ht[mt.row_key]))
     print(f'Number of rows after prunning: {mt.count_rows()}')
-
-    if out_mt_path:
-        mt.write(out_mt_path, overwrite=True)
-        mt = hl.read_matrix_table(out_mt_path)
     return mt
 
 

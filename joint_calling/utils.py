@@ -1,4 +1,6 @@
-"""Utility functions for the joint_calling module"""
+"""
+Utility functions for the joint_calling module.
+"""
 
 import os
 import subprocess
@@ -7,9 +9,10 @@ import logging
 import sys
 import time
 import hashlib
-from os.path import isdir, isfile, exists, join
+from os.path import isdir, isfile, exists, join, basename
 from typing import Any, Callable, Dict, Optional, Union, Iterable
 import yaml
+import pandas as pd
 import hail as hl
 import click
 from google.cloud import storage
@@ -24,7 +27,8 @@ logger.setLevel(logging.INFO)
 
 DEFAULT_REF = 'GRCh38'
 
-REF_BUCKET = 'gs://cpg-reference/hg38/v1'
+REF_BUCKET = 'gs://cpg-reference/hg38'
+GATK_REF_BUCKET = f'{REF_BUCKET}/v1'
 
 DATAPROC_PACKAGES = [
     'joint-calling',
@@ -35,6 +39,7 @@ DATAPROC_PACKAGES = [
     'fsspec',
     'sklearn',
     'gcloud',
+    'selenium',
 ]
 
 DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
@@ -47,27 +52,32 @@ GATK_IMAGE = f'{AR_REPO}/gatk:{GATK_VERSION}'
 GNARLY_IMAGE = f'{AR_REPO}/gnarly_genotyper:hail_ukbb_300K'
 BCFTOOLS_IMAGE = f'{AR_REPO}/bcftools:1.10.2--h4f4756c_2'
 SM_IMAGE = f'{AR_REPO}/sm-api:2.0.3'
+ALIGNMENT_IMAGE = f'{AR_REPO}/alignment:v4'
+PICARD_IMAGE = f'{AR_REPO}/picard-cloud:2.23.8'
 
-NOALT_REGIONS = join(REF_BUCKET, 'noalt.bed')
+REF_FASTA = join(GATK_REF_BUCKET, 'Homo_sapiens_assembly38.fasta')
+UNPADDED_INTERVALS = join(GATK_REF_BUCKET, 'hg38.even.handcurated.20k.intervals')
+NOALT_REGIONS = join(GATK_REF_BUCKET, 'noalt.bed')
 TEL_AND_CENT_HT_PATH = join(
-    REF_BUCKET, 'gnomad/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht'
+    GATK_REF_BUCKET,
+    'gnomad/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht',
 )
-LCR_INTERVALS_HT_PATH = join(REF_BUCKET, 'gnomad/lcr_intervals/LCRFromHengHg38.ht')
+LCR_INTERVALS_HT_PATH = join(GATK_REF_BUCKET, 'gnomad/lcr_intervals/LCRFromHengHg38.ht')
 SEG_DUP_INTERVALS_HT_PATH = join(
-    REF_BUCKET, 'gnomad/seg_dup_intervals/GRCh38_segdups.ht'
+    GATK_REF_BUCKET, 'gnomad/seg_dup_intervals/GRCh38_segdups.ht'
 )
-CLINVAR_HT_PATH = join(REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
+CLINVAR_HT_PATH = join(GATK_REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
 
 GNOMAD_HT_PATH = (
     'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'
 )
-GNOMAD_HGDP_1KG_MT_PATH = (
-    'gs://gcp-public-data--gnomad/release/3.1/mt/genomes/'
-    'gnomad.genomes.v3.1.hgdp_1kg_subset_dense.mt'
-)
-GNOMAD_HGDP_1KG_TEST_MT_PATH = join(
-    REF_BUCKET, 'mt/gnomad.genomes.v3.1.hgdp_1kg_subset_dense_test.mt'
-)
+
+ANCESTRY_SITES_MTS = {
+    'all': f'{REF_BUCKET}/ancestry/v0/gnomad_sites.mt',
+    'nfe': f'{REF_BUCKET}/ancestry/v0/gnomad_sites_nfe.mt',
+    'test': f'{REF_BUCKET}/ancestry/v0/gnomad_sites_test.mt',
+    'test_nfe': f'{REF_BUCKET}/ancestry/v0/gnomad_sites_test_nfe.mt',
+}
 
 SCRIPTS_DIR = 'scripts'
 PACKAGE_DIR = package_name
@@ -357,3 +367,23 @@ def get_filter_cutoffs(
             filter_cutoffs_d = yaml.safe_load(f)
 
     return filter_cutoffs_d
+
+
+def parse_input_metadata(
+    meta_csv_path: str,
+    local_tmp_dir: str,
+    out_ht_path: Optional[str] = None,
+) -> hl.Table:
+    """
+    Parse KCCG metadata (continental_pop and picard metrics)
+    """
+    local_csv_path = join(local_tmp_dir, basename(meta_csv_path))
+    subprocess.run(
+        f'gsutil cp {meta_csv_path} {local_csv_path}', check=False, shell=True
+    )
+
+    df = pd.read_table(local_csv_path)
+    ht = hl.Table.from_pandas(df).key_by('s')
+    if out_ht_path:
+        ht = ht.checkpoint(out_ht_path, overwrite=True)
+    return ht

@@ -47,8 +47,14 @@ logger.setLevel(logging.INFO)
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
-    '--assigned-pop-ht',
-    'assigned_pop_ht_path',
+    '--provided-pop-ht',
+    'provided_pop_ht_path',
+    required=True,
+    callback=utils.get_validation_callback(ext='ht', must_exist=True),
+)
+@click.option(
+    '--inferred-pop-ht',
+    'inferred_pop_ht_path',
     required=True,
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
@@ -63,7 +69,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     eigenvalues_path: str,
     scores_ht_path: str,
     loadings_ht_path: str,
-    assigned_pop_ht_path: str,
+    provided_pop_ht_path: str,
+    inferred_pop_ht_path: str,
     out_path_pattern: str,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
@@ -73,7 +80,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         eigenvalues_path=eigenvalues_path,
         scores_ht_path=scores_ht_path,
         loadings_ht_path=loadings_ht_path,
-        assigned_pop_ht_path=assigned_pop_ht_path,
+        provided_pop_ht_path=provided_pop_ht_path,
+        inferred_pop_ht_path=inferred_pop_ht_path,
         out_path_pattern=out_path_pattern,
     )
 
@@ -82,7 +90,8 @@ def produce_plots(
     eigenvalues_path: str,
     scores_ht_path: str,
     loadings_ht_path: str,
-    assigned_pop_ht_path: str,
+    provided_pop_ht_path: str,
+    inferred_pop_ht_path: str,
     out_path_pattern: str,
 ):
     """
@@ -90,12 +99,26 @@ def produce_plots(
     scope ("study", "continental_pop", "subpop", plus for loadings) into
     file paths defined by `out_path_pattern`.
     """
-    assigned_pop_ht = hl.read_table(assigned_pop_ht_path)
     scores = hl.read_table(scores_ht_path)
-    scores = scores.annotate(study=assigned_pop_ht[scores.s].project)
     sample_names = scores.s.collect()
+    provided_pop_ht = hl.read_table(provided_pop_ht_path)
+    inferred_pop_ht = hl.read_table(inferred_pop_ht_path)
+    scores = scores.annotate(
+        continental_pop=hl.case()
+        .when(
+            provided_pop_ht[scores.s].continental_pop != '',
+            provided_pop_ht[scores.s].continental_pop,
+        )
+        .default(inferred_pop_ht[scores.s].pop + ' [inferred]'),
+        subpop=hl.case()
+        .when(provided_pop_ht[scores.s].subpop != '', provided_pop_ht[scores.s].subpop)
+        .default(inferred_pop_ht[scores.s].pop + ' [inferred]'),
+        study=provided_pop_ht[scores.s].project,
+    )
+
+    # plot by study
     labels = scores.study.collect()
-    study = list(set(labels))
+    labels = list(dict.fromkeys(labels))  # remove duplicates
     tooltips = [('labels', '@label'), ('samples', '@samples')]
     eigenvalues = hl.import_table(
         eigenvalues_path, no_header=True, types={'f0': hl.tfloat}
@@ -107,7 +130,6 @@ def produce_plots(
     # Get number of PCs
     number_of_pcs = len(eigenvalues) - 1
 
-    # plot by study
     for i in range(number_of_pcs - 1):
         pc1 = i
         pc2 = i + 1
@@ -131,7 +153,7 @@ def produce_plots(
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap('label', ['#1b9e77', '#d95f02'], study),
+            color=factor_cmap('label', ['#1b9e77', '#d95f02'], labels),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')
@@ -144,10 +166,8 @@ def produce_plots(
             f.write(html)
 
     # plot by continental population
-    scores = scores.annotate(continental_pop=assigned_pop_ht[scores.s].continental_pop)
     labels = scores.continental_pop.collect()
-    labels = [(x or 'missing') for x in labels]
-    continental_population = list(set(labels))
+    labels = list(dict.fromkeys(labels))  # remove duplicates
     tooltips = [('labels', '@label'), ('samples', '@samples')]
 
     for i in range(number_of_pcs - 1):
@@ -174,7 +194,7 @@ def produce_plots(
             source=source,
             size=4,
             color=factor_cmap(
-                'label', turbo(len(continental_population)), continental_population
+                'label', turbo(len(labels)), labels
             ),
             legend_group='label',
         )
@@ -192,10 +212,8 @@ def produce_plots(
             f.write(html)
 
     # plot by subpopulation
-    scores = scores.annotate(subpop=assigned_pop_ht[scores.s].subpop)
     labels = scores.subpop.collect()
-    labels = [(x or 'missing') for x in labels]
-    sub_population = list(set(labels))
+    labels = list(dict.fromkeys(labels))  # remove duplicates
     tooltips = [('labels', '@label'), ('samples', '@samples')]
 
     for i in range(number_of_pcs - 1):
@@ -221,7 +239,7 @@ def produce_plots(
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap('label', turbo(len(sub_population)), sub_population),
+            color=factor_cmap('label', turbo(len(labels)), labels),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')

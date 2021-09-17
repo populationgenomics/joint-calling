@@ -99,20 +99,20 @@ def _compute_relatedness(
     if utils.can_reuse(out_ht_path, overwrite):
         return hl.read_table(out_ht_path)
 
-    sample_num = mt.cols().count()
+    scores_ht_path = join(tmp_bucket, 'relatedness_pca_scores.ht')
+    if utils.can_reuse(scores_ht_path, overwrite):
+        scores_ht = hl.read_table(scores_ht_path)
+    else:
+        sample_num = mt.cols().count()
+        _, scores_ht, _ = hl.hwe_normalized_pca(
+            mt.GT, k=max(1, min(sample_num // 3, 10)), compute_loadings=False
+        )
+        scores_ht.checkpoint(scores_ht_path, overwrite=True)
 
-    _, scores, _ = hl.hwe_normalized_pca(
-        mt.GT, k=max(1, min(sample_num // 3, 10)), compute_loadings=False
-    )
-    scores = scores.checkpoint(
-        join(tmp_bucket, 'relatedness_pca_scores.ht'),
-        overwrite=overwrite,
-        _read_if_exists=not overwrite,
-    )
     relatedness_ht = hl.pc_relate(
         mt.GT,
         min_individual_maf=0.01,
-        scores_expr=scores[mt.col_key].scores,
+        scores_expr=scores_ht[mt.col_key].scores,
         block_size=4096,
         min_kinship=0.05,
         statistics='all',

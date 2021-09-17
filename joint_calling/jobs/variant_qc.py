@@ -1,18 +1,17 @@
 """
-Variant QC related hail-query jobs
+Variant QC Hail-query jobs
 """
 
 import uuid
 from os.path import join
 from typing import List, Optional, Dict, Tuple
 import logging
-import pandas as pd
 import hailtop.batch as hb
 from hailtop.batch.job import Job
 
-from analysis_runner import dataproc
 from joint_calling import utils
-from joint_calling.vqsr import make_vqsr_jobs
+from joint_calling.dataproc import get_cluster
+from joint_calling.jobs.vqsr import add_vqsr_jobs
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -26,17 +25,18 @@ def add_variant_qc_jobs(
     raw_combined_mt_path: str,
     hard_filter_ht_path: str,
     meta_ht_path: str,
-    samples_df: pd.DataFrame,
-    scripts_dir: str,
+    out_filtered_combined_mt_path: str,
+    sample_count: int,
     ped_file: Optional[str],
     overwrite: bool,
     vqsr_params_d: Dict,
     scatter_count: int,
+    is_test: bool,
     depends_on: Optional[List[Job]] = None,
     run_rf: bool = False,
-) -> Tuple[Job, str]:
+) -> Job:
     """
-    Add variant QC related hail-query jobs
+    Add variant QC Hail-query jobs
     """
     rf_bucket = join(work_bucket, 'rf')
     vqsr_bucket = join(work_bucket, 'vqsr')
@@ -46,33 +46,35 @@ def add_variant_qc_jobs(
     qc_ac_ht_path = join(work_bucket, 'qc-ac.ht')
     rf_result_ht_path = None
 
+    job_name = 'Var QC: generate info'
     info_ht_path = join(work_bucket, 'info.ht')
     info_split_ht_path = join(work_bucket, 'info-split.ht')
     if any(
         not utils.can_reuse(fp, overwrite) for fp in [info_ht_path, info_split_ht_path]
     ):
-        info_job = dataproc.hail_dataproc_job(
-            b,
-            f'{scripts_dir}/generate_info_ht.py --overwrite '
+        info_job = get_cluster(
+            b, 'VarQC1', scatter_count, is_test=is_test, depends_on=depends_on
+        ).add_job(
+            f'{utils.SCRIPTS_DIR}/generate_info_ht.py --overwrite '
             f'--mt {raw_combined_mt_path} '
             f'--out-info-ht {info_ht_path} '
             f'--out-split-info-ht {info_split_ht_path}',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=depends_on or [],
-            job_name='Var QC: generate info',
+            job_name=job_name,
         )
+        if depends_on:
+            info_job.depends_on(*depends_on)
     else:
-        info_job = b.new_job('Var QC: generate info [reuse]')
+        info_job = b.new_job(f'{job_name} [reuse]')
 
+    job_name = 'Var QC: generate annotations'
     if any(
         not utils.can_reuse(fp, overwrite)
         for fp in [allele_data_ht_path, qc_ac_ht_path]
     ):
-        var_qc_anno_job = dataproc.hail_dataproc_job(
-            b,
-            f'{scripts_dir}/generate_variant_qc_annotations.py '
+        var_qc_anno_job = get_cluster(
+            b, 'VarQC2', scatter_count, is_test=is_test, depends_on=depends_on
+        ).add_job(
+            f'{utils.SCRIPTS_DIR}/generate_variant_qc_annotations.py '
             + f'{"--overwrite " if overwrite else ""}'
             + f'--mt {raw_combined_mt_path} '
             + f'--hard-filtered-samples-ht {hard_filter_ht_path} '
@@ -83,40 +85,49 @@ def add_variant_qc_jobs(
             + (f'--fam-file {ped_file} ' if ped_file else '')
             + f'--bucket {work_bucket} '
             + f'--n-partitions {scatter_count * 25}',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=depends_on or [],
-            job_name='Var QC: generate annotations',
-            vep='GRCh38',
+            job_name=job_name,
         )
+        if depends_on:
+            var_qc_anno_job.depends_on(*depends_on)
     else:
-        var_qc_anno_job = b.new_job('Var QC: generate annotations [reuse]')
+        var_qc_anno_job = b.new_job(f'{job_name} [reuse]')
 
+    job_name = 'Var QC: generate frequencies'
     freq_ht_path = join(work_bucket, 'frequencies.ht')
     if overwrite or not utils.file_exists(freq_ht_path):
-        freq_job = dataproc.hail_dataproc_job(
+        freq_job = get_cluster(
             b,
-            f'{scripts_dir}/generate_freq_data.py --overwrite '
+            'VarQC3',
+            scatter_count,
+            is_test=is_test,
+            long=True,
+            depends_on=depends_on,
+        ).add_job(
+            f'{utils.SCRIPTS_DIR}/generate_freq_data.py --overwrite '
             f'--mt {raw_combined_mt_path} '
             f'--hard-filtered-samples-ht {hard_filter_ht_path} '
             f'--meta-ht {meta_ht_path} '
             f'--out-ht {freq_ht_path} '
             f'--bucket {work_bucket} ',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=depends_on or [],
-            job_name='Var QC: generate frequencies',
+            job_name=job_name,
         )
+        if depends_on:
+            freq_job.depends_on(*depends_on)
     else:
-        freq_job = b.new_job('Var QC: generate frequencies [reuse]')
+        freq_job = b.new_job('{job_name} [reuse]')
 
+    job_name = 'Var QC: create RF annotations'
     rf_annotations_ht_path = join(work_bucket, 'rf-annotations.ht')
     if overwrite or not utils.file_exists(rf_annotations_ht_path):
-        rf_anno_job = dataproc.hail_dataproc_job(
+        rf_anno_job = get_cluster(
             b,
-            f'{scripts_dir}/create_rf_annotations.py --overwrite '
+            'VarQC3',
+            scatter_count,
+            is_test=is_test,
+            long=True,
+            depends_on=[freq_job, var_qc_anno_job, info_job],
+        ).add_job(
+            f'{utils.SCRIPTS_DIR}/create_rf_annotations.py --overwrite '
             f'--info-split-ht {info_split_ht_path} '
             f'--freq-ht {freq_ht_path} '
             + (f'--fam-stats-ht {fam_stats_ht_path} ' if fam_stats_ht_path else '')
@@ -126,38 +137,40 @@ def add_variant_qc_jobs(
             f'--use-adj-genotypes '
             f'--out-ht {rf_annotations_ht_path} '
             + f'--n-partitions {scatter_count * 25}',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=[freq_job, var_qc_anno_job, info_job],
-            job_name='Var QC: create RF annotations',
+            job_name=job_name,
         )
+        rf_anno_job.depends_on(freq_job, var_qc_anno_job, info_job)
     else:
-        rf_anno_job = b.new_job('Var QC: create RF annotations [reuse]')
+        rf_anno_job = b.new_job(f'{job_name} [reuse]')
 
     if run_rf:
+        job_name = 'Random forest'
         rf_result_ht_path = join(work_bucket, 'rf-result.ht')
         rf_model_id = f'rf_{str(uuid.uuid4())[:8]}'
         if overwrite or not utils.file_exists(rf_result_ht_path):
-            rf_job = dataproc.hail_dataproc_job(
+            rf_job = get_cluster(
                 b,
-                f'{scripts_dir}/random_forest.py --overwrite '
+                'RF',
+                scatter_count,
+                is_test=is_test,
+                long=True,
+                depends_on=[rf_anno_job],
+            ).add_job(
+                f'{utils.SCRIPTS_DIR}/random_forest.py --overwrite '
                 f'--annotations-ht {rf_annotations_ht_path} '
                 f'--bucket {work_bucket} '
                 f'--use-adj-genotypes '
                 f'--out-results-ht {rf_result_ht_path} '
                 f'--out-model-id {rf_model_id} ',
-                max_age='8h',
-                packages=utils.DATAPROC_PACKAGES,
-                num_secondary_workers=scatter_count,
-                depends_on=[rf_anno_job],
-                job_name='Random forest',
+                job_name=job_name,
             )
+            rf_job.depends_on(rf_anno_job)
         else:
-            rf_job = b.new_job('Random forest [reuse]')
+            rf_job = b.new_job(f'{job_name} [reuse]')
 
-        final_job, final_filter_ht_path = make_rf_eval_jobs(
+        eval_job, final_filter_ht_path = add_rf_eval_jobs(
             b=b,
+            cluster_name='RF',
             combined_mt_path=raw_combined_mt_path,
             info_split_ht_path=info_split_ht_path,
             rf_result_ht_path=rf_result_ht_path,
@@ -167,35 +180,35 @@ def add_variant_qc_jobs(
             rf_model_id=rf_model_id,
             work_bucket=rf_bucket,
             overwrite=overwrite,
-            scripts_dir=scripts_dir,
-            depends_on=[rf_job],
             scatter_count=scatter_count,
+            is_test=is_test,
+            depends_on=[rf_job, freq_job, rf_anno_job],
         )
 
     else:
         vqsred_vcf_path = join(vqsr_bucket, 'output.vcf.gz')
         if overwrite or not utils.file_exists(vqsred_vcf_path):
-            final_gathered_vcf_job = make_vqsr_jobs(
+            vqsr_vcf_job = add_vqsr_jobs(
                 b,
                 combined_mt_path=raw_combined_mt_path,
                 hard_filter_ht_path=hard_filter_ht_path,
                 meta_ht_path=meta_ht_path,
-                gvcf_count=len(samples_df),
+                gvcf_count=sample_count,
                 work_bucket=vqsr_bucket,
                 web_bucket=join(web_bucket, 'vqsr'),
                 depends_on=depends_on or [],
-                scripts_dir=scripts_dir,
                 vqsr_params_d=vqsr_params_d,
                 scatter_count=scatter_count,
                 output_vcf_path=vqsred_vcf_path,
                 overwrite=overwrite,
             )
         else:
-            final_gathered_vcf_job = b.new_job('VQSR [reuse]')
+            vqsr_vcf_job = b.new_job('AS-VQSR [reuse]')
 
         final_filter_ht_path = join(vqsr_bucket, 'final-filter.ht')
-        final_job = make_vqsr_eval_jobs(
+        eval_job = add_vqsr_eval_jobs(
             b=b,
+            cluster_name='VQeval',
             combined_mt_path=raw_combined_mt_path,
             rf_annotations_ht_path=rf_annotations_ht_path,
             info_split_ht_path=info_split_ht_path,
@@ -206,17 +219,36 @@ def add_variant_qc_jobs(
             work_bucket=vqsr_bucket,
             analysis_bucket=join(web_bucket, 'vqsr'),
             overwrite=overwrite,
-            scripts_dir=scripts_dir,
-            final_gathered_vcf_job=final_gathered_vcf_job,
+            vqsr_vcf_job=vqsr_vcf_job,
             rf_anno_job=rf_anno_job,
-            scatter_count=scatter_count,
             output_ht_path=final_filter_ht_path,
+            scatter_count=scatter_count,
+            is_test=is_test,
         )
-    return final_job, final_filter_ht_path
+        eval_job.depends_on(vqsr_vcf_job, rf_anno_job, info_job)
+
+    job_name = 'Making final MT'
+    if not utils.can_reuse(out_filtered_combined_mt_path, overwrite):
+        final_job = get_cluster(
+            b, 'VQeval', scatter_count, is_test=is_test, depends_on=[eval_job]
+        ).add_job(
+            f'{utils.SCRIPTS_DIR}/make_finalised_mt.py --overwrite '
+            f'--mt {raw_combined_mt_path} '
+            f'--final-filter-ht {final_filter_ht_path} '
+            f'--out-mt {out_filtered_combined_mt_path} '
+            f'--meta-ht {meta_ht_path} ',
+            job_name=job_name,
+        )
+        final_job.depends_on(eval_job)
+    else:
+        final_job = b.new_job(f'{job_name} [reuse]')
+
+    return final_job
 
 
-def make_rf_eval_jobs(
+def add_rf_eval_jobs(
     b: hb.Batch,
+    cluster_name: str,
     combined_mt_path: str,
     info_split_ht_path: str,
     rf_result_ht_path: str,
@@ -226,21 +258,27 @@ def make_rf_eval_jobs(
     rf_model_id: str,
     work_bucket: str,
     overwrite: bool,
-    scripts_dir: str,
-    depends_on: Optional[List[Job]],
     scatter_count: int,
+    is_test: bool = False,
+    depends_on: Optional[List[Job]] = None,
 ) -> Tuple[Job, str]:
     """
     Make jobs that do evaluation RF model and applies the final filters
 
     Returns the final_filter Job object and the path to the final filter HT
     """
+    job_name = 'RF: evaluation'
     score_bin_ht_path = join(work_bucket, 'rf-score-bin.ht')
     score_bin_agg_ht_path = join(work_bucket, 'rf-score-agg-bin.ht')
     if overwrite or not utils.file_exists(score_bin_ht_path):
-        eval_job = dataproc.hail_dataproc_job(
+        eval_job = get_cluster(
             b,
-            f'{scripts_dir}/evaluation.py --overwrite '
+            cluster_name,
+            scatter_count,
+            is_test=is_test,
+            depends_on=depends_on,
+        ).add_job(
+            f'{utils.SCRIPTS_DIR}/evaluation.py --overwrite '
             f'--mt {combined_mt_path} '
             f'--rf-annotations-ht {rf_annotations_ht_path} '
             f'--info-split-ht {info_split_ht_path} '
@@ -250,20 +288,24 @@ def make_rf_eval_jobs(
             f'--out-bin-ht {score_bin_ht_path} '
             f'--out-aggregated-bin-ht {score_bin_agg_ht_path} '
             f'--run-sanity-checks ',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=depends_on,
-            job_name='RF: evaluation',
+            job_name=job_name,
         )
+        if depends_on:
+            eval_job.depends_on(*depends_on)
     else:
-        eval_job = b.new_job('RF: evaluation [reuse]')
+        eval_job = b.new_job(f'{job_name} [reuse]')
 
+    job_name = 'RF: final filter'
     final_filter_ht_path = join(work_bucket, 'final-filter.ht')
     if overwrite or not utils.file_exists(final_filter_ht_path):
-        final_filter_job = dataproc.hail_dataproc_job(
+        final_filter_job = get_cluster(
             b,
-            f'{scripts_dir}/final_filter.py --overwrite '
+            cluster_name,
+            scatter_count,
+            is_test=is_test,
+            depends_on=[eval_job],
+        ).add_job(
+            f'{utils.SCRIPTS_DIR}/final_filter.py --overwrite '
             f'--out-final-filter-ht {final_filter_ht_path} '
             f'--model-id {rf_model_id} '
             f'--model-name RF '
@@ -272,20 +314,18 @@ def make_rf_eval_jobs(
             f'--freq-ht {freq_ht_path} '
             f'--score-bin-ht {score_bin_ht_path} '
             f'--score-bin-agg-ht {score_bin_agg_ht_path} ' + f'--bucket {work_bucket} ',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=[eval_job],
-            job_name='RF: final filter',
+            job_name=job_name,
         )
+        final_filter_job.depends_on(eval_job)
     else:
-        final_filter_job = b.new_job('RF: final filter [reuse]')
+        final_filter_job = b.new_job(f'{job_name} [reuse]')
 
     return final_filter_job, final_filter_ht_path
 
 
-def make_vqsr_eval_jobs(
+def add_vqsr_eval_jobs(
     b: hb.Batch,
+    cluster_name: str,
     combined_mt_path: str,
     rf_annotations_ht_path: str,
     info_split_ht_path: str,
@@ -296,35 +336,35 @@ def make_vqsr_eval_jobs(
     work_bucket: str,
     analysis_bucket: str,  # pylint: disable=unused-argument
     overwrite: bool,
-    scripts_dir: str,
-    final_gathered_vcf_job: Job,
+    vqsr_vcf_job: Job,
     rf_anno_job: Job,
-    scatter_count: int,
     output_ht_path: str,
-) -> Tuple[Job, str]:
+    scatter_count: int,
+    is_test: bool = False,
+) -> Job:
     """
     Make jobs that do evaluation VQSR model and applies the final filters
 
     Returns the final_filter Job object and the path to the final filter HT
     """
+    job_name = 'AS-VQSR: load_vqsr'
     vqsr_filters_split_ht_path = join(work_bucket, 'vqsr-filters-split.ht')
     if overwrite or not utils.file_exists(vqsr_filters_split_ht_path):
-        load_vqsr_job = dataproc.hail_dataproc_job(
-            b,
-            f'{scripts_dir}/load_vqsr.py --overwrite '
+        load_vqsr_job = get_cluster(
+            b, cluster_name, scatter_count, is_test=is_test, depends_on=[vqsr_vcf_job]
+        ).add_job(
+            f'{utils.SCRIPTS_DIR}/load_vqsr.py --overwrite '
             f'--split-multiallelic '
             f'--out-path {vqsr_filters_split_ht_path} '
             f'--vqsr-vcf-path {final_gathered_vcf_path} '
             f'--bucket {work_bucket} ',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=[final_gathered_vcf_job],
-            job_name='VQSR: load_vqsr',
+            job_name=job_name,
         )
+        load_vqsr_job.depends_on(vqsr_vcf_job)
     else:
-        load_vqsr_job = b.new_job('VQSR: load_vqsr [reuse]')
+        load_vqsr_job = b.new_job(f'{job_name} [reuse]')
 
+    job_name = 'AS-VQSR: evaluation'
     score_bin_ht_path = join(work_bucket, 'vqsr-score-bin.ht')
     score_bin_agg_ht_path = join(work_bucket, 'vqsr-score-agg-bin.ht')
     if (
@@ -332,9 +372,14 @@ def make_vqsr_eval_jobs(
         or not utils.file_exists(score_bin_ht_path)
         or not utils.file_exists(score_bin_agg_ht_path)
     ):
-        eval_job = dataproc.hail_dataproc_job(
+        eval_job = get_cluster(
             b,
-            f'{scripts_dir}/evaluation.py --overwrite '
+            cluster_name,
+            scatter_count,
+            is_test=is_test,
+            depends_on=[load_vqsr_job, rf_anno_job],
+        ).add_job(
+            f'{utils.SCRIPTS_DIR}/evaluation.py --overwrite '
             f'--mt {combined_mt_path} '
             f'--rf-annotations-ht {rf_annotations_ht_path} '
             f'--info-split-ht {info_split_ht_path} '
@@ -349,20 +394,19 @@ def make_vqsr_eval_jobs(
             f'--out-bin-ht {score_bin_ht_path} '
             f'--out-aggregated-bin-ht {score_bin_agg_ht_path} '
             f'--run-sanity-checks ',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=[load_vqsr_job, rf_anno_job],
-            job_name='VQSR: evaluation',
+            job_name=job_name,
         )
+        eval_job.depends_on(load_vqsr_job, rf_anno_job)
     else:
-        eval_job = b.new_job('VQSR: evaluation [reuse]')
+        eval_job = b.new_job(f'{job_name} [reuse]')
 
+    job_name = 'AS-VQSR: final filter'
     vqsr_model_id = 'vqsr_model'
     if not utils.file_exists(output_ht_path):
-        final_filter_job = dataproc.hail_dataproc_job(
-            b,
-            f'{scripts_dir}/final_filter.py --overwrite '
+        final_filter_job = get_cluster(
+            b, cluster_name, scatter_count, is_test=is_test, depends_on=[eval_job]
+        ).add_job(
+            f'{utils.SCRIPTS_DIR}/final_filter.py --overwrite '
             f'--out-final-filter-ht {output_ht_path} '
             f'--vqsr-filters-split-ht {vqsr_filters_split_ht_path} '
             f'--model-id {vqsr_model_id} '
@@ -373,12 +417,9 @@ def make_vqsr_eval_jobs(
             f'--score-bin-ht {score_bin_ht_path} '
             f'--score-bin-agg-ht {score_bin_agg_ht_path} '
             f'--bucket {work_bucket} ',
-            max_age='8h',
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
-            depends_on=[eval_job],
-            job_name='VQSR: final filter',
+            job_name=job_name,
         )
+        final_filter_job.depends_on(eval_job)
     else:
-        final_filter_job = b.new_job('VQSR: final filter [reuse]')
+        final_filter_job = b.new_job(f'{job_name} [reuse]')
     return final_filter_job

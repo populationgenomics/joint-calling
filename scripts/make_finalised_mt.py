@@ -5,6 +5,8 @@ Generate final annotated, soft-filtered Matrix Table
 """
 
 import logging
+from typing import Optional
+
 import click
 import hail as hl
 
@@ -34,7 +36,6 @@ logger.setLevel('INFO')
 @click.option(
     '--out-nonref-mt',
     'out_nonref_mt_path',
-    required=True,
     callback=get_validation_callback(ext='mt', must_exist=False),
     help='write a version of output Matrix Table without reference blocks',
 )
@@ -70,7 +71,7 @@ logger.setLevel('INFO')
 def main(
     mt_path: str,
     out_mt_path: str,
-    out_nonref_mt_path: str,
+    out_nonref_mt_path: Optional[str],
     meta_ht_path: str,
     vqsr_final_filter_ht_path: str,
     local_tmp_dir: str,
@@ -98,8 +99,9 @@ def main(
     mt = mt.annotate_globals(**vqsr_ht.index_globals())
     mt.write(out_mt_path, overwrite=True)
 
-    mt = mt.filter_rows((hl.len(mt.alleles) > 1) & hl.agg.any(mt.GT.is_non_ref()))
-    mt.write(out_nonref_mt_path, overwrite=True)
+    if out_nonref_mt_path:
+        mt = mt.filter_rows((hl.len(mt.alleles) > 1) & hl.agg.any(mt.GT.is_non_ref()))
+        mt.write(out_nonref_mt_path, overwrite=True)
 
 
 if __name__ == '__main__':

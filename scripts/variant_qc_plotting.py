@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# pylint: skip-file
+
 """
 Functions for variant QC plotting
 """

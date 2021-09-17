@@ -39,15 +39,10 @@ logger.setLevel(logging.INFO)
     help='path to the Matrix Table',
 )
 @click.option(
-    '--input-metadata-ht',
-    'input_metadata_ht_path',
+    '--meta-csv',
+    'meta_csv_path',
     required=True,
-    callback=utils.get_validation_callback(ext='ht', must_exist=True),
-)
-@click.option(
-    '--pre-computed-hgdp-union-mt',
-    'pre_computed_hgdp_unuon_mt_path',
-    help='Useful for tests to save time on subsetting the large gnomAD matrix table',
+    help='path to a CSV with QC and population metadata for the samples',
 )
 @click.option(
     '--out-hgdp-union-mt',
@@ -58,6 +53,10 @@ logger.setLevel(logging.INFO)
     'The difference with `--out-mt` is that it also contains HGDP-1KG samples',
 )
 @click.option(
+    '--pop',
+    'pop',
+)
+@click.option(
     '--out-provided-pop-ht',
     'out_provided_pop_ht_path',
     callback=utils.get_validation_callback(ext='ht'),
@@ -66,7 +65,6 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--out-mt',
     'out_mt_path',
-    required=True,
     callback=utils.get_validation_callback(ext='mt'),
     help='path to write the Matrix Table after subsetting to selected rows. '
     'The difference with --out-hgdp-union-mt is that it contains only the dataset '
@@ -93,19 +91,29 @@ logger.setLevel(logging.INFO)
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_path: str,
-    input_metadata_ht_path: str,
-    pre_computed_hgdp_unuon_mt_path: Optional[str],
+    meta_csv_path: str,
     out_hgdp_union_mt_path: str,
-    out_provided_pop_ht_path: str,
-    out_mt_path: str,
+    pop: Optional[str],
+    out_provided_pop_ht_path: Optional[str],
+    out_mt_path: Optional[str],
     overwrite: bool,
     is_test: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
 ):
-    utils.init_hail(__file__)
+    local_tmp_dir = utils.init_hail(__file__)
 
-    input_metadata_ht = hl.read_table(input_metadata_ht_path)
-    hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_MT_PATH)
+    input_metadata_ht = utils.parse_input_metadata(meta_csv_path, local_tmp_dir)
+
+    if pop and pop in utils.ANCESTRY_SITES_MTS:
+        if is_test:
+            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS[f'test_{pop}'])
+        else:
+            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS[pop])
+    else:
+        if is_test:
+            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS['test'])
+        else:
+            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS['all'])
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
     # Subset to biallelic SNPs in autosomes
@@ -118,36 +126,29 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     mt = hl.experimental.densify(mt)  # drops mt.END
     mt = mt.select_entries(GT=lgt_to_gt(mt.LGT, mt.LA))
 
-    if pre_computed_hgdp_unuon_mt_path:
-        hgdp_union_mt = hl.read_matrix_table(pre_computed_hgdp_unuon_mt_path)
-    else:
-        # if is_test:
-        #     hgdp_mt = hl.read_matrix_table(utils.GNOMAD_HGDP_1KG_TEST_MT_PATH)
-        hgdp_union_mt = get_sites_shared_with_hgdp(
-            mt=mt,
-            hgdp_mt=hgdp_mt,
+    hgdp_union_mt = get_sites_shared_with_hgdp(
+        mt=mt,
+        hgdp_mt=hgdp_mt,
+        overwrite=overwrite,
+        out_mt_path=out_hgdp_union_mt_path,
+    )
+
+    if out_provided_pop_ht_path:
+        _make_provided_pop_ht(
+            hgdp_union_mt=hgdp_union_mt,
+            input_metadata_ht=input_metadata_ht,
+            hgdp_ht=hgdp_mt.cols(),
+            out_provided_pop_ht_path=out_provided_pop_ht_path,
             overwrite=overwrite,
         )
 
-    _make_provided_pop_ht(
-        hgdp_union_mt=hgdp_union_mt,
-        input_metadata_ht=input_metadata_ht,
-        hgdp_ht=hgdp_mt.cols(),
-        out_provided_pop_ht_path=out_provided_pop_ht_path,
-        overwrite=overwrite,
-    )
-
-    hgdp_union_hq_sites_mt = filter_high_quality_sites(
-        hgdp_union_mt,
-        out_mt_path=out_hgdp_union_mt_path,
-        overwrite=overwrite,
-    )
-    generate_subset_mt(
-        mt=mt,
-        hgdp_union_hq_sites_mt=hgdp_union_hq_sites_mt,
-        out_mt_path=out_mt_path,
-        overwrite=overwrite,
-    )
+    if out_mt_path:
+        generate_subset_mt(
+            mt=mt,
+            hgdp_union_hq_sites_mt=hgdp_union_mt,
+            out_mt_path=out_mt_path,
+            overwrite=overwrite,
+        )
 
 
 def _make_provided_pop_ht(
@@ -160,17 +161,23 @@ def _make_provided_pop_ht(
     if utils.can_reuse(out_provided_pop_ht_path, overwrite):
         return hl.read_table(out_provided_pop_ht_path)
     ht = hgdp_union_mt.cols().select_globals().select()
+    logger.info(f'178: {ht.count()}')
     ht = ht.annotate(
         project=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), 'gnomad')
         .default(input_metadata_ht[ht.s].project),
         continental_pop=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), hgdp_ht[ht.s].population_inference.pop)
-        .default(input_metadata_ht[ht.s].continental_pop),
+        .when(
+            input_metadata_ht[ht.s].continental_pop != '-',
+            input_metadata_ht[ht.s].continental_pop,
+        )
+        .default(''),
         subpop=hl.case()
         .when(hl.is_defined(hgdp_ht[ht.s]), hgdp_ht[ht.s].labeled_subpop)
-        .default(input_metadata_ht[ht.s].subpop),
+        .default(''),
     )
+    logger.info(f'194: {ht.count()}')
     return ht.checkpoint(out_provided_pop_ht_path, overwrite=overwrite)
 
 
@@ -195,16 +202,22 @@ def get_sites_shared_with_hgdp(
 
     # Entries and columns must be identical, so stripping all column-level data,
     # and all entry-level data except GT.
+    logger.info(f'219 mt cols: {mt.count_cols()}')
     mt = mt.select_entries('GT')
+    logger.info(f'221 mt cols: {mt.count_cols()}')
     hgdp_cols_ht = hgdp_mt.cols()  # saving the column data to re-add later
+    logger.info(f'223 hgdp_cols_ht cols: {hgdp_cols_ht.count()}')
     hgdp_mt = hgdp_mt.select_entries(hgdp_mt.GT).select_cols()
+    logger.info(f'225 hgdp_mt cols: {hgdp_mt.count_cols()}')
 
     # Join samples between two datasets. It will also subset rows to the rows
     # shared between datasets.
     mt = hgdp_mt.union_cols(mt)
+    logger.info(f'230 mt cols: {mt.count_cols()}')
 
     # Add in back the sample-level metadata
     mt = mt.annotate_cols(hgdp_1kg_metadata=hgdp_cols_ht[mt.s])
+    logger.info(f'234 mt cols: {mt.count_cols()}')
 
     if out_mt_path:
         mt.write(out_mt_path, overwrite=True)
@@ -215,7 +228,6 @@ def get_sites_shared_with_hgdp(
 
 def filter_high_quality_sites(
     mt: hl.MatrixTable,
-    num_rows_before_ld_prune: int = 200_000,
     out_mt_path: Optional[str] = None,
     overwrite: bool = False,
 ) -> hl.MatrixTable:
@@ -240,20 +252,6 @@ def filter_high_quality_sites(
         & (mt.variant_qc.call_rate > 0.99)
         & (mt.IB.f_stat > -0.25)
     )
-
-    # Randomly subsampling the matrix table to `num_rows_before_ld_prune` sites
-    # before feeding it into LD prunning
-    mt = mt.cache()
-    nrows = mt.count_rows()
-    logger.info(f'Number of rows after filtering: {nrows}')
-    if nrows > num_rows_before_ld_prune:
-        logger.info(f'Number of rows {nrows} > {num_rows_before_ld_prune}, subsetting')
-        mt = mt.sample_rows(num_rows_before_ld_prune / nrows, seed=12345)
-
-    # LD prunning
-    pruned_variant_ht = hl.ld_prune(mt.GT, r2=0.1, bp_window_size=500000)
-    mt = mt.filter_rows(hl.is_defined(pruned_variant_ht[mt.row_key]))
-    logger.info(f'Number of rows after prunning: {mt.count_rows()}')
 
     if out_mt_path:
         mt.write(out_mt_path, overwrite=True)

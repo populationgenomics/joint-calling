@@ -213,7 +213,29 @@ def replace_paths_to_test(s: Dict) -> Optional[Dict]:
         return None
 
 
-def find_inputs(
+default_entry = {
+    's': None,
+    'external_id': None,
+    'project': None,
+    'continental_pop': '-',
+    'subpop': '-',
+    'gvcf': '-',
+    'cram': '-',
+    'crai': '-',
+    'batch': '-',
+    'operation': 'add',
+    'flowcell_lane': '-',
+    'library_id': '-',
+    'platform': '-',
+    'centre': '-',
+    'r_contamination': None,
+    'r_chimera': None,
+    'r_duplication': None,
+    'median_insert_size': None,
+}
+
+
+def find_inputs_from_db(
     input_projects: List[str],
     is_test: bool = False,
     skip_samples: Optional[Collection[str]] = None,
@@ -355,25 +377,25 @@ def find_inputs(
                     f'does not have a corresponding tbi index: {gvcf_path}.tbi'
                 )
                 continue
-            sample_information = {
-                's': sample_id,
-                'external_id': external_id,
-                'project': proj,
-                'continental_pop': None,
-                'subpop': None,
-                'gvcf': gvcf_path,
-                'batch': seq_meta.get('batch'),
-                'r_contamination': seq_meta.get('raw_data.FREEMIX'),
-                'r_chimera': seq_meta.get('raw_data.PCT_CHIMERAS'),
-                'r_duplication': seq_meta.get('raw_data.PERCENT_DUPLICATION'),
-                'median_insert_size': seq_meta.get('raw_data.MEDIAN_INSERT_SIZE'),
-                'flowcell_lane': seq_meta.get('sample.flowcell_lane'),
-                'library_id': seq_meta.get('sample.library_id'),
-                'platform': seq_meta.get('sample.platform'),
-                'centre': seq_meta.get('sample.centre'),
-                'operation': 'add',
-            }
-            inputs.append(sample_information)
+            entry = default_entry.copy()
+            entry.update(
+                {
+                    's': sample_id,
+                    'external_id': external_id,
+                    'project': proj,
+                    'gvcf': gvcf_path,
+                    'batch': seq_meta.get('batch', '-'),
+                    'flowcell_lane': seq_meta.get('sample.flowcell_lane', '-'),
+                    'library_id': seq_meta.get('sample.library_id', '-'),
+                    'platform': seq_meta.get('sample.platform', '-'),
+                    'centre': seq_meta.get('sample.centre', '-'),
+                    'r_contamination': seq_meta.get('raw_data.FREEMIX'),
+                    'r_chimera': seq_meta.get('raw_data.PCT_CHIMERAS'),
+                    'r_duplication': seq_meta.get('raw_data.PERCENT_DUPLICATION'),
+                    'median_insert_size': seq_meta.get('raw_data.MEDIAN_INSERT_SIZE'),
+                }
+            )
+            inputs.append(entry)
 
     if not inputs:
         logger.error('No found any projects with samples good for processing')
@@ -381,3 +403,52 @@ def find_inputs(
 
     df = pd.DataFrame(inputs).set_index('s', drop=False)
     return df
+
+
+def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add NA12878 GVCFs and syndip BAM into the dataframe.
+    """
+    if 'syndip' not in df.s:
+        entry = default_entry.copy()
+        entry.update(
+            {
+                's': 'syndip',
+                'external_id': 'syndip',
+                'project': 'syndip',
+                'cram': 'gs://cpg-reference/validation/syndip/raw/CHM1_CHM13_2.bam',
+                'crai': 'gs://cpg-reference/validation/syndip/raw/CHM1_CHM13_2.bam.bai',
+            }
+        )
+        # Can only append a dict if ignore_index=True. So then need to set index back.
+        df = df.append(entry, ignore_index=True).set_index('s', drop=False)
+
+    giab_samples = ['NA12878', 'NA12891', 'NA12892']
+    for sn in giab_samples:
+        if sn not in df.s:
+            cram = f'gs://cpg-reference/validation/giab/cram/{sn}.cram'
+            entry = default_entry.copy()
+            entry.update(
+                {
+                    's': sn,
+                    'external_id': sn,
+                    'project': 'giab',
+                    'cram': cram,
+                    'crai': cram + '.crai',
+                }
+            )
+            # Can only append a dict if ignore_index=True. So then need to set index back.
+            df = df.append(entry, ignore_index=True).set_index('s', drop=False)
+    return df
+
+
+@dataclass
+class AlignmentInput:
+    """
+    Sort of a union type for possible alignment inputs
+    """
+
+    bam_or_cram_path: Optional[str] = None
+    index_path: Optional[str] = None
+    fqs1: Optional[List[str]] = None
+    fqs2: Optional[List[str]] = None

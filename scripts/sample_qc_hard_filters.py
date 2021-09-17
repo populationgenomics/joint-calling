@@ -4,12 +4,8 @@
 Run sample QC on a MatrixTable, hard filter samples, add soft filter labels.
 """
 
-from os.path import join, basename
-import subprocess
 import logging
 import click
-import hail as hl
-import pandas as pd
 
 from joint_calling import utils
 from joint_calling import sample_qc as sqc
@@ -35,25 +31,15 @@ logger.setLevel(logging.INFO)
     '--meta-csv',
     'meta_csv_path',
     required=True,
-    help='path to a CSV with QC and population metadata for the samples '
-    'in the input Matrix Table. The following columns are expected: '
-    's,population,gvcf,freemix,pct_chimeras,'
-    'duplication,median_insert_size,mean_coverage. '
-    'Must be keyed by "s". Samples with non-empty entries in '
-    'the "population" column will be used to train the random forest '
-    'for population inference of remaining samples. Other colums are '
-    'used to apply QC hard filters to samples.',
+    help='path to a CSV with QC metadata for the samples in the input Matrix Table. '
+    'The following columns are expected: '
+    's,freemix,pct_chimeras,duplication,median_insert_size. '
+    'Must be keyed by "s".',
 )
 @click.option(
     '--filter-cutoffs-file',
     'filter_cutoffs_path',
     help=f'YAML file with filtering cutoffs',
-)
-@click.option(
-    '--out-input-metadata-ht',
-    'out_input_metadata_ht_path',
-    callback=utils.get_validation_callback(ext='ht', must_exist=False),
-    required=True,
 )
 @click.option(
     '--out-hard-filtered-samples-ht',
@@ -108,7 +94,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     mt_path: str,
     meta_csv_path: str,
     filter_cutoffs_path: str,
-    out_input_metadata_ht_path: str,
     out_hard_filtered_samples_ht_path: str,
     out_sex_ht_path: str,
     out_hail_sample_qc_ht_path: str,
@@ -125,10 +110,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
 
-    input_metadata_ht = _parse_input_metadata(
+    input_metadata_ht = utils.parse_input_metadata(
         meta_csv_path=meta_csv_path,
         local_tmp_dir=local_tmp_dir,
-        out_ht_path=out_input_metadata_ht_path,
     )
 
     # `hail_sample_qc_ht` row fields: sample_qc, bi_allelic_sample_qc
@@ -166,23 +150,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         out_ht_path=out_hard_filtered_samples_ht_path,
         overwrite=overwrite,
     )
-
-
-def _parse_input_metadata(
-    meta_csv_path: str,
-    local_tmp_dir: str,
-    out_ht_path: str,
-) -> hl.Table:
-    """
-    Parse KCCG metadata (population and picard metrics)
-    """
-    local_csv_path = join(local_tmp_dir, basename(meta_csv_path))
-    subprocess.run(
-        f'gsutil cp {meta_csv_path} {local_csv_path}', check=False, shell=True
-    )
-    df = pd.read_table(local_csv_path)
-    ht = hl.Table.from_pandas(df).key_by('s')
-    return ht.checkpoint(out_ht_path, overwrite=True)
 
 
 if __name__ == '__main__':
