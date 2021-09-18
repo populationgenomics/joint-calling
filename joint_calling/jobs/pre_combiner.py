@@ -178,8 +178,6 @@ def _add_realign_jobs(
         bwa2bit64=utils.REF_FASTA + '.bwt.2bit.64',
     )
 
-    work_dir = dirname(j.output_cram.cram)
-
     pull_inputs_cmd = ''
 
     if alignment_input.bam_or_cram_path:
@@ -199,6 +197,7 @@ def _add_realign_jobs(
             # Can't use on Batch localization mechanism with `b.read_input_group`,
             # but have to manually localize with `wget`
             cram_name = basename(alignment_input.bam_or_cram_path)
+            work_dir = dirname(j.output_cram.cram)
             cram_localized_path = join(work_dir, cram_name)
             crai_localized_path = join(work_dir, cram_name + '.crai')
             pull_inputs_cmd = (
@@ -233,7 +232,7 @@ def _add_realign_jobs(
 set -o pipefail
 set -ex
 
-(while true; do df -h; pwd; du -sh {work_dir}; sleep 600; done) &
+(while true; do df -h; pwd; du -sh $(dirname {j.output_cram.cram}); sleep 600; done) &
 
 {pull_inputs_cmd}
 
@@ -246,7 +245,7 @@ samtools view -T {reference.base} -O cram -o {j.output_cram.cram}
 
 samtools index -@{total_cpu} {j.output_cram.cram} {j.output_cram['cram.crai']}
 
-df -h; pwd; du -sh {work_dir}
+df -h; pwd; du -sh $(dirname {j.output_cram.cram})
     """
     j.command(command)
     b.write_output(j.output_cram, splitext(output_path)[0])
