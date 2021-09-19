@@ -18,12 +18,6 @@ from gnomad.variant_qc.evaluation import (
     create_truth_sample_ht,
 )
 from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg
-from gnomad.resources.grch38 import (
-    na12878_giab,
-    na12878_giab_hc_intervals,
-    syndip,
-    syndip_hc_intervals,
-)
 
 from joint_calling.utils import get_validation_callback
 from joint_calling import utils
@@ -195,26 +189,34 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     truth_gvcfs = dict(
         syndip=dict(
             s='syndip',
-            gvcf='gs://gnomad-public-requester-pays/resources/grch38/syndip/full.38.20180222.vcf.gz',
+            gvcf='gs://cpg-reference/validation/syndip/truth/full.38.20180222.vcf.gz',
         ),
         NA12878=dict(
             s='NA12878',
-            gvcf='gs://gnomad-public-requester-pays/resources/grch38/na12878/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',
+            gvcf='gs://cpg-reference/validation/giab/truth/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.vcf.gz',
         ),
     )
 
     truth_dict = {
         truth_gvcfs['syndip']['s']: {
             's': truth_gvcfs['syndip']['s'],
-            'truth_mt': syndip.mt(),
-            'hc_intervals': syndip_hc_intervals.ht(),
+            'truth_mt': hl.read_matrix_table(
+                'gs://cpg-reference/validation/syndip/truth/syndip.b38_20180222.mt'
+            ),
+            'hc_intervals': hl.read_table(
+                'gs://cpg-reference/validation/syndip/regions/syndip_b38_20180222_hc_regions.ht'
+            ),
             'mt': None,
             'ht': None,
         },
         truth_gvcfs['NA12878']['s']: {
             's': truth_gvcfs['NA12878']['s'],
-            'truth_mt': na12878_giab.mt(),
-            'hc_intervals': na12878_giab_hc_intervals.ht(),
+            'truth_mt': hl.read_matrix_table(
+                'gs://cpg-reference/validation/giab/truth/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_PGandRTGphasetransfer.mt'
+            ),
+            'hc_intervals': hl.read_table(
+                'gs://cpg-reference/validation/giab/regions/HG001_GRCh38_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-10X-SOLID_CHROM1-X_v.3.3.2_highconf_nosomaticdel_noCENorHET7_hc_regions.ht'
+            ),
             'mt': None,
             'ht': None,
         },
