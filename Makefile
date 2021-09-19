@@ -31,12 +31,7 @@ sleep:
 
 .PHONY: 1kg_concordance_test
 1kg_concordance_test:
-	analysis-runner \
-	--dataset thousand-genomes \
-	--output-dir "joint-calling/1kg_concordance_test" \
-	--description "Joint calling 1kg_concordance_test" \
-	--access-level test \
-	batch_workflow.py \
+	python batch_workflow.py \
 	--scatter-count 20 \
 	--namespace test \
 	--analysis-project thousand-genomes \
