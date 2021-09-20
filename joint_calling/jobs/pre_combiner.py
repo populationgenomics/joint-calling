@@ -199,7 +199,8 @@ def _add_realign_jobs(
             cram_name = basename(alignment_input.bam_or_cram_path)
             work_dir = dirname(j.output_cram.cram)
             cram_localized_path = join(work_dir, cram_name)
-            crai_localized_path = join(work_dir, cram_name + '.crai')
+            index_ext = '.crai' if cram_name.endswith('.cram') else '.bai'
+            crai_localized_path = join(work_dir, cram_name + index_ext)
             pull_inputs_cmd = (
                 f'wget {alignment_input.bam_or_cram_path} -O {cram_localized_path}\n'
                 f'wget {alignment_input.index_path} -O {crai_localized_path}'
