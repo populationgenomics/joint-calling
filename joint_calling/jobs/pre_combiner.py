@@ -156,7 +156,6 @@ def _add_realign_jobs(
     total_cpu = 32
     j.cpu(total_cpu)
     j.memory('standard')
-    j.storage('500G')
     j.declare_resource_group(
         output_cram={
             'cram': '{root}.cram',
@@ -187,6 +186,9 @@ def _add_realign_jobs(
         bamsormadup_cpu = 10
         assert alignment_input.index_path
         assert not alignment_input.fqs1 and not alignment_input.fqs2
+        j.storage(
+            '400G' if alignment_input.bam_or_cram_path.endswith('.cram') else '1000G'
+        )
 
         if alignment_input.bam_or_cram_path.startswith('gs://'):
             cram = b.read_input_group(
@@ -215,6 +217,8 @@ def _add_realign_jobs(
         use_bazam = False
         bwa_cpu = 32
         bamsormadup_cpu = 10
+        j.storage('600G')
+
         files1 = [b.read_input(f1) for f1 in alignment_input.fqs1]
         files2 = [b.read_input(f1) for f1 in alignment_input.fqs2]
         r1_param = f'<(cat {" ".join(files1)})'
