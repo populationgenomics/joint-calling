@@ -274,7 +274,6 @@ def add_vqsr_jobs(
             is_huge_callset=is_huge_callset,
             max_gaussians=snp_max_gaussians,
         ).model_file
-        # model_file = b.read_input('gs://playground-au/batch/859e9a/18/model_report')
 
         snps_recalibrator_jobs = [
             add_snps_variant_recalibrator_scattered_step(

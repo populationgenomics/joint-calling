@@ -76,7 +76,7 @@ def add_pre_combiner_jobs(
     for s_id, external_id, proj, input_cram, input_crai in zip(
         cram_df.s, cram_df.external_id, cram_df.project, cram_df.cram, cram_df.crai
     ):
-        assert isinstance(input_crai, str)
+        assert isinstance(input_crai, str), (s_id, input_crai)
 
         proj_bucket = get_project_bucket(proj)
 
@@ -156,7 +156,6 @@ def _add_realign_jobs(
     total_cpu = 32
     j.cpu(total_cpu)
     j.memory('standard')
-    j.storage('500G')
     j.declare_resource_group(
         output_cram={
             'cram': '{root}.cram',
@@ -178,8 +177,6 @@ def _add_realign_jobs(
         bwa2bit64=utils.REF_FASTA + '.bwt.2bit.64',
     )
 
-    work_dir = dirname(j.output_cram.cram)
-
     pull_inputs_cmd = ''
 
     if alignment_input.bam_or_cram_path:
@@ -189,6 +186,9 @@ def _add_realign_jobs(
         bamsormadup_cpu = 10
         assert alignment_input.index_path
         assert not alignment_input.fqs1 and not alignment_input.fqs2
+        j.storage(
+            '400G' if alignment_input.bam_or_cram_path.endswith('.cram') else '1000G'
+        )
 
         if alignment_input.bam_or_cram_path.startswith('gs://'):
             cram = b.read_input_group(
@@ -199,8 +199,10 @@ def _add_realign_jobs(
             # Can't use on Batch localization mechanism with `b.read_input_group`,
             # but have to manually localize with `wget`
             cram_name = basename(alignment_input.bam_or_cram_path)
+            work_dir = dirname(j.output_cram.cram)
             cram_localized_path = join(work_dir, cram_name)
-            crai_localized_path = join(work_dir, cram_name + '.crai')
+            index_ext = '.crai' if cram_name.endswith('.cram') else '.bai'
+            crai_localized_path = join(work_dir, cram_name + index_ext)
             pull_inputs_cmd = (
                 f'wget {alignment_input.bam_or_cram_path} -O {cram_localized_path}\n'
                 f'wget {alignment_input.index_path} -O {crai_localized_path}'
@@ -215,6 +217,8 @@ def _add_realign_jobs(
         use_bazam = False
         bwa_cpu = 32
         bamsormadup_cpu = 10
+        j.storage('600G')
+
         files1 = [b.read_input(f1) for f1 in alignment_input.fqs1]
         files2 = [b.read_input(f1) for f1 in alignment_input.fqs2]
         r1_param = f'<(cat {" ".join(files1)})'
@@ -233,7 +237,7 @@ def _add_realign_jobs(
 set -o pipefail
 set -ex
 
-(while true; do df -h; pwd; du -sh {work_dir}; sleep 600; done) &
+(while true; do df -h; pwd; du -sh $(dirname {j.output_cram.cram}); sleep 600; done) &
 
 {pull_inputs_cmd}
 
@@ -244,9 +248,9 @@ bamsormadup inputformat=sam threads={bamsormadup_cpu} SO=coordinate \\
     tmpfile=$(dirname {j.output_cram.cram})/bamsormadup-tmp | \\
 samtools view -T {reference.base} -O cram -o {j.output_cram.cram}
 
-samtools index -@{total_cpu} {j.output_cram.cram} {j.output_cram.crai}
+samtools index -@{total_cpu} {j.output_cram.cram} {j.output_cram['cram.crai']}
 
-df -h; pwd; du -sh {work_dir}
+df -h; pwd; du -sh $(dirname {j.output_cram.cram})
     """
     j.command(command)
     b.write_output(j.output_cram, splitext(output_path)[0])
