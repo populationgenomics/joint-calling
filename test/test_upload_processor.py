@@ -141,7 +141,9 @@ class TestUploadProcessor(unittest.TestCase):
                 )
             )
 
-    @unittest.skip('Skip for testing')
+        full_path = os.path.join('gs://', self.main_prefix, '*')
+        subprocess.run(['gsutil', 'rm', '-r', full_path], check=False)
+
     def test_invalid_samples(self):
         """Test case that handles invalid sample ID's i.e. samples that don't exist
         in the upload bucket"""
@@ -172,11 +174,6 @@ class TestUploadProcessor(unittest.TestCase):
 
         with self.assertRaises(subprocess.CalledProcessError):
             invalid_batch.run()
-
-    def tearDown(self):
-        """Deleting files created in test run"""
-        full_path = os.path.join('gs://', self.main_prefix, '*')
-        subprocess.run(['gsutil', 'rm', full_path], check=False)
 
 
 if __name__ == '__main__':
