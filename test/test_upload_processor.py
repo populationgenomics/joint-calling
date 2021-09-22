@@ -82,7 +82,7 @@ class TestUploadProcessor(unittest.TestCase):
 
         self.docker_image = os.environ.get('DOCKER_IMAGE')
         self.key = os.environ.get('GSA_KEY')
-        self.project = 'viviandev'
+        self.project = 'test_samples'
 
     def test_batch_move_standard(self):
         """Testing standard case of moving a list of files with valid inputs"""

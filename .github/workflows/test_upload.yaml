@@ -12,6 +12,7 @@ jobs:
       CLOUDSDK_CORE_DISABLE_PROMPTS: 1
       DOCKER_IMAGE: australia-southeast1-docker.pkg.dev/analysis-runner/images/driver:43eb87b4f578d23bc7497a78b7257f8b117c289b-hail-0.2.64.dev1ba0649577df
       GSA_KEY: ${{ secrets.GCP_SA_KEY }}
+      SM_ENVIRONMENT: development
 
     steps:
       - name: Check out repository code
