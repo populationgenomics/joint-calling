@@ -34,7 +34,7 @@ def main(pop: Optional[str]):  # pylint: disable=missing-function-docstring
     sites_ht_path = join(BUCKET, 'pca_sites.ht')
     if not hl.hadoop_exists(sites_ht_path):
         purcell_ht = hl.read_table(PURCELL_HT)
-        gnomad_v2_qc_sites_ht = hl.read_table(GNOMAD_V2_QC_SITES_HT)
+        gnomad_v2_qc_sites_ht = hl.read_table(GNOMAD_V2_QC_SITES_HT).key_by("locus")
         ht = gnomad_v2_qc_sites_ht.union(purcell_ht, unify=True)
         ht = ht.filter(hl.is_missing(hl.read_table(LCR_INTERVALS_HT)[ht.key]))
         ht.write(sites_ht_path)
