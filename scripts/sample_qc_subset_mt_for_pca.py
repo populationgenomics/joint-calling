@@ -14,12 +14,15 @@ This script will produce two matrix tables:
 """
 
 import logging
+from os.path import join
 from typing import Optional
 
 import click
 import hail as hl
 from hail.experimental import lgt_to_gt
 
+from gnomad.utils.annotations import get_adj_expr
+from gnomad.utils.sparse_mt import densify_sites
 from joint_calling import utils
 from joint_calling import _version
 
@@ -71,6 +74,10 @@ logger.setLevel(logging.INFO)
     'samples',
 )
 @click.option(
+    '--tmp-bucket',
+    'tmp_bucket',
+)
+@click.option(
     '--overwrite/--reuse',
     'overwrite',
     is_flag=True,
@@ -96,6 +103,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     pop: Optional[str],
     out_provided_pop_ht_path: Optional[str],
     out_mt_path: Optional[str],
+    tmp_bucket: str,
     overwrite: bool,
     is_test: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
@@ -104,27 +112,42 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     input_metadata_ht = utils.parse_input_metadata(meta_csv_path, local_tmp_dir)
 
-    if pop and pop in utils.ANCESTRY_SITES_MTS:
+    if pop and pop in utils.ANCESTRY_HGDP_SUBSET_MTS:
         if is_test:
-            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS[f'test_{pop}'])
+            hgdp_mt = hl.read_matrix_table(
+                utils.ANCESTRY_HGDP_SUBSET_MTS[f'test_{pop}']
+            )
         else:
-            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS[pop])
+            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_HGDP_SUBSET_MTS[pop])
     else:
         if is_test:
-            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS['test'])
+            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_HGDP_SUBSET_MTS['test'])
         else:
-            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_SITES_MTS['all'])
+            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_HGDP_SUBSET_MTS['all'])
+
+    sites_ht = hl.read_table(utils.ANCESTRY_SITES)
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
+    mt = mt.select_entries(
+        'END',
+        GT=lgt_to_gt(mt.LGT, mt.LA),
+        adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
+    )
+    last_end_ht = _create_last_end_positions(mt, tmp_bucket, overwrite)
+    mt = densify_sites(mt, sites_ht, last_end_ht)
+
     # Subset to biallelic SNPs in autosomes
     mt = mt.filter_rows(
         (hl.len(mt.alleles) == 2)
         & hl.is_snp(mt.alleles[0], mt.alleles[1])
         & (mt.locus.in_autosome())
+        & (sites_ht[mt.locus].alleles == mt.alleles)
     )
-    mt = mt.key_rows_by('locus', 'alleles')
-    mt = hl.experimental.densify(mt)  # drops mt.END
-    mt = mt.select_entries(GT=lgt_to_gt(mt.LGT, mt.LA))
+    mt = mt.naive_coalesce(5000)
+    checkpoint_mt_path = join(tmp_bucket, 'mt_densified_on_sites.mt')
+    if not utils.can_reuse(checkpoint_mt_path, overwrite):
+        mt.write(checkpoint_mt_path, overwrite=True)
+    mt = hl.read_matrix_table(checkpoint_mt_path)
 
     hgdp_union_mt = get_sites_shared_with_hgdp(
         mt=mt,
@@ -281,6 +304,42 @@ def generate_subset_mt(
         mt.write(out_mt_path, overwrite=True)
         mt = hl.read_matrix_table(out_mt_path)
     return mt
+
+
+def _create_last_end_positions(
+    mt: hl.MatrixTable,
+    tmp_bucket: str,
+    overwrite: bool,
+) -> hl.Table:
+    ht_path = join(tmp_bucket, 'last_end_positions.ht')
+    if not utils.can_reuse(ht_path, overwrite=overwrite):
+        mt = mt.select_entries('END')
+        t = mt._localize_entries(  # pylint: disable=protected-access
+            '__entries', '__cols'
+        )
+        t = t.select(
+            last_END_position=hl.or_else(
+                hl.min(
+                    hl.scan.array_agg(
+                        lambda entry: hl.scan._prev_nonnull(  # pylint: disable=protected-access
+                            hl.or_missing(
+                                hl.is_defined(entry.END), hl.tuple([t.locus, entry.END])
+                            )
+                        ),
+                        t.__entries,  # pylint: disable=protected-access
+                    ).map(
+                        lambda x: hl.or_missing(
+                            (x[1] >= t.locus.position)
+                            & (x[0].contig == t.locus.contig),
+                            x[0].position,
+                        )
+                    )
+                ),
+                t.locus.position,
+            )
+        )
+        t.write(ht_path)
+    return hl.read_table(ht_path)
 
 
 if __name__ == '__main__':
