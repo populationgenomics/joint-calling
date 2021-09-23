@@ -143,8 +143,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
         tmp_bucket_suffix = 'test-tmp'
+        project_output_suffix = 'test'  # from crams and gvcfs
     else:
         tmp_bucket_suffix = 'main-tmp'
+        project_output_suffix = 'main'
 
     if output_namespace in ['test', 'main']:
         output_suffix = output_namespace
@@ -213,7 +215,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         b=b,
         samples_df=samples_df,
         pre_combiner_bucket=join(tmp_bucket, 'pre_combiner'),
-        output_suffix=output_suffix,
+        output_suffix=project_output_suffix,
         overwrite=overwrite,
         analysis_project=analysis_project,
     )
