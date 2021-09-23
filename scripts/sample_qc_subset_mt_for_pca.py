@@ -134,7 +134,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
     )
     last_end_ht = _create_last_end_positions(mt, tmp_bucket, overwrite)
-    mt = densify_sites(mt, sites_ht, last_end_ht)
+    mt = densify_sites(mt, sites_ht, last_end_ht.key_by('locus'))
 
     # Subset to biallelic SNPs in autosomes
     mt = mt.filter_rows(
