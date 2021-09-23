@@ -31,18 +31,23 @@ NUM_TEST_SAMPLES = 50
 def main(pop: Optional[str]):  # pylint: disable=missing-function-docstring
     hl.init(default_reference='GRCh38')
 
-    gnomad_subset_mt_path = join(BUCKET, 'gnomad_subset.mt')
-    if not hl.hadoop_exists(gnomad_subset_mt_path):
+    sites_ht_path = join(BUCKET, 'pca_sites.ht')
+    if not hl.hadoop_exists(sites_ht_path):
         purcell_ht = hl.read_table(PURCELL_HT)
         gnomad_v2_qc_sites_ht = hl.read_table(GNOMAD_V2_QC_SITES_HT)
-        ht = gnomad_v2_qc_sites_ht.union(purcell_ht.ht(), unify=True)
+        ht = gnomad_v2_qc_sites_ht.union(purcell_ht, unify=True)
         ht = ht.filter(hl.is_missing(hl.read_table(LCR_INTERVALS_HT)[ht.key]))
+        ht.write(sites_ht_path)
+    ht = hl.read_table(sites_ht_path)
+
+    gnomad_subset_mt_path = join(BUCKET, 'gnomad_subset.mt')
+    if not hl.hadoop_exists(gnomad_subset_mt_path):
         # Filter MT to bi-allelic SNVs that are found in p5k HT
         mt = hl.read_matrix_table(GNOMAD_HGDP_1KG_MT)
         mt = mt.filter_rows(
             (hl.len(mt.alleles) == 2)
             & hl.is_snp(mt.alleles[0], mt.alleles[1])
-            & hl.is_defined(ht[mt.locus])
+            & (ht[mt.locus].alleles == mt.alleles)
         )
         mt = mt.naive_coalesce(5000)
         mt.write(gnomad_subset_mt_path, overwrite=True)
