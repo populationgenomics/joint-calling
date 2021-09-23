@@ -10,12 +10,14 @@ import hail as hl
 
 LCR_INTERVALS_HT = 'gs://cpg-reference/hg38/gnomad/v0/lcr_intervals/LCRFromHengHg38.ht'
 PURCELL_HT = 'gs://cpg-reference/hg38/ancestry/purcell_5k_intervals/purcell5k.ht'
+GNOMAD_V2_QC_SITES_HT = 'gs://cpg-reference/hg38/ancestry/gnomad_v2_qc_sites_b38.ht'
 GNOMAD_HGDP_1KG_MT = (
     'gs://gcp-public-data--gnomad/release/3.1/mt/genomes/'
     'gnomad.genomes.v3.1.hgdp_1kg_subset_dense.mt'
 )
 
-BUCKET = 'gs://cpg-reference/hg38/ancestry/v1'
+
+BUCKET = 'gs://cpg-reference/hg38/ancestry/v2'
 # - gnomad_subset.mt          - 105489 rows, 3942 cols
 # - gnomad_subset_test.mt     - 62247 rows, 52 cols
 # - gnomad_subset_test_nfe.mt - 23900 rows, 8 cols
@@ -31,9 +33,10 @@ def main(pop: Optional[str]):  # pylint: disable=missing-function-docstring
 
     gnomad_subset_mt_path = join(BUCKET, 'gnomad_subset.mt')
     if not hl.hadoop_exists(gnomad_subset_mt_path):
-        ht = hl.read_table(PURCELL_HT)
+        purcell_ht = hl.read_table(PURCELL_HT)
+        gnomad_v2_qc_sites_ht = hl.read_table(GNOMAD_V2_QC_SITES_HT)
+        ht = gnomad_v2_qc_sites_ht.union(purcell_ht.ht(), unify=True)
         ht = ht.filter(hl.is_missing(hl.read_table(LCR_INTERVALS_HT)[ht.key]))
-        mt = hl.read_matrix_table(GNOMAD_HGDP_1KG_MT)
         # Filter MT to bi-allelic SNVs that are found in p5k HT
         mt = hl.read_matrix_table(GNOMAD_HGDP_1KG_MT)
         mt = mt.filter_rows(

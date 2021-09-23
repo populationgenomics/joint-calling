@@ -80,11 +80,12 @@ GNOMAD_HT = (
     'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'
 )
 
+ANCESTRY_SITES_BUCKET = f'{REF_BUCKET}/ancestry/v2'
 ANCESTRY_SITES_MTS = {
-    'all': f'{REF_BUCKET}/ancestry/v0/gnomad_sites.mt',
-    'nfe': f'{REF_BUCKET}/ancestry/v0/gnomad_sites_nfe.mt',
-    'test': f'{REF_BUCKET}/ancestry/v0/gnomad_sites_test.mt',
-    'test_nfe': f'{REF_BUCKET}/ancestry/v0/gnomad_sites_test_nfe.mt',
+    'all': f'{ANCESTRY_SITES_BUCKET}/gnomad_subset.mt',
+    'nfe': f'{ANCESTRY_SITES_BUCKET}/gnomad_subset_nfe.mt',
+    'test': f'{ANCESTRY_SITES_BUCKET}/gnomad_subset_test.mt',
+    'test_nfe': f'{ANCESTRY_SITES_BUCKET}/gnomad_subset_test_nfe.mt',
 }
 
 SCRIPTS_DIR = 'scripts'
