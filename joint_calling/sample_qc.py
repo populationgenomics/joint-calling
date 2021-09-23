@@ -64,7 +64,7 @@ def compute_hail_sample_qc(
     mt = filter_ref_blocks(mt)
 
     # Remove centromeres and telomeres incase they were included and any reference blocks
-    tel_cent_ht = hl.read_table(utils.TEL_AND_CENT_HT_PATH)
+    tel_cent_ht = hl.read_table(utils.TEL_AND_CENT_HT)
     mt = mt.filter_rows(hl.is_missing(tel_cent_ht[mt.locus]))
 
     sample_qc_ht = compute_stratified_sample_qc(
@@ -92,7 +92,7 @@ def snps_not_in_gnomad(
     tmp_bucket: str,
     out_ht_path: Optional[str] = None,
     overwrite: bool = False,
-    gnomad_path: str = utils.GNOMAD_HT_PATH,
+    gnomad_path: str = utils.GNOMAD_HT,
 ) -> hl.Table:
     """
     Count the number of variants per sample that do not occur in gnomAD
@@ -159,7 +159,7 @@ def infer_sex(
 
     ht = annotate_sex(
         mt,
-        excluded_intervals=hl.read_table(utils.TEL_AND_CENT_HT_PATH),
+        excluded_intervals=hl.read_table(utils.TEL_AND_CENT_HT),
         included_intervals=target_regions,
         gt_expr='LGT',
     )

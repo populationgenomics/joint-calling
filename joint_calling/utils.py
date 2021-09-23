@@ -62,14 +62,12 @@ UNPADDED_INTERVALS = join(GATK_REF_BUCKET, 'hg38.even.handcurated.20k.intervals'
 NOALT_REGIONS = join(GATK_REF_BUCKET, 'noalt.bed')
 
 GNOMAD_REF_BUCKET = f'{REF_BUCKET}/gnomad/v0'
-TEL_AND_CENT_HT_PATH = join(
+TEL_AND_CENT_HT = join(
     GNOMAD_REF_BUCKET,
     'telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht',
 )
-LCR_INTERVALS_HT_PATH = join(GATK_REF_BUCKET, 'lcr_intervals/LCRFromHengHg38.ht')
-SEG_DUP_INTERVALS_HT_PATH = join(
-    GNOMAD_REF_BUCKET, 'seg_dup_intervals/GRCh38_segdups.ht'
-)
+LCR_INTERVALS_HT = join(GNOMAD_REF_BUCKET, 'lcr_intervals/LCRFromHengHg38.ht')
+SEG_DUP_INTERVALS_HT = join(GNOMAD_REF_BUCKET, 'seg_dup_intervals/GRCh38_segdups.ht')
 CLINVAR_HT = join(GNOMAD_REF_BUCKET, 'clinvar/clinvar_20190923.ht')
 HAPMAP_HT = join(GNOMAD_REF_BUCKET, 'hapmap/hapmap_3.3.hg38.ht')
 KGP_OMNI_HT = join(GNOMAD_REF_BUCKET, 'kgp/1000G_omni2.5.hg38.ht')
@@ -78,7 +76,7 @@ MILLS_HT = join(
     GNOMAD_REF_BUCKET, 'mills/Mills_and_1000G_gold_standard.indels.hg38.ht/'
 )
 
-GNOMAD_HT_PATH = (
+GNOMAD_HT = (
     'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'
 )
 

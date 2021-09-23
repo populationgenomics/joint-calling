@@ -156,7 +156,7 @@ def main(
     else:
         ht = hl.read_table(score_bin_ht_path)
         if FILTER_CENTROMERE_TELOMERE:
-            tel_cent_ht = hl.read_table(utils.TEL_AND_CENT_HT_PATH)
+            tel_cent_ht = hl.read_table(utils.TEL_AND_CENT_HT)
             ht = ht.filter(~hl.is_defined(tel_cent_ht[ht.locus]))
 
         info_ht = hl.read_table(info_split_ht_path)

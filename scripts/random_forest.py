@@ -398,7 +398,7 @@ def train_rf(
     if filter_centromere_telomere:
         logger.info('Filtering centromeres and telomeres from HT...')
         rf_ht = ht.filter(
-            ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT_PATH)[ht.locus])
+            ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT)[ht.locus])
         )
     else:
         rf_ht = ht

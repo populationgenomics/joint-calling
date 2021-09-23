@@ -309,12 +309,12 @@ def _truth_concordance(
         ht = truth_dict[truth_sample]['ht']
         ht = ht.filter(
             ~info_ht[ht.key].AS_lowqual
-            & ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT_PATH)[ht.locus])
+            & ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT)[ht.locus])
         )
 
         logger.info('Filtering out low confidence regions and segdups...')
-        lcr = hl.read_table(utils.LCR_INTERVALS_HT_PATH)
-        segdup = hl.read_table(utils.SEG_DUP_INTERVALS_HT_PATH)
+        lcr = hl.read_table(utils.LCR_INTERVALS_HT)
+        segdup = hl.read_table(utils.SEG_DUP_INTERVALS_HT)
         ht = ht.filter(hl.is_missing(lcr[ht.locus]))
         ht = ht.filter(hl.is_missing(segdup[ht.locus]))
 
@@ -385,7 +385,7 @@ def create_bin_ht(
 
     ht = ht.filter(
         ~info_split_ht[ht.key].AS_lowqual
-        & ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT_PATH)[ht.locus])
+        & ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT)[ht.locus])
     )
     ht_non_lcr = filter_low_conf_regions(
         ht,
