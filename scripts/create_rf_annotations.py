@@ -24,7 +24,6 @@ import logging
 import click
 import hail as hl
 
-from gnomad.resources.grch38.reference_data import get_truth_ht
 from gnomad.variant_qc.random_forest import median_impute_features
 
 from joint_calling.utils import get_validation_callback
@@ -230,6 +229,29 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
     ).aggregate(n=hl.agg.count())
     logger.info('Summary of truth data annotations:')
     summary.show(20)
+
+
+def get_truth_ht() -> hl.Table:
+    """
+    Return a table with annotations from the latest version of the corresponding truth data.
+
+    The following annotations are included:
+        - hapmap
+        - kgp_omni (1000 Genomes intersection Onni 2.5M array)
+        - kgp_phase_1_hc (high confidence sites in 1000 genonmes)
+        - mills (Mills & Devine indels)
+
+    :return: A table with the latest version of popular truth data annotations
+    """
+    return (
+        hl.read_table(utils.HAPMAP_HT)
+        .select(hapmap=True)
+        .join(hl.read_table(utils.KGP_OMNI_HT).select(omni=True), how='outer')
+        .join(hl.read_table(utils.KGP_HC_HT).select(kgp_phase1_hc=True), how='outer')
+        .join(hl.read_table(utils.MILLS_HT).select(mills=True), how='outer')
+        .repartition(200, shuffle=False)
+        .persist()
+    )
 
 
 if __name__ == '__main__':

@@ -61,10 +61,10 @@ def add_variant_qc_jobs(
             f'--out-split-info-ht {info_split_ht_path}',
             job_name=job_name,
         )
-        if depends_on:
-            info_job.depends_on(*depends_on)
     else:
         info_job = b.new_job(f'{job_name} [reuse]')
+    if depends_on:
+        info_job.depends_on(*depends_on)
 
     job_name = 'Var QC: generate annotations'
     if any(

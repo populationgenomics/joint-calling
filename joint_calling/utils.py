@@ -28,7 +28,6 @@ logger.setLevel(logging.INFO)
 DEFAULT_REF = 'GRCh38'
 
 REF_BUCKET = 'gs://cpg-reference/hg38'
-GATK_REF_BUCKET = f'{REF_BUCKET}/v1'
 
 DATAPROC_PACKAGES = [
     'joint-calling',
@@ -42,6 +41,7 @@ DATAPROC_PACKAGES = [
     'selenium',
 ]
 
+# Images
 DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
 
 AR_REPO = 'australia-southeast1-docker.pkg.dev/cpg-common/images'
@@ -55,18 +55,28 @@ SM_IMAGE = f'{AR_REPO}/sm-api:2.0.3'
 ALIGNMENT_IMAGE = f'{AR_REPO}/alignment:v4'
 PICARD_IMAGE = f'{AR_REPO}/picard-cloud:2.23.8'
 
+# Reference files
+GATK_REF_BUCKET = f'{REF_BUCKET}/v1'
 REF_FASTA = join(GATK_REF_BUCKET, 'Homo_sapiens_assembly38.fasta')
 UNPADDED_INTERVALS = join(GATK_REF_BUCKET, 'hg38.even.handcurated.20k.intervals')
 NOALT_REGIONS = join(GATK_REF_BUCKET, 'noalt.bed')
+
+GNOMAD_REF_BUCKET = f'{REF_BUCKET}/gnomad/v0'
 TEL_AND_CENT_HT_PATH = join(
-    GATK_REF_BUCKET,
-    'gnomad/telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht',
+    GNOMAD_REF_BUCKET,
+    'telomeres_and_centromeres/hg38.telomeresAndMergedCentromeres.ht',
 )
-LCR_INTERVALS_HT_PATH = join(GATK_REF_BUCKET, 'gnomad/lcr_intervals/LCRFromHengHg38.ht')
+LCR_INTERVALS_HT_PATH = join(GATK_REF_BUCKET, 'lcr_intervals/LCRFromHengHg38.ht')
 SEG_DUP_INTERVALS_HT_PATH = join(
-    GATK_REF_BUCKET, 'gnomad/seg_dup_intervals/GRCh38_segdups.ht'
+    GNOMAD_REF_BUCKET, 'seg_dup_intervals/GRCh38_segdups.ht'
 )
-CLINVAR_HT_PATH = join(GATK_REF_BUCKET, 'gnomad/clinvar/clinvar_20190923.ht')
+CLINVAR_HT = join(GNOMAD_REF_BUCKET, 'clinvar/clinvar_20190923.ht')
+HAPMAP_HT = join(GNOMAD_REF_BUCKET, 'hapmap/hapmap_3.3.hg38.ht')
+KGP_OMNI_HT = join(GNOMAD_REF_BUCKET, 'kgp/1000G_omni2.5.hg38.ht')
+KGP_HC_HT = join(GNOMAD_REF_BUCKET, 'kgp/1000G_phase1.snps.high_confidence.hg38.ht')
+MILLS_HT = join(
+    GNOMAD_REF_BUCKET, 'mills/Mills_and_1000G_gold_standard.indels.hg38.ht/'
+)
 
 GNOMAD_HT_PATH = (
     'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht/'

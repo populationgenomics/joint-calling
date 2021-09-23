@@ -5,6 +5,8 @@ Plot ancestry PCA analysis results
 """
 
 import logging
+from typing import List, Iterable
+
 import click
 import pandas as pd
 import numpy as np
@@ -118,7 +120,6 @@ def produce_plots(
 
     # plot by study
     labels = scores.study.collect()
-    labels = list(dict.fromkeys(labels))  # remove duplicates
     tooltips = [('labels', '@label'), ('samples', '@samples')]
     eigenvalues = hl.import_table(
         eigenvalues_path, no_header=True, types={'f0': hl.tfloat}
@@ -153,7 +154,9 @@ def produce_plots(
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap('label', ['#1b9e77', '#d95f02'], labels),
+            color=factor_cmap(
+                'label', ['#1b9e77', '#d95f02'], remove_duplicates(labels)
+            ),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')
@@ -167,7 +170,6 @@ def produce_plots(
 
     # plot by continental population
     labels = scores.continental_pop.collect()
-    labels = list(dict.fromkeys(labels))  # remove duplicates
     tooltips = [('labels', '@label'), ('samples', '@samples')]
 
     for i in range(number_of_pcs - 1):
@@ -187,15 +189,14 @@ def produce_plots(
                 samples=sample_names,
             )
         )
+        ls = remove_duplicates(labels)
         plot.circle(
             'x',
             'y',
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap(
-                'label', turbo(len(labels)), labels
-            ),
+            color=factor_cmap('label', turbo(len(ls)), ls),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')
@@ -233,13 +234,14 @@ def produce_plots(
                 samples=sample_names,
             )
         )
+        ls = remove_duplicates(labels)
         plot.circle(
             'x',
             'y',
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap('label', turbo(len(labels)), labels),
+            color=factor_cmap('label', turbo(len(ls)), ls),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')
@@ -358,6 +360,13 @@ def manhattan_loadings(
     ]
 
     return p
+
+
+def remove_duplicates(x: Iterable) -> List:
+    """
+    Removes duplicates from a list, keeps order
+    """
+    return list(dict.fromkeys(x))
 
 
 if __name__ == '__main__':

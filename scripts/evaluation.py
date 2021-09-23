@@ -432,7 +432,7 @@ def create_aggregated_bin_ht(
 
     # Load ClinVar pathogenic data
     clinvar_pathogenic_ht = filter_to_clinvar_pathogenic(
-        hl.read_table(utils.CLINVAR_HT_PATH)
+        hl.read_table(utils.CLINVAR_HT)
     )
     ht = ht.annotate(clinvar_path=hl.is_defined(clinvar_pathogenic_ht[ht.key]))
 

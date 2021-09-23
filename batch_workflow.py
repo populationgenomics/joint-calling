@@ -289,7 +289,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         vqsr_params_d=utils.get_filter_cutoffs(filter_cutoffs_path)['vqsr'],
         scatter_count=scatter_count,
         is_test=output_namespace in ['test', 'tmp'],
-        depends_on=[sample_qc_job],
+        depends_on=[combiner_job, sample_qc_job],
     )
 
     # Interacting with the sample metadata server.
