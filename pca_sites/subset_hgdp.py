@@ -47,7 +47,7 @@ def main(pop: Optional[str]):  # pylint: disable=missing-function-docstring
         mt = mt.filter_rows(
             (hl.len(mt.alleles) == 2)
             & hl.is_snp(mt.alleles[0], mt.alleles[1])
-            & (ht[mt.locus].alleles == mt.alleles)
+            & hl.is_defined(ht[mt.locus])
         )
         mt = mt.naive_coalesce(5000)
         mt.write(gnomad_subset_mt_path, overwrite=True)
