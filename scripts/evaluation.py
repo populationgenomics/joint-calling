@@ -430,10 +430,9 @@ def create_aggregated_bin_ht(
     ht = ht.annotate_globals(bin_variant_counts=bin_variant_counts)
 
     # Load ClinVar pathogenic data
-    clinvar_pathogenic_ht = filter_to_clinvar_pathogenic(
-        hl.read_table(resources.CLINVAR_HT)
-    )
-    ht = ht.annotate(clinvar_path=hl.is_defined(clinvar_pathogenic_ht[ht.key]))
+    clinvar_ht = hl.read_table(resources.CLINVAR_HT)
+    clinvar_pathogenic_ht = filter_to_clinvar_pathogenic(clinvar_ht)
+    ht = ht.annotate(clinvar_pathogenic=hl.is_defined(clinvar_pathogenic_ht[ht.key]))
 
     logger.info(f'Creating grouped bin table...')
     checkpoint_path = join(work_bucket, 'tmp', f'grouped_bin.ht')
@@ -445,8 +444,13 @@ def create_aggregated_bin_ht(
     parent_ht = grouped_binned_ht._parent  # pylint: disable=protected-access
 
     agg_ht = grouped_binned_ht.aggregate(
-        n_clinvar_path=hl.agg.count_where(parent_ht.clinvar_path),
-        **score_bin_agg(grouped_binned_ht, fam_stats_ht=trio_stats_ht),
+        n_clinvar_pathogenic=hl.agg.count_where(parent_ht.clinvar_pathogenic),
+        **score_bin_agg(
+            grouped_binned_ht,
+            fam_stats_ht=trio_stats_ht,
+            clinvar=clinvar_ht,
+            truth_data=resources.get_truth_ht(),
+        ),
     )
     return agg_ht
 
