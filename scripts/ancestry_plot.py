@@ -118,18 +118,20 @@ def produce_plots(
         study=provided_pop_ht[scores.s].project,
     )
 
-    # plot by study
-    labels = scores.study.collect()
-    tooltips = [('labels', '@label'), ('samples', '@samples')]
     eigenvalues = hl.import_table(
         eigenvalues_path, no_header=True, types={'f0': hl.tfloat}
     ).f0.collect()
     eigenvalues = pd.to_numeric(eigenvalues)
     variance = np.divide(eigenvalues[1:], float(eigenvalues.sum())) * 100
     variance = variance.round(2)
-
-    # Get number of PCs
     number_of_pcs = len(eigenvalues) - 1
+
+    tooltips = [('labels', '@label'), ('samples', '@samples')]
+
+    # plot by study
+    labels = scores.study.collect()
+    legend = remove_duplicates(labels)
+    legend = [f'{_} ({scores.filter(scores.study == _).count()})' for _ in legend]
 
     for i in range(number_of_pcs - 1):
         pc1 = i
@@ -158,6 +160,7 @@ def produce_plots(
                 'label', ['#1b9e77', '#d95f02'], remove_duplicates(labels)
             ),
             legend_group='label',
+            legend_label=legend,
         )
         plot.add_layout(plot.legend[0], 'left')
         plot_filename = out_path_pattern.format(scope='study', pci=pc2, ext='png')
@@ -170,7 +173,10 @@ def produce_plots(
 
     # plot by continental population
     labels = scores.continental_pop.collect()
-    tooltips = [('labels', '@label'), ('samples', '@samples')]
+    legend = remove_duplicates(labels)
+    legend = [
+        f'{_} ({scores.filter(scores.continental_pop == _).count()})' for _ in legend
+    ]
 
     for i in range(number_of_pcs - 1):
         pc1 = i
@@ -196,8 +202,9 @@ def produce_plots(
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap('label', turbo(len(ls)), ls),
+            color=factor_cmap('label', turbo(len(legend)), legend),
             legend_group='label',
+            legend_label=legend,
         )
         plot.add_layout(plot.legend[0], 'left')
         plot_filename = out_path_pattern.format(
@@ -214,7 +221,8 @@ def produce_plots(
 
     # plot by subpopulation
     labels = scores.subpop.collect()
-    tooltips = [('labels', '@label'), ('samples', '@samples')]
+    legend = remove_duplicates(labels)
+    legend = [f'{_} ({scores.filter(scores.subpop == _).count()})' for _ in legend]
 
     for i in range(number_of_pcs - 1):
         pc1 = i
@@ -233,15 +241,15 @@ def produce_plots(
                 samples=sample_names,
             )
         )
-        ls = remove_duplicates(labels)
         plot.circle(
             'x',
             'y',
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap('label', turbo(len(ls)), ls),
+            color=factor_cmap('label', turbo(len(legend)), legend),
             legend_group='label',
+            legend_label=legend,
         )
         plot.add_layout(plot.legend[0], 'left')
         plot_filename = out_path_pattern.format(scope='subpop', pci=pc2, ext='png')
