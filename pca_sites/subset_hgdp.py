@@ -8,22 +8,20 @@ import click
 import hail as hl
 
 
-LCR_INTERVALS_HT = 'gs://cpg-reference/hg38/gnomad/v0/lcr_intervals/LCRFromHengHg38.ht'
-PURCELL_HT = 'gs://cpg-reference/hg38/ancestry/purcell_5k_intervals/purcell5k.ht'
-GNOMAD_V2_QC_SITES_HT = 'gs://cpg-reference/hg38/ancestry/gnomad_v2_qc_sites_b38.ht'
+SOMALIER_SITES_HT = 'gs://cpg-reference/hg38/somalier/v0/sites.hg38.vcf.gz'
 GNOMAD_HGDP_1KG_MT = (
     'gs://gcp-public-data--gnomad/release/3.1/mt/genomes/'
     'gnomad.genomes.v3.1.hgdp_1kg_subset_dense.mt'
 )
 
 
-BUCKET = 'gs://cpg-reference/hg38/ancestry/v2'
+BUCKET = 'gs://cpg-reference/hg38/ancestry/v3'
 # - gnomad_subset.mt          - 105489 rows, 3942 cols
 # - gnomad_subset_test.mt     - 62247 rows, 52 cols
 # - gnomad_subset_test_nfe.mt - 23900 rows, 8 cols
 # - gnomad_subset_nfe.mt      - 87344 rows, 675 cols
 
-NUM_TEST_SAMPLES = 50
+NUM_TEST_SAMPLES = 100
 
 
 @click.command()
@@ -33,11 +31,13 @@ def main(pop: Optional[str]):  # pylint: disable=missing-function-docstring
 
     sites_ht_path = join(BUCKET, 'pca_sites.ht')
     if not hl.hadoop_exists(sites_ht_path):
-        purcell_ht = hl.read_table(PURCELL_HT)
-        gnomad_v2_qc_sites_ht = hl.read_table(GNOMAD_V2_QC_SITES_HT).key_by("locus")
-        ht = gnomad_v2_qc_sites_ht.union(purcell_ht, unify=True)
-        ht = ht.filter(hl.is_missing(hl.read_table(LCR_INTERVALS_HT)[ht.key]))
-        ht.write(sites_ht_path)
+        somalier_vcf_path = 'gs://cpg-reference/hg38/somalier/v0/sites.hg38.vcf.gz'
+        somalier_ht = (
+            hl.import_vcf(somalier_vcf_path, reference_genome='GRCh38', force=True)
+            .rows()
+            .key_by('locus')
+        )
+        somalier_ht.write(sites_ht_path)
     ht = hl.read_table(sites_ht_path)
 
     gnomad_subset_mt_path = join(BUCKET, 'gnomad_subset.mt')
@@ -47,6 +47,7 @@ def main(pop: Optional[str]):  # pylint: disable=missing-function-docstring
         mt = mt.filter_rows(
             (hl.len(mt.alleles) == 2)
             & hl.is_snp(mt.alleles[0], mt.alleles[1])
+            & mt.locus.in_autosome()
             & hl.is_defined(ht[mt.locus])
         )
         mt = mt.naive_coalesce(5000)
