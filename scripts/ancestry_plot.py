@@ -214,7 +214,6 @@ def produce_plots(
 
     # plot by subpopulation
     labels = scores.subpop.collect()
-    labels = list(dict.fromkeys(labels))  # remove duplicates
     tooltips = [('labels', '@label'), ('samples', '@samples')]
 
     for i in range(number_of_pcs - 1):
