@@ -10,7 +10,7 @@ import hailtop.batch as hb
 from hailtop.batch.job import Job
 from analysis_runner import dataproc
 
-from joint_calling import utils
+from joint_calling import utils, resources
 from joint_calling.utils import can_reuse
 
 logger = logging.getLogger(__file__)
@@ -100,44 +100,49 @@ def add_vqsr_jobs(
 
     # Reference files. All options have defaults.
     unpadded_intervals_path = os.path.join(
-        utils.GATK_REF_BUCKET, 'hg38.even.handcurated.20k.intervals'
+        resources.GATK_REF_BUCKET, 'hg38.even.handcurated.20k.intervals'
     )
     dbsnp_vcf = os.path.join(
-        utils.GATK_REF_BUCKET, 'Homo_sapiens_assembly38.dbsnp138.vcf'
+        resources.GATK_REF_BUCKET, 'Homo_sapiens_assembly38.dbsnp138.vcf'
     )
     dbsnp_vcf_index = os.path.join(
-        utils.GATK_REF_BUCKET, 'Homo_sapiens_assembly38.dbsnp138.vcf.idx'
+        resources.GATK_REF_BUCKET, 'Homo_sapiens_assembly38.dbsnp138.vcf.idx'
     )
-    hapmap_resource_vcf = os.path.join(utils.GATK_REF_BUCKET, 'hapmap_3.3.hg38.vcf.gz')
+    hapmap_resource_vcf = os.path.join(
+        resources.GATK_REF_BUCKET, 'hapmap_3.3.hg38.vcf.gz'
+    )
     hapmap_resource_vcf_index = os.path.join(
-        utils.GATK_REF_BUCKET, 'hapmap_3.3.hg38.vcf.gz.tbi'
+        resources.GATK_REF_BUCKET, 'hapmap_3.3.hg38.vcf.gz.tbi'
     )
-    omni_resource_vcf = os.path.join(utils.GATK_REF_BUCKET, '1000G_omni2.5.hg38.vcf.gz')
+    omni_resource_vcf = os.path.join(
+        resources.GATK_REF_BUCKET, '1000G_omni2.5.hg38.vcf.gz'
+    )
     omni_resource_vcf_index = os.path.join(
-        utils.GATK_REF_BUCKET, '1000G_omni2.5.hg38.vcf.gz.tbi'
+        resources.GATK_REF_BUCKET, '1000G_omni2.5.hg38.vcf.gz.tbi'
     )
     one_thousand_genomes_resource_vcf = os.path.join(
-        utils.GATK_REF_BUCKET, '1000G_phase1.snps.high_confidence.hg38.vcf.gz'
+        resources.GATK_REF_BUCKET, '1000G_phase1.snps.high_confidence.hg38.vcf.gz'
     )
     one_thousand_genomes_resource_vcf_index = os.path.join(
-        utils.GATK_REF_BUCKET, '1000G_phase1.snps.high_confidence.hg38.vcf.gz.tbi'
+        resources.GATK_REF_BUCKET, '1000G_phase1.snps.high_confidence.hg38.vcf.gz.tbi'
     )
     mills_resource_vcf = os.path.join(
-        utils.GATK_REF_BUCKET, 'Mills_and_1000G_gold_standard.indels.hg38.vcf.gz'
+        resources.GATK_REF_BUCKET, 'Mills_and_1000G_gold_standard.indels.hg38.vcf.gz'
     )
     mills_resource_vcf_index = os.path.join(
-        utils.GATK_REF_BUCKET, 'Mills_and_1000G_gold_standard.indels.hg38.vcf.gz.tbi'
+        resources.GATK_REF_BUCKET,
+        'Mills_and_1000G_gold_standard.indels.hg38.vcf.gz.tbi',
     )
     axiom_poly_resource_vcf = os.path.join(
-        utils.GATK_REF_BUCKET,
+        resources.GATK_REF_BUCKET,
         'Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz',
     )
     axiom_poly_resource_vcf_index = os.path.join(
-        utils.GATK_REF_BUCKET,
+        resources.GATK_REF_BUCKET,
         'Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz.tbi',
     )
-    ref_fasta = utils.REF_FASTA
-    ref_fasta_index = utils.REF_FASTA + '.fai'
+    ref_fasta = resources.REF_FASTA
+    ref_fasta_index = resources.REF_FASTA + '.fai'
     ref_dict = (
         ref_fasta.replace('.fasta', '').replace('.fna', '').replace('.fa', '') + '.dict'
     )

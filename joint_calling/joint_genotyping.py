@@ -17,7 +17,7 @@ import hailtop.batch as hb
 from hailtop.batch.job import Job
 import utils
 import sm_utils
-
+from joint_calling import resources
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -121,9 +121,9 @@ def make_joint_genotype_jobs(
 
     intervals_j = _add_split_intervals_job(
         b=b,
-        interval_list=utils.UNPADDED_INTERVALS,
+        interval_list=resources.UNPADDED_INTERVALS,
         scatter_count=utils.NUMBER_OF_GENOMICS_DB_INTERVALS,
-        ref_fasta=utils.REF_FASTA,
+        ref_fasta=resources.REF_FASTA,
     )
 
     if analysis_project:

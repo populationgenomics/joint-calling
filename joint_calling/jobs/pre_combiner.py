@@ -11,7 +11,7 @@ from typing import Optional, List, Tuple
 import pandas as pd
 import hailtop.batch as hb
 from hailtop.batch.job import Job
-from joint_calling import sm_utils
+from joint_calling import sm_utils, resources
 from joint_calling import utils
 
 
@@ -104,9 +104,9 @@ def add_pre_combiner_jobs(
             if hc_intervals_j is None:
                 hc_intervals_j = _add_split_intervals_job(
                     b=b,
-                    interval_list=utils.UNPADDED_INTERVALS,
+                    interval_list=resources.UNPADDED_INTERVALS,
                     scatter_count=utils.NUMBER_OF_HAPLOTYPE_CALLER_INTERVALS,
-                    ref_fasta=utils.REF_FASTA,
+                    ref_fasta=resources.REF_FASTA,
                 )
             gvcf_j = _add_produce_gvcf_jobs(
                 b=b,
@@ -164,17 +164,17 @@ def _add_realign_jobs(
     )
 
     reference = b.read_input_group(
-        base=utils.REF_FASTA,
-        fai=utils.REF_FASTA + '.fai',
-        dict=utils.REF_FASTA.replace('.fasta', '')
+        base=resources.REF_FASTA,
+        fai=resources.REF_FASTA + '.fai',
+        dict=resources.REF_FASTA.replace('.fasta', '')
         .replace('.fna', '')
         .replace('.fa', '')
         + '.dict',
-        amb=utils.REF_FASTA + '.amb',
-        ann=utils.REF_FASTA + '.ann',
-        pac=utils.REF_FASTA + '.pac',
-        o123=utils.REF_FASTA + '.0123',
-        bwa2bit64=utils.REF_FASTA + '.bwt.2bit.64',
+        amb=resources.REF_FASTA + '.amb',
+        ann=resources.REF_FASTA + '.ann',
+        pac=resources.REF_FASTA + '.pac',
+        o123=resources.REF_FASTA + '.0123',
+        bwa2bit64=resources.REF_FASTA + '.bwt.2bit.64',
     )
 
     pull_inputs_cmd = ''
@@ -294,9 +294,9 @@ def _add_produce_gvcf_jobs(
     )
 
     reference = b.read_input_group(
-        base=utils.REF_FASTA,
-        fai=utils.REF_FASTA + '.fai',
-        dict=utils.REF_FASTA.replace('.fasta', '')
+        base=resources.REF_FASTA,
+        fai=resources.REF_FASTA + '.fai',
+        dict=resources.REF_FASTA.replace('.fasta', '')
         .replace('.fna', '')
         .replace('.fa', '')
         + '.dict',
@@ -523,7 +523,7 @@ def _add_postproc_gvcf_jobs(
         project_name=project_name,
         input_gvcf=reblock_j.output_gvcf,
         output_gvcf_path=output_path,
-        noalt_regions=b.read_input(utils.NOALT_REGIONS),
+        noalt_regions=b.read_input(resources.NOALT_REGIONS),
         external_sample_id=external_id,
         internal_sample_id=sample_name,
         depends_on=depends_on,

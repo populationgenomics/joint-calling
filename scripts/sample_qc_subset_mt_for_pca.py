@@ -23,7 +23,7 @@ from hail.experimental import lgt_to_gt
 
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.sparse_mt import densify_sites
-from joint_calling import utils
+from joint_calling import utils, resources
 from joint_calling import _version
 
 
@@ -112,20 +112,20 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     input_metadata_ht = utils.parse_input_metadata(meta_csv_path, local_tmp_dir)
 
-    if pop and pop in utils.ANCESTRY_HGDP_SUBSET_MTS:
+    if pop and pop in resources.ANCESTRY_HGDP_SUBSET_MTS:
         if is_test:
             hgdp_mt = hl.read_matrix_table(
-                utils.ANCESTRY_HGDP_SUBSET_MTS[f'test_{pop}']
+                resources.ANCESTRY_HGDP_SUBSET_MTS[f'test_{pop}']
             )
         else:
-            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_HGDP_SUBSET_MTS[pop])
+            hgdp_mt = hl.read_matrix_table(resources.ANCESTRY_HGDP_SUBSET_MTS[pop])
     else:
         if is_test:
-            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_HGDP_SUBSET_MTS['test'])
+            hgdp_mt = hl.read_matrix_table(resources.ANCESTRY_HGDP_SUBSET_MTS['test'])
         else:
-            hgdp_mt = hl.read_matrix_table(utils.ANCESTRY_HGDP_SUBSET_MTS['all'])
+            hgdp_mt = hl.read_matrix_table(resources.ANCESTRY_HGDP_SUBSET_MTS['all'])
 
-    sites_ht = hl.read_table(utils.ANCESTRY_SITES)
+    sites_ht = hl.read_table(resources.ANCESTRY_SITES)
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
     mt = mt.select_entries(

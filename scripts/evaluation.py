@@ -11,7 +11,7 @@ from pprint import pformat
 import click
 import hail as hl
 
-from gnomad.utils.filtering import filter_low_conf_regions, filter_to_clinvar_pathogenic
+from gnomad.utils.filtering import filter_to_clinvar_pathogenic
 from gnomad.variant_qc.evaluation import (
     compute_binned_truth_sample_concordance,
     compute_grouped_binned_ht,
@@ -20,7 +20,7 @@ from gnomad.variant_qc.evaluation import (
 from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg
 
 from joint_calling.utils import get_validation_callback
-from joint_calling import utils
+from joint_calling import utils, resources
 from joint_calling import _version
 
 logger = logging.getLogger('random_forest')
@@ -309,12 +309,12 @@ def _truth_concordance(
         ht = truth_dict[truth_sample]['ht']
         ht = ht.filter(
             ~info_ht[ht.key].AS_lowqual
-            & ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT)[ht.locus])
+            & ~hl.is_defined(hl.read_table(resources.TEL_AND_CENT_HT)[ht.locus])
         )
 
         logger.info('Filtering out low confidence regions and segdups...')
-        lcr = hl.read_table(utils.LCR_INTERVALS_HT)
-        segdup = hl.read_table(utils.SEG_DUP_INTERVALS_HT)
+        lcr = hl.read_table(resources.LCR_INTERVALS_HT)
+        segdup = hl.read_table(resources.SEG_DUP_INTERVALS_HT)
         ht = ht.filter(hl.is_missing(lcr[ht.locus]))
         ht = ht.filter(hl.is_missing(segdup[ht.locus]))
 
@@ -385,12 +385,11 @@ def create_bin_ht(
 
     ht = ht.filter(
         ~info_split_ht[ht.key].AS_lowqual
-        & ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT)[ht.locus])
+        & ~hl.is_defined(hl.read_table(resources.TEL_AND_CENT_HT)[ht.locus])
     )
-    ht_non_lcr = filter_low_conf_regions(
+    ht_non_lcr = resources.filter_low_conf_regions(
         ht,
         filter_lcr=True,
-        filter_decoy=False,  # Set if having decoy path
         filter_segdup=True,
     )
     ht = ht.annotate(non_lcr=hl.is_defined(ht_non_lcr[ht.key]))
@@ -432,7 +431,7 @@ def create_aggregated_bin_ht(
 
     # Load ClinVar pathogenic data
     clinvar_pathogenic_ht = filter_to_clinvar_pathogenic(
-        hl.read_table(utils.CLINVAR_HT)
+        hl.read_table(resources.CLINVAR_HT)
     )
     ht = ht.annotate(clinvar_path=hl.is_defined(clinvar_pathogenic_ht[ht.key]))
 

@@ -25,7 +25,7 @@ from gnomad.variant_qc.random_forest import (
 )
 
 from joint_calling.utils import file_exists, get_validation_callback
-from joint_calling import utils
+from joint_calling import utils, resources
 from joint_calling import _version
 
 logger = logging.getLogger('random_forest')
@@ -398,7 +398,7 @@ def train_rf(
     if filter_centromere_telomere:
         logger.info('Filtering centromeres and telomeres from HT...')
         rf_ht = ht.filter(
-            ~hl.is_defined(hl.read_table(utils.TEL_AND_CENT_HT)[ht.locus])
+            ~hl.is_defined(hl.read_table(resources.TEL_AND_CENT_HT)[ht.locus])
         )
     else:
         rf_ht = ht
