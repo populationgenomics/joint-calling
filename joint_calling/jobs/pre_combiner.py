@@ -135,7 +135,7 @@ def add_pre_combiner_jobs(
     logger.info(f'Updated sample DF after post-processing GVCF inputs: {samples_df}')
     jobs = []
     for js in jobs_by_sample.values():
-        jobs.append(js)
+        jobs.extend(js)
 
     # Saving the resulting DataFrame as a TSV file
     gvcfs_tsv_path = join(pre_combiner_bucket, 'gvcfs.tsv')
