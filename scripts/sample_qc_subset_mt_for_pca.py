@@ -127,23 +127,25 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     sites_ht = hl.read_table(resources.ANCESTRY_SITES)
 
-    mt = utils.get_mt(mt_path, passing_sites_only=True)
-    mt = mt.select_entries(
-        'END',
-        GT=lgt_to_gt(mt.LGT, mt.LA),
-        adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
-    )
-    last_end_ht = _create_last_end_positions(mt, tmp_bucket, overwrite)
-    mt = densify_sites(mt, sites_ht, last_end_ht.key_by('locus'))
+    # mt = mt.select_entries(
+    #     'END',
+    #     GT=lgt_to_gt(mt.LGT, mt.LA),
+    #     adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
+    # )
+    # last_end_ht = _create_last_end_positions(mt, tmp_bucket, overwrite)
+    # mt = densify_sites(mt, sites_ht, last_end_ht.key_by('locus'))
 
-    # Subset to biallelic SNPs in autosomes
+    mt = utils.get_mt(mt_path, passing_sites_only=True)
+    mt = hl.experimental.densify(mt)
+    mt = mt.select_entries(GT=mt.LGT).select_cols()
     mt = mt.filter_rows(
         (hl.len(mt.alleles) == 2)
         & hl.is_snp(mt.alleles[0], mt.alleles[1])
-        & (mt.locus.in_autosome())
-        & (sites_ht[mt.locus].alleles == mt.alleles)
+        & mt.locus.in_autosome()
+        & hl.is_defined(sites_ht[mt.locus])
     )
     mt = mt.naive_coalesce(5000)
+
     checkpoint_mt_path = join(tmp_bucket, 'mt_densified_on_sites.mt')
     if not utils.can_reuse(checkpoint_mt_path, overwrite):
         mt.write(checkpoint_mt_path, overwrite=True)

@@ -42,7 +42,7 @@ GNOMAD_HT = (
     'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht'
 )
 
-ANCESTRY_BUCKET = f'{REF_BUCKET}/ancestry/v2'
+ANCESTRY_BUCKET = f'{REF_BUCKET}/ancestry/v3'
 ANCESTRY_HGDP_SUBSET_MTS = {
     'all': f'{ANCESTRY_BUCKET}/gnomad_subset.mt',
     'nfe': f'{ANCESTRY_BUCKET}/gnomad_subset_nfe.mt',
