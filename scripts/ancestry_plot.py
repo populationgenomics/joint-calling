@@ -5,6 +5,7 @@ Plot ancestry PCA analysis results
 """
 
 import logging
+from collections import Counter
 from typing import List, Iterable
 
 import click
@@ -130,8 +131,9 @@ def produce_plots(
 
     # plot by study
     labels = scores.study.collect()
-    legend = remove_duplicates(labels)
-    legend = [f'{_} ({scores.filter(scores.study == _).count()})' for _ in legend]
+    cnt = Counter(labels)
+    labels = [f'{x} ({cnt[x]})' for x in labels]
+    unique_labels = list(Counter(labels).keys())
 
     for i in range(number_of_pcs - 1):
         pc1 = i
@@ -157,10 +159,9 @@ def produce_plots(
             source=source,
             size=4,
             color=factor_cmap(
-                'label', ['#1b9e77', '#d95f02'], remove_duplicates(labels)
+                'label', ['#1b9e77', '#d95f02'], unique_labels
             ),
             legend_group='label',
-            legend_label=legend,
         )
         plot.add_layout(plot.legend[0], 'left')
         plot_filename = out_path_pattern.format(scope='study', pci=pc2, ext='png')
@@ -173,10 +174,9 @@ def produce_plots(
 
     # plot by continental population
     labels = scores.continental_pop.collect()
-    legend = remove_duplicates(labels)
-    legend = [
-        f'{_} ({scores.filter(scores.continental_pop == _).count()})' for _ in legend
-    ]
+    cnt = Counter(labels)
+    labels = [f'{x} ({cnt[x]})' for x in labels]
+    unique_labels = list(Counter(labels).keys())
 
     for i in range(number_of_pcs - 1):
         pc1 = i
@@ -195,16 +195,14 @@ def produce_plots(
                 samples=sample_names,
             )
         )
-        ls = remove_duplicates(labels)
         plot.circle(
             'x',
             'y',
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap('label', turbo(len(legend)), legend),
+            color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
             legend_group='label',
-            legend_label=legend,
         )
         plot.add_layout(plot.legend[0], 'left')
         plot_filename = out_path_pattern.format(
@@ -221,9 +219,10 @@ def produce_plots(
 
     # plot by subpopulation
     labels = scores.subpop.collect()
-    legend = remove_duplicates(labels)
-    legend = [f'{_} ({scores.filter(scores.subpop == _).count()})' for _ in legend]
-
+    cnt = Counter(labels)
+    labels = [f'{x} ({cnt[x]})' for x in labels]
+    unique_labels = list(Counter(labels).keys())
+    
     for i in range(number_of_pcs - 1):
         pc1 = i
         pc2 = i + 1
@@ -247,9 +246,8 @@ def produce_plots(
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap('label', turbo(len(legend)), legend),
+            color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
             legend_group='label',
-            legend_label=legend,
         )
         plot.add_layout(plot.legend[0], 'left')
         plot_filename = out_path_pattern.format(scope='subpop', pci=pc2, ext='png')
