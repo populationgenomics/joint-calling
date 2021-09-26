@@ -5,6 +5,9 @@ Plot ancestry PCA analysis results
 """
 
 import logging
+from collections import Counter
+from typing import List, Iterable
+
 import click
 import pandas as pd
 import numpy as np
@@ -116,19 +119,21 @@ def produce_plots(
         study=provided_pop_ht[scores.s].project,
     )
 
-    # plot by study
-    labels = scores.study.collect()
-    labels = list(dict.fromkeys(labels))  # remove duplicates
-    tooltips = [('labels', '@label'), ('samples', '@samples')]
     eigenvalues = hl.import_table(
         eigenvalues_path, no_header=True, types={'f0': hl.tfloat}
     ).f0.collect()
     eigenvalues = pd.to_numeric(eigenvalues)
     variance = np.divide(eigenvalues[1:], float(eigenvalues.sum())) * 100
     variance = variance.round(2)
-
-    # Get number of PCs
     number_of_pcs = len(eigenvalues) - 1
+
+    tooltips = [('labels', '@label'), ('samples', '@samples')]
+
+    # plot by study
+    labels = scores.study.collect()
+    cnt = Counter(labels)
+    labels = [f'{x} ({cnt[x]})' for x in labels]
+    unique_labels = list(Counter(labels).keys())
 
     for i in range(number_of_pcs - 1):
         pc1 = i
@@ -153,7 +158,9 @@ def produce_plots(
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap('label', ['#1b9e77', '#d95f02'], labels),
+            color=factor_cmap(
+                'label', ['#1b9e77', '#d95f02'], unique_labels
+            ),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')
@@ -167,8 +174,9 @@ def produce_plots(
 
     # plot by continental population
     labels = scores.continental_pop.collect()
-    labels = list(dict.fromkeys(labels))  # remove duplicates
-    tooltips = [('labels', '@label'), ('samples', '@samples')]
+    cnt = Counter(labels)
+    labels = [f'{x} ({cnt[x]})' for x in labels]
+    unique_labels = list(Counter(labels).keys())
 
     for i in range(number_of_pcs - 1):
         pc1 = i
@@ -193,9 +201,7 @@ def produce_plots(
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap(
-                'label', turbo(len(labels)), labels
-            ),
+            color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')
@@ -213,9 +219,10 @@ def produce_plots(
 
     # plot by subpopulation
     labels = scores.subpop.collect()
-    labels = list(dict.fromkeys(labels))  # remove duplicates
-    tooltips = [('labels', '@label'), ('samples', '@samples')]
-
+    cnt = Counter(labels)
+    labels = [f'{x} ({cnt[x]})' for x in labels]
+    unique_labels = list(Counter(labels).keys())
+    
     for i in range(number_of_pcs - 1):
         pc1 = i
         pc2 = i + 1
@@ -239,7 +246,7 @@ def produce_plots(
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap('label', turbo(len(labels)), labels),
+            color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')
@@ -358,6 +365,13 @@ def manhattan_loadings(
     ]
 
     return p
+
+
+def remove_duplicates(x: Iterable) -> List:
+    """
+    Removes duplicates from a list, keeps order
+    """
+    return list(dict.fromkeys(x))
 
 
 if __name__ == '__main__':

@@ -25,9 +25,9 @@ def get_cluster(
     Get or create a Dataproc cluster by name
     """
     if name not in clusters_by_name:
-        max_age = '1h' if is_test else '12h'
+        max_age = '1h' if is_test else '8h'
         if long:
-            max_age = '2h' if is_test else '24h'
+            max_age = '3h' if is_test else '24h'
 
         clusters_by_name[name] = dataproc.setup_dataproc(
             b,

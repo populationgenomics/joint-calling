@@ -24,11 +24,10 @@ import logging
 import click
 import hail as hl
 
-from gnomad.resources.grch38.reference_data import get_truth_ht
 from gnomad.variant_qc.random_forest import median_impute_features
 
 from joint_calling.utils import get_validation_callback
-from joint_calling import utils
+from joint_calling import utils, resources
 from joint_calling import _version
 
 logger = logging.getLogger('random_forest')
@@ -184,7 +183,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals
         )
 
     logger.info('Annotating Table with all columns from multiple annotation Tables')
-    truth_data_ht = get_truth_ht()
+    truth_data_ht = resources.get_truth_ht()
     allele_data_ht = hl.read_table(allele_data_ht_path)
     qc_ac_ht = hl.read_table(qc_ac_ht_path)
     ht = ht.annotate(

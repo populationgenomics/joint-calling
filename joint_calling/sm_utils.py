@@ -222,6 +222,8 @@ default_entry = {
     'gvcf': '-',
     'cram': '-',
     'crai': '-',
+    'realign_cram': '-',
+    'realign_crai': '-',
     'batch': '-',
     'operation': 'add',
     'flowcell_lane': '-',

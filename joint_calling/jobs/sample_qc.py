@@ -101,6 +101,7 @@ def add_sample_qc_jobs(
             f'--out-hgdp-union-mt {mt_union_hgdp_path} '
             f'--out-provided-pop-ht {provided_pop_ht_path} '
             f'--out-mt {mt_for_pca_path} '
+            f'--tmp-bucket {tmp_bucket} '
             + ('--is-test ' if is_test else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             job_name=job_name,
@@ -332,6 +333,7 @@ def add_sample_qc_jobs(
                 f'--meta-csv {samples_csv_path} '
                 f'--out-hgdp-union-mt {mt_union_hgdp_pop_path} '
                 f'--pop {pca_pop} '
+                f'--tmp-bucket {tmp_bucket} '
                 + ('--is-test ' if is_test else '')
                 + (f'--hail-billing {billing_project} ' if billing_project else ''),
                 job_name=job_name,
