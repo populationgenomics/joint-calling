@@ -234,6 +234,10 @@ default_entry = {
     'r_chimera': None,
     'r_duplication': None,
     'median_insert_size': None,
+    'fam_id': None,
+    'mat_id': 0,
+    'pat_id': 0,
+    'sex': 0,
 }
 
 
@@ -384,6 +388,7 @@ def find_inputs_from_db(
                 {
                     's': sample_id,
                     'external_id': external_id,
+                    'fam_id': external_id,
                     'project': proj,
                     'gvcf': gvcf_path,
                     'batch': seq_meta.get('batch', '-'),
@@ -417,6 +422,7 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
             {
                 's': 'syndip',
                 'external_id': 'syndip',
+                'fam_id': 'syndip',
                 'project': 'syndip',
                 'cram': 'gs://cpg-reference/validation/syndip/raw/CHM1_CHM13_2.bam',
                 'crai': 'gs://cpg-reference/validation/syndip/raw/CHM1_CHM13_2.bam.bai',
@@ -434,6 +440,7 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
                 {
                     's': sn,
                     'external_id': sn,
+                    'fam_id': 'CEPH',
                     'project': 'giab',
                     'cram': cram,
                     'crai': cram + '.crai',

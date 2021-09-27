@@ -100,12 +100,11 @@ def pedigree_checks(
     if ped_fpath:
         ped_file = b.read_input(ped_fpath)
     else:
-        # Creating a dummy PED file with no information
         ped_fpath = join(tmp_bucket, 'samples.ped')
-        samples_df['Family.ID'] = samples_df['external_id']
-        samples_df['Father.ID'] = 0
-        samples_df['Mother.ID'] = 0
-        samples_df['Sex'] = 0
+        samples_df['Family.ID'] = samples_df['fam_id']
+        samples_df['Father.ID'] = samples_df['pat_id']
+        samples_df['Mother.ID'] = samples_df['mat_id']
+        samples_df['Sex'] = samples_df['sex']
         samples_df['Phenotype'] = 0
         samples_df[['Family.ID', 'Father.ID', 'Mother.ID', 'Sex', 'Phenotype']].to_csv(
             ped_fpath, sep='\t'
