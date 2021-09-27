@@ -354,10 +354,7 @@ def parse_input_metadata(
     Parse KCCG metadata (continental_pop and picard metrics)
     """
     local_csv_path = join(local_tmp_dir, basename(meta_csv_path))
-    subprocess.run(
-        f'gsutil cp {meta_csv_path} {local_csv_path}', check=False, shell=True
-    )
-
+    gsutil_cp(meta_csv_path, local_csv_path)
     df = pd.read_table(local_csv_path)
     ht = hl.Table.from_pandas(df).key_by('s')
     if out_ht_path:
@@ -374,3 +371,41 @@ def hash_sample_ids(sample_names: Iterable[str]) -> str:
     for sn in sample_names:
         assert ' ' not in sn, sn
     return hashlib.sha256(' '.join(sorted(sample_names)).encode()).hexdigest()[:32]
+
+
+def gsutil_cp(
+    src_path: str,
+    dst_path: str,
+    disable_check_hashes: bool = False,
+    recursive: bool = False,
+    quiet: bool = False,
+):
+    """
+    Wrapper around `gsutil cp`
+
+    :param src_path: path to a file to copy from
+    :param dst_path: path to copy to
+    :param disable_check_hashes:
+        Uses the gsutil option `-o GSUtil:check_hashes=never` which is required to
+        get around the gsutil integrity checking error, as conda gsutil doesn't use
+        CRC32c:
+        > Downloading this composite object requires integrity checking with CRC32c,
+          but your crcmod installation isn't using the module's C extension, so the
+          hash computation will likely throttle download performance.
+
+          To download regardless of crcmod performance or to skip slow integrity
+          checks, see the "check_hashes" option in your boto config file.
+    :param recursive: to copy a directory
+    :param quiet: disable logging of commands and copied files
+    """
+    cmd = (
+        'gsutil '
+        + ('-q ' if quiet else '')
+        + ('-o GSUtil:check_hashes=never ' if disable_check_hashes else '')
+        + 'cp '
+        + ('-r ' if recursive else '')
+        + f'{src_path} {dst_path}'
+    )
+    if not quiet:
+        logger.info(cmd)
+    subprocess.run(cmd, check=False, shell=True)

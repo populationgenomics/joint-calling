@@ -5,7 +5,8 @@ Adds Batch job that drive Somalier for ancestry/pedigree
 """
 
 import logging
-from os.path import join, dirname, abspath
+import subprocess
+from os.path import join
 from typing import Optional, List, Tuple
 import pandas as pd
 import hailtop.batch as hb
@@ -142,14 +143,23 @@ def pedigree_checks(
     check_j.image(utils.PEDDY_IMAGE)
     check_j.cpu(1)
     check_j.memory('standard')  # ~ 4G/core ~ 4G
-    with open(join(dirname(abspath(__file__)), 'check_pedigree.py')) as f:
+
+    script_name = 'check_pedigree.py'
+    try:
+        script_path = (
+            subprocess.check_output(f'which {script_name}', shell=True).decode().strip()
+        )
+    except subprocess.CalledProcessError:
+        script_path = join(utils.SCRIPTS_DIR, script_name)
+
+    with open(script_path) as f:
         script = f.read()
     check_j.command(
         f"""set -e
-cat <<EOT >> check_pedigree.py
+cat <<EOT >> {script_name}
 {script}
 EOT
-python check_pedigree.py \
+python {script_name} \
 --somalier-samples {relate_j.output_samples} \
 --somalier-pairs {relate_j.output_pairs} \
 {('--somalier-html ' + somalier_html_url) if somalier_html_url else ''}
