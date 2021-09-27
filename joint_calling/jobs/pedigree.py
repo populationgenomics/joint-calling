@@ -39,9 +39,7 @@ def pedigree_checks(
 
     extract_jobs = []
     fp_file_by_sample = dict()
-    for sn, input_path, input_index in zip(
-        samples_df['s'], samples_df['file'], samples_df['index']
-    ):
+    for sn, gvcf_path in zip(samples_df['s'], samples_df['gvcf']):
         fp_file_by_sample[sn] = join(fingerprints_bucket, f'{sn}.somalier')
         if utils.can_reuse(fp_file_by_sample[sn], overwrite):
             extract_jobs.append(b.new_job(f'Somalier extract, {sn} [reuse]'))
@@ -49,10 +47,10 @@ def pedigree_checks(
             j = b.new_job(f'Somalier extract, {sn}')
             j.image(utils.SOMALIER_IMAGE)
             j.memory('standard')
-            if input_path.endswith('.bam'):
+            if gvcf_path.endswith('.bam'):
                 j.cpu(4)
                 j.storage(f'200G')
-            elif input_path.endswith('.cram'):
+            elif gvcf_path.endswith('.cram'):
                 j.cpu(4)
                 j.storage(f'50G')
             else:
@@ -62,8 +60,8 @@ def pedigree_checks(
                 j.depends_on(*depends_on)
 
             input_file = b.read_input_group(
-                base=input_path,
-                index=input_index,
+                base=gvcf_path,
+                index=gvcf_path + '.tbi',
             )
 
             sites = hb.ResourceFile(resources.SOMALIER_SITES)
