@@ -171,4 +171,4 @@ python {script_name} \
     )
 
     check_j.depends_on(relate_j)
-    return check_j, somalier_samples_path, somalier_pairs_path
+    return relate_j, somalier_samples_path, somalier_pairs_path

@@ -142,9 +142,9 @@ def infer_relationship(coeff: float, ibs0: float, ibs2: float) -> str:
     and ibs0 and ibs2 values.
     """
     result = 'ambiguous'
-    if coeff < 0.1:
+    if coeff < 0.2:
         result = 'unrelated'
-    elif 0.1 <= coeff < 0.38:
+    elif 0.2 <= coeff < 0.38:
         result = 'below_first_degree'
     elif 0.38 <= coeff <= 0.62:
         if ibs0 / ibs2 < 0.005:
