@@ -19,10 +19,6 @@ from typing import Optional
 
 import click
 import hail as hl
-from hail.experimental import lgt_to_gt
-
-from gnomad.utils.annotations import get_adj_expr
-from gnomad.utils.sparse_mt import densify_sites
 from joint_calling import utils, resources
 from joint_calling import _version
 
@@ -126,14 +122,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
             hgdp_mt = hl.read_matrix_table(resources.ANCESTRY_HGDP_SUBSET_MTS['all'])
 
     sites_ht = hl.read_table(resources.ANCESTRY_SITES)
-
-    # mt = mt.select_entries(
-    #     'END',
-    #     GT=lgt_to_gt(mt.LGT, mt.LA),
-    #     adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
-    # )
-    # last_end_ht = _create_last_end_positions(mt, tmp_bucket, overwrite)
-    # mt = densify_sites(mt, sites_ht, last_end_ht.key_by('locus'))
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
     mt = hl.experimental.densify(mt)
@@ -248,39 +236,6 @@ def get_sites_shared_with_hgdp(
         mt.write(out_mt_path, overwrite=True)
         mt = hl.read_matrix_table(out_mt_path)
 
-    return mt
-
-
-def filter_high_quality_sites(
-    mt: hl.MatrixTable,
-    out_mt_path: Optional[str] = None,
-    overwrite: bool = False,
-) -> hl.MatrixTable:
-    """
-    1. Run `hl.variant_qc()` to calculate metrics such as AF, call rate
-        and inbereeding coefficient
-    2. Select variants based off of gnomAD v3 criteria: AF > 1%, call rate > 99%,
-        inbreeding coefficient >-0.25 (no excess of heterozygotes)
-    3. Randomly subset sites to `num_rows_before_ld_prune`
-    4. LD-prune
-    """
-    if utils.can_reuse(out_mt_path, overwrite):
-        return hl.read_matrix_table(out_mt_path)
-
-    logger.info(f'Number of rows before filtering: {mt.count_rows()}')
-
-    # Choose variants based off of gnomAD v3 criteria
-    mt = hl.variant_qc(mt)
-    mt = mt.annotate_rows(IB=hl.agg.inbreeding(mt.GT, mt.variant_qc.AF[1]))
-    mt = mt.filter_rows(
-        (mt.variant_qc.AF[1] > 0.01)
-        & (mt.variant_qc.call_rate > 0.99)
-        & (mt.IB.f_stat > -0.25)
-    )
-
-    if out_mt_path:
-        mt.write(out_mt_path, overwrite=True)
-        mt = hl.read_matrix_table(out_mt_path)
     return mt
 
 
