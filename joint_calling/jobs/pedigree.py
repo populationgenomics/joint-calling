@@ -96,15 +96,16 @@ def pedigree_checks(
     fp_files = [b.read_input(fp) for sn, fp in fp_file_by_sample.items()]
     if not ped_file:
         # Creating a dummy PED file with no information
-        ped_file = join(tmp_bucket, 'samples.ped')
+        ped_fpath = join(tmp_bucket, 'samples.ped')
         samples_df['Family.ID'] = samples_df['external_id']
         samples_df['Father.ID'] = 0
         samples_df['Mother.ID'] = 0
         samples_df['Sex'] = 0
         samples_df['Phenotype'] = 0
         samples_df[['Family.ID', 'Father.ID', 'Mother.ID', 'Sex', 'Phenotype']].to_csv(
-            ped_file, sep='\t'
+            ped_fpath, sep='\t'
         )
+        ped_file = hb.ResourceFile(ped_fpath)
 
     relate_j.command(
         f"""set -e
