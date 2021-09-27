@@ -64,7 +64,7 @@ def pedigree_checks(
                 index=gvcf_path + '.tbi',
             )
 
-            sites = hb.ResourceFile(resources.SOMALIER_SITES)
+            sites = b.read_input(resources.SOMALIER_SITES)
             reference = b.read_input_group(
                 base=resources.REF_FASTA,
                 fai=resources.REF_FASTA + '.fai',
@@ -105,7 +105,7 @@ def pedigree_checks(
         samples_df[['Family.ID', 'Father.ID', 'Mother.ID', 'Sex', 'Phenotype']].to_csv(
             ped_fpath, sep='\t'
         )
-        ped_file = hb.ResourceFile(ped_fpath)
+        ped_file = b.read_input(ped_fpath)
 
     relate_j.command(
         f"""set -e
