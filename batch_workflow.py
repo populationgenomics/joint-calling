@@ -69,7 +69,7 @@ logger.setLevel(logging.INFO)
 )
 @click.option(
     '--ped-file',
-    'ped_file',
+    'ped_fpath',
     help='PED file with family information',
     type=str,
     callback=utils.get_validation_callback(ext='ped', must_exist=True),
