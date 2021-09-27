@@ -56,7 +56,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         pairs_df = pairs_df.rename(
             columns={'#sample_a': 'i', 'sample_b': 'j', 'relatedness': 'kin'}
         )
-        ht = hl.Table.from_pandas(pairs_df).key_by('i', 'j').show()
+        ht = hl.Table.from_pandas(pairs_df).key_by('i', 'j')
         ht.write(out_relatedness_ht_path, overwrite=True)
 
 
