@@ -25,7 +25,7 @@ from joint_calling import utils
 from joint_calling import sm_utils
 from joint_calling.jobs.variant_qc import add_variant_qc_jobs
 from joint_calling.jobs.sample_qc import add_sample_qc_jobs
-from joint_calling.jobs import pre_combiner
+from joint_calling.jobs import pre_combiner, pedigree
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -122,6 +122,12 @@ logger.setLevel(logging.INFO)
     'on this population',
 )
 @click.option('--dry-run', 'dry_run', is_flag=True)
+@click.option(
+    '--run-somalier/--no-somalier',
+    'run_somalier',
+    default=True,
+    is_flag=True,
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -139,6 +145,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     pca_pop: Optional[str],
     num_ancestry_pcs: int,
     dry_run: bool,
+    run_somalier: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -219,6 +226,19 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         overwrite=overwrite,
         analysis_project=analysis_project,
     )
+
+    if run_somalier:
+        pedigree.pedigree_checks(
+            b,
+            samples_df=samples_df,
+            overwrite=overwrite,
+            ped_file=None,
+            fingerprints_bucket=join(analysis_project, 'somalier'),
+            web_bucket=join(web_bucket, 'somalier'),
+            web_url=f'https://{output_namespace}-web.populationgenomics.org.au/{analysis_project}',
+            tmp_bucket=join(tmp_bucket, 'somalier'),
+            depends_on=pre_combiner_jobs,
+        )
 
     if use_gnarly_genotyper:
         combiner_job = b.new_job('Not implemented')

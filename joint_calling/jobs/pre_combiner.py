@@ -15,7 +15,6 @@ from hailtop.batch.job import Job
 from joint_calling import sm_utils, resources
 from joint_calling import utils
 
-
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
 logger.setLevel(logging.INFO)

@@ -52,6 +52,8 @@ BCFTOOLS_IMAGE = f'{AR_REPO}/bcftools:1.10.2--h4f4756c_2'
 SM_IMAGE = f'{AR_REPO}/sm-api:2.0.3'
 ALIGNMENT_IMAGE = f'{AR_REPO}/alignment:v4'
 PICARD_IMAGE = f'{AR_REPO}/picard-cloud:2.23.8'
+SOMALIER_IMAGE = f'{AR_REPO}/somalier:latest'
+PEDDY_IMAGE = f'{AR_REPO}/peddy:0.4.8--pyh5e36f6f_0'
 
 SCRIPTS_DIR = 'scripts'
 PACKAGE_DIR = package_name
@@ -361,3 +363,14 @@ def parse_input_metadata(
     if out_ht_path:
         ht = ht.checkpoint(out_ht_path, overwrite=True)
     return ht
+
+
+def hash_sample_ids(sample_names: Iterable[str]) -> str:
+    """
+    Return a unique hash string from a set of strings
+    :param sample_names: set of strings
+    :return: a string hash
+    """
+    for sn in sample_names:
+        assert ' ' not in sn, sn
+    return hashlib.sha256(' '.join(sorted(sample_names)).encode()).hexdigest()[:32]
