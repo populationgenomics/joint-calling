@@ -142,7 +142,6 @@ def add_sample_qc_jobs(
                 + (f'--overwrite ' if overwrite else '')
                 + f'--somalier-pairs-tsv {somalier_pairs_path} '
                 f'--out-relatedness-ht {relatedness_ht_path} '
-                f'--tmp-bucket {tmp_bucket} '
                 + (f'--hail-billing {billing_project} ' if billing_project else ''),
                 job_name=job_name,
             )
