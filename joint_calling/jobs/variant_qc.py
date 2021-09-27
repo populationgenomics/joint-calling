@@ -114,7 +114,7 @@ def add_variant_qc_jobs(
         if depends_on:
             freq_job.depends_on(*depends_on)
     else:
-        freq_job = b.new_job('{job_name} [reuse]')
+        freq_job = b.new_job(f'{job_name} [reuse]')
 
     job_name = 'Var QC: create RF annotations'
     rf_annotations_ht_path = join(work_bucket, 'rf-annotations.ht')
