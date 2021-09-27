@@ -135,7 +135,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     output_version: str,
     output_projects: Optional[List[str]],  # pylint: disable=unused-argument
     use_gnarly_genotyper: bool,
-    ped_file: str,
+    ped_fpath: Optional[str],
     filter_cutoffs_path: str,
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
@@ -227,13 +227,16 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         analysis_project=analysis_project,
     )
 
+    relatedness_bucket = join(analysis_bucket, 'relatedness')
+    somalier_j = None
+    somalier_pairs_path = None
     if run_somalier:
-        pedigree.pedigree_checks(
+        somalier_j, ped_fpath, somalier_pairs_path = pedigree.pedigree_checks(
             b,
             samples_df=samples_df,
             overwrite=overwrite,
-            ped_file=None,
-            fingerprints_bucket=join(analysis_bucket, 'somalier'),
+            ped_fpath=ped_fpath,
+            fingerprints_bucket=join(relatedness_bucket, 'somalier'),
             web_bucket=join(web_bucket, 'somalier'),
             web_url=f'https://{output_namespace}-web.populationgenomics.org.au/{analysis_project}',
             tmp_bucket=join(tmp_bucket, 'somalier'),
@@ -283,7 +286,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         ancestry_bucket=join(analysis_bucket, 'ancestry'),
         tmp_bucket=tmp_bucket,
         analysis_bucket=analysis_bucket,
-        relatedness_bucket=join(analysis_bucket, 'relatedness'),
+        relatedness_bucket=relatedness_bucket,
         web_bucket=web_bucket,
         filter_cutoffs_path=filter_cutoffs_path,
         overwrite=overwrite,
@@ -295,6 +298,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         num_ancestry_pcs=num_ancestry_pcs,
         pca_pop=pca_pop,
         is_test=output_namespace in ['test', 'tmp'],
+        somalier_pairs_path=somalier_pairs_path,
+        somalier_job=somalier_j,
     )
 
     var_qc_job = add_variant_qc_jobs(
@@ -306,7 +311,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         meta_ht_path=meta_ht_path,
         out_filtered_combined_mt_path=filtered_combined_mt_path,
         sample_count=len(samples_df),
-        ped_file=ped_file,
+        ped_file=ped_fpath,
         overwrite=overwrite,
         vqsr_params_d=utils.get_filter_cutoffs(filter_cutoffs_path)['vqsr'],
         scatter_count=scatter_count,

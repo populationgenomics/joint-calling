@@ -27,15 +27,16 @@ def pedigree_checks(
     web_bucket: str,
     web_url: str,
     tmp_bucket: str,
-    ped_file: Optional[hb.ResourceFile] = None,
+    ped_fpath: Optional[str] = None,
     depends_on: Optional[List[Job]] = None,
-) -> Tuple[Job, str]:
+) -> Tuple[Job, str, str]:
     """
     Add somalier and peddy based jobs that infer relatedness and sex, compare that
     to the provided PED file, and attempt to recover it. If unable to recover, cancel
     the further workflow jobs.
 
-    Returns a job, and a bucket path to a fixed PED file if able to recover.
+    Returns a job, a path to a fixed PED file if able to recover, and a path to a file
+    with relatedness information for each sample pair
     """
 
     extract_jobs = []
@@ -95,7 +96,10 @@ def pedigree_checks(
     relate_j.storage(f'{1 + len(extract_jobs) // 4000 * 1}G')
     relate_j.depends_on(*extract_jobs)
     fp_files = [b.read_input(fp) for sn, fp in fp_file_by_sample.items()]
-    if not ped_file:
+
+    if ped_fpath:
+        ped_file = b.read_input(ped_fpath)
+    else:
         # Creating a dummy PED file with no information
         ped_fpath = join(tmp_bucket, 'samples.ped')
         samples_df['Family.ID'] = samples_df['external_id']
@@ -167,4 +171,4 @@ python {script_name} \
     )
 
     check_j.depends_on(relate_j)
-    return check_j, somalier_samples_path
+    return check_j, somalier_samples_path, somalier_pairs_path

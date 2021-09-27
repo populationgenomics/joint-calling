@@ -39,11 +39,15 @@ def add_sample_qc_jobs(
     pca_pop: Optional[str] = None,
     billing_project: Optional[str] = None,
     is_test: bool = False,
+    somalier_pairs_path: Optional[str] = None,
+    somalier_job: Optional[Job] = None,
 ) -> Tuple[Job, str, str]:
     """
     Sub-workflow that adds sample-level QC, relatedness and ancestry analysis jobs
     using Hail query on the combined matrix table
     """
+
+    cluster_id = 'SamQC1'
 
     job_name = 'Sample QC hard filters'
     hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filtered_samples.ht')
@@ -60,7 +64,12 @@ def add_sample_qc_jobs(
         overwrite,
     ):
         sample_qc_hardfilter_job = get_cluster(
-            b, 'SamQC1', scatter_count, is_test=is_test, depends_on=[combiner_job]
+            b,
+            cluster_id,
+            scatter_count,
+            is_test=is_test,
+            depends_on=[combiner_job],
+            phantomjs=True,
         ).add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_hard_filters.py '
             f'--mt {mt_path} '
@@ -92,7 +101,12 @@ def add_sample_qc_jobs(
         overwrite,
     ):
         subset_for_pca_job = get_cluster(
-            b, 'SamQC1', scatter_count, is_test=is_test, depends_on=[combiner_job]
+            b,
+            cluster_id,
+            scatter_count,
+            is_test=is_test,
+            depends_on=[combiner_job],
+            phantomjs=True,
         ).add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_subset_mt_for_pca.py '
             + (f'--overwrite ' if overwrite else '')
@@ -112,31 +126,53 @@ def add_sample_qc_jobs(
     else:
         subset_for_pca_job = b.new_job(f'{job_name} [reuse]')
 
-    job_name = 'Run pc_relate'
     relatedness_ht_path = join(relatedness_bucket, 'relatedness.ht')
     if not can_reuse(relatedness_ht_path, overwrite):
-        pcrelate_job = get_cluster(
-            b,
-            'pc_rel',
-            scatter_count // 3,
-            is_test=is_test,
-            depends_on=[subset_for_pca_job],
-            # Spark would have problems shuffling on pre-emptible workers
-            # (throw SparkException: Job aborted due to stage failure: ShuffleMapStage)
-            # so we use num_workers instead of num_secondary_workers here
-            preempt=False,
-        ).add_job(
-            f'{utils.SCRIPTS_DIR}/sample_qc_pcrelate.py '
-            + (f'--overwrite ' if overwrite else '')
-            + f'--pca-mt {mt_for_pca_path} '
-            f'--out-relatedness-ht {relatedness_ht_path} '
-            f'--tmp-bucket {tmp_bucket} '
-            + (f'--hail-billing {billing_project} ' if billing_project else ''),
-            job_name=job_name,
-        )
-        pcrelate_job.depends_on(subset_for_pca_job)
+        if somalier_pairs_path:
+            job_name = 'Somalier pairs to Hail table'
+            relatedness_j = get_cluster(
+                b,
+                cluster_id,
+                scatter_count,
+                is_test=is_test,
+                depends_on=[somalier_job],
+                phantomjs=True,
+            ).add_job(
+                f'{utils.SCRIPTS_DIR}/sample_qc_somalier_to_ht.py '
+                + (f'--overwrite ' if overwrite else '')
+                + f'--somalier-pairs-tsv {somalier_pairs_path} '
+                f'--out-relatedness-ht {relatedness_ht_path} '
+                f'--tmp-bucket {tmp_bucket} '
+                + (f'--hail-billing {billing_project} ' if billing_project else ''),
+                job_name=job_name,
+            )
+            relatedness_j.depends_on(somalier_job)
+        else:
+            job_name = 'Run pc_relate'
+            relatedness_ht_path = join(relatedness_bucket, 'relatedness.ht')
+            relatedness_j = get_cluster(
+                b,
+                'pc_rel',
+                scatter_count // 3,
+                is_test=is_test,
+                depends_on=[subset_for_pca_job],
+                # Spark would have problems shuffling on pre-emptible workers
+                # (throw SparkException: Job aborted due to stage failure: ShuffleMapStage)
+                # so we use num_workers instead of num_secondary_workers here
+                preempt=False,
+            ).add_job(
+                f'{utils.SCRIPTS_DIR}/sample_qc_pcrelate.py '
+                + (f'--overwrite ' if overwrite else '')
+                + f'--pca-mt {mt_for_pca_path} '
+                f'--out-relatedness-ht {relatedness_ht_path} '
+                f'--tmp-bucket {tmp_bucket} '
+                + (f'--hail-billing {billing_project} ' if billing_project else ''),
+                job_name=job_name,
+            )
+            relatedness_j.depends_on(subset_for_pca_job)
+            cluster_id = 'SamQC2'
     else:
-        pcrelate_job = b.new_job(f'{job_name} [reuse]')
+        relatedness_j = b.new_job(f'{job_name} [reuse]')
 
     job_name = 'Sample QC flag related'
     intermediate_related_samples_to_drop_ht_path = join(
@@ -146,11 +182,11 @@ def add_sample_qc_jobs(
         cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
         flag_related_job = get_cluster(
             b,
-            'SamQC2',
+            cluster_id,
             scatter_count,
             is_test=is_test,
             phantomjs=True,
-            depends_on=[sample_qc_hardfilter_job, pcrelate_job],
+            depends_on=[sample_qc_hardfilter_job, relatedness_j],
         ).add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_flag_related.py '
             f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
@@ -163,7 +199,7 @@ def add_sample_qc_jobs(
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             job_name=job_name,
         )
-        flag_related_job.depends_on(sample_qc_hardfilter_job, pcrelate_job)
+        flag_related_job.depends_on(sample_qc_hardfilter_job, relatedness_j)
     else:
         flag_related_job = b.new_job(f'{job_name} [reuse]')
 
@@ -177,7 +213,7 @@ def add_sample_qc_jobs(
     if not can_reuse([eigenvalues_path, scores_ht_path, loadings_ht_path], overwrite):
         pca_job = get_cluster(
             b,
-            'SamQC2',
+            cluster_id,
             scatter_count,
             is_test=is_test,
             phantomjs=True,
@@ -215,7 +251,7 @@ def add_sample_qc_jobs(
     ):
         regressed_filters_job = get_cluster(
             b,
-            'SamQC2',
+            cluster_id,
             scatter_count,
             is_test=is_test,
             phantomjs=True,
@@ -251,7 +287,7 @@ def add_sample_qc_jobs(
     if not can_reuse(paths, overwrite):
         plot_job = get_cluster(
             b,
-            'SamQC2',
+            cluster_id,
             scatter_count,
             is_test=is_test,
             phantomjs=True,
@@ -287,7 +323,7 @@ def add_sample_qc_jobs(
             age_csv_param = ''
         metadata_qc_job = get_cluster(
             b,
-            'SamQC2',
+            cluster_id,
             scatter_count,
             is_test=is_test,
             phantomjs=True,
@@ -321,7 +357,7 @@ def add_sample_qc_jobs(
         if not can_reuse(mt_union_hgdp_pop_path, overwrite):
             subset_for_pca_job = get_cluster(
                 b,
-                'SamQC2',
+                cluster_id,
                 scatter_count,
                 is_test=is_test,
                 phantomjs=True,
@@ -356,7 +392,7 @@ def add_sample_qc_jobs(
         ):
             pca_job = get_cluster(
                 b,
-                'SamQC2',
+                cluster_id,
                 scatter_count,
                 is_test=is_test,
                 phantomjs=True,
@@ -394,7 +430,7 @@ def add_sample_qc_jobs(
         if not can_reuse(paths, overwrite):
             plot_job = get_cluster(
                 b,
-                'SamQC2',
+                cluster_id,
                 scatter_count,
                 is_test=is_test,
                 phantomjs=True,

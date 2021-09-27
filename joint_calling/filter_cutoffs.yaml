@@ -10,7 +10,7 @@ hardfiltering:
   min_median_insert_size: 250
 pca:
   # maximum kin threshold to be considered unrelated
-  max_kin: 0.1
+  max_kin: 0.2
   # minimum Random Forest probability for population assignment
   min_pop_prob: 0.5
 vqsr:
