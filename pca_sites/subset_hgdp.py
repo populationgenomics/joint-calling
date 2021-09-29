@@ -14,8 +14,7 @@ GNOMAD_HGDP_1KG_MT = (
     'gnomad.genomes.v3.1.hgdp_1kg_subset_dense.mt'
 )
 
-
-VERSION = 'v4'
+VERSION = 'v3-90k'
 BUCKET = f'gs://cpg-reference/hg38/ancestry/{VERSION}'
 
 
