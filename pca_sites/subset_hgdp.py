@@ -41,6 +41,7 @@ def main(pop: Optional[str]):  # pylint: disable=missing-function-docstring
             somalier_ht.write(sites_ht_path)
         else:
             ht = hl.read_table('gs://cpg-reference/hg38/ancestry/v3/pca_sites_90k.ht/')
+            ht = ht.key_by('locus')
             ht.write(sites_ht_path)
 
     ht = hl.read_table(sites_ht_path)
