@@ -46,8 +46,14 @@ def add_sample_qc_jobs(
     Sub-workflow that adds sample-level QC, relatedness and ancestry analysis jobs
     using Hail query on the combined matrix table
     """
-
-    cluster_id = 'SamQC1'
+    cluster = get_cluster(
+        b,
+        'Sample QC 1',
+        scatter_count,
+        is_test=is_test,
+        depends_on=[combiner_job, somalier_job],
+        phantomjs=True,
+    )
 
     job_name = 'Sample QC hard filters'
     hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filtered_samples.ht')
@@ -63,14 +69,7 @@ def add_sample_qc_jobs(
         ],
         overwrite,
     ):
-        sample_qc_hardfilter_job = get_cluster(
-            b,
-            cluster_id,
-            scatter_count,
-            is_test=is_test,
-            depends_on=[combiner_job],
-            phantomjs=True,
-        ).add_job(
+        sample_qc_hardfilter_job = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_hard_filters.py '
             f'--mt {mt_path} '
             f'--meta-csv {samples_csv_path} '
@@ -100,14 +99,7 @@ def add_sample_qc_jobs(
         ],
         overwrite,
     ):
-        subset_for_pca_job = get_cluster(
-            b,
-            cluster_id,
-            scatter_count,
-            is_test=is_test,
-            depends_on=[combiner_job],
-            phantomjs=True,
-        ).add_job(
+        subset_for_pca_job = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_subset_mt_for_pca.py '
             + (f'--overwrite ' if overwrite else '')
             + f'--mt {mt_path} '
@@ -130,14 +122,7 @@ def add_sample_qc_jobs(
     if not can_reuse(relatedness_ht_path, overwrite):
         if somalier_pairs_path:
             job_name = 'Somalier pairs to Hail table'
-            relatedness_j = get_cluster(
-                b,
-                cluster_id,
-                scatter_count,
-                is_test=is_test,
-                depends_on=[somalier_job],
-                phantomjs=True,
-            ).add_job(
+            relatedness_j = cluster.add_job(
                 f'{utils.SCRIPTS_DIR}/sample_qc_somalier_to_ht.py '
                 + (f'--overwrite ' if overwrite else '')
                 + f'--somalier-pairs-tsv {somalier_pairs_path} '
@@ -149,17 +134,19 @@ def add_sample_qc_jobs(
         else:
             job_name = 'Run pc_relate'
             relatedness_ht_path = join(relatedness_bucket, 'relatedness.ht')
-            relatedness_j = get_cluster(
+            # PC relate needs non-preemptible workes, so requesting a new cluster
+            cluster = get_cluster(
                 b,
-                'pc_rel',
+                'pc_relate',
                 scatter_count // 3,
                 is_test=is_test,
                 depends_on=[subset_for_pca_job],
-                # Spark would have problems shuffling on pre-emptible workers
+                # Spark would have problems shuffling on preemptible workers
                 # (throw SparkException: Job aborted due to stage failure: ShuffleMapStage)
                 # so we use num_workers instead of num_secondary_workers here
-                preempt=False,
-            ).add_job(
+                preemptible=False,
+            )
+            relatedness_j = cluster.add_job(
                 f'{utils.SCRIPTS_DIR}/sample_qc_pcrelate.py '
                 + (f'--overwrite ' if overwrite else '')
                 + f'--pca-mt {mt_for_pca_path} '
@@ -169,7 +156,16 @@ def add_sample_qc_jobs(
                 job_name=job_name,
             )
             relatedness_j.depends_on(subset_for_pca_job)
-            cluster_id = 'SamQC2'
+            # We don't need a non-preempible cluster anymore, so starting
+            # a preemptible one again
+            cluster = get_cluster(
+                b,
+                'Sample QC 2',
+                scatter_count,
+                is_test=is_test,
+                depends_on=[relatedness_j],
+                phantomjs=True,
+            )
     else:
         relatedness_j = b.new_job(f'{job_name} [reuse]')
 
@@ -179,14 +175,7 @@ def add_sample_qc_jobs(
     )
     if not can_reuse(intermediate_related_samples_to_drop_ht_path, overwrite):
         cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
-        flag_related_job = get_cluster(
-            b,
-            cluster_id,
-            scatter_count,
-            is_test=is_test,
-            phantomjs=True,
-            depends_on=[sample_qc_hardfilter_job, relatedness_j],
-        ).add_job(
+        flag_related_job = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_flag_related.py '
             f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
             f'--sex-ht {sex_ht_path} '
@@ -210,14 +199,7 @@ def add_sample_qc_jobs(
     scores_ht_path = join(ancestry_analysis_bucket, f'scores_{pop_tag}.ht')
     loadings_ht_path = join(ancestry_analysis_bucket, f'loadings_{pop_tag}.ht')
     if not can_reuse([eigenvalues_path, scores_ht_path, loadings_ht_path], overwrite):
-        pca_job = get_cluster(
-            b,
-            cluster_id,
-            scatter_count,
-            is_test=is_test,
-            phantomjs=True,
-            depends_on=[flag_related_job],
-        ).add_job(
+        pca_job = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/ancestry_pca.py '
             f'--hgdp-union-mt {mt_union_hgdp_path} '
             f'--n-pcs {num_ancestry_pcs} '
@@ -248,14 +230,7 @@ def add_sample_qc_jobs(
         ],
         overwrite,
     ):
-        regressed_filters_job = get_cluster(
-            b,
-            cluster_id,
-            scatter_count,
-            is_test=is_test,
-            phantomjs=True,
-            depends_on=[flag_related_job, pca_job, sample_qc_hardfilter_job],
-        ).add_job(
+        regressed_filters_job = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_regressed_filters.py '
             f'--pca-scores-ht {scores_ht_path} '
             f'--provided-pop-ht {provided_pop_ht_path} '
@@ -284,14 +259,7 @@ def add_sample_qc_jobs(
                 out_path_ptn.format(scope=scope, pci=num_ancestry_pcs - 1, ext=ext)
             )
     if not can_reuse(paths, overwrite):
-        plot_job = get_cluster(
-            b,
-            cluster_id,
-            scatter_count,
-            is_test=is_test,
-            phantomjs=True,
-            depends_on=[pca_job, sample_qc_hardfilter_job],
-        ).add_job(
+        plot_job = cluster.add_job(
             f'{join(utils.SCRIPTS_DIR, "ancestry_plot.py")} '
             f'--eigenvalues {eigenvalues_path} '
             f'--scores-ht {scores_ht_path} '
@@ -320,14 +288,7 @@ def add_sample_qc_jobs(
             age_csv_param = f'--age-csv {age_csv_path} '
         else:
             age_csv_param = ''
-        metadata_qc_job = get_cluster(
-            b,
-            cluster_id,
-            scatter_count,
-            is_test=is_test,
-            phantomjs=True,
-            depends_on=[regressed_filters_job],
-        ).add_job(
+        metadata_qc_job = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_write_metadata.py '
             f'--meta-csv {samples_csv_path} '
             f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
@@ -354,14 +315,7 @@ def add_sample_qc_jobs(
         job_name = f'Subset MT for PCA - {pca_pop}'
         mt_union_hgdp_pop_path = join(ancestry_bucket, f'mt_union_hgdp_{pca_pop}.mt')
         if not can_reuse(mt_union_hgdp_pop_path, overwrite):
-            subset_for_pca_job = get_cluster(
-                b,
-                cluster_id,
-                scatter_count,
-                is_test=is_test,
-                phantomjs=True,
-                depends_on=[combiner_job],
-            ).add_job(
+            subset_for_pca_job = cluster.add_job(
                 f'{utils.SCRIPTS_DIR}/sample_qc_subset_mt_for_pca.py '
                 + (f'--overwrite ' if overwrite else '')
                 + f'--mt {mt_path} '
@@ -389,14 +343,7 @@ def add_sample_qc_jobs(
         if not can_reuse(
             [eigenvalues_path, scores_ht_path, loadings_ht_path], overwrite
         ):
-            pca_job = get_cluster(
-                b,
-                cluster_id,
-                scatter_count,
-                is_test=is_test,
-                phantomjs=True,
-                depends_on=[flag_related_job, subset_for_pca_job],
-            ).add_job(
+            pca_job = cluster.add_job(
                 f'{utils.SCRIPTS_DIR}/ancestry_pca.py '
                 f'--hgdp-union-mt {mt_union_hgdp_pop_path} '
                 f'--pop {pca_pop} '
@@ -427,14 +374,7 @@ def add_sample_qc_jobs(
                     out_path_ptn.format(scope=scope, pci=num_ancestry_pcs - 1, ext=ext)
                 )
         if not can_reuse(paths, overwrite):
-            plot_job = get_cluster(
-                b,
-                cluster_id,
-                scatter_count,
-                is_test=is_test,
-                phantomjs=True,
-                depends_on=[pca_job],
-            ).add_job(
+            plot_job = cluster.add_job(
                 f'{join(utils.SCRIPTS_DIR, "ancestry_plot.py")} '
                 f'--eigenvalues {eigenvalues_path} '
                 f'--scores-ht {scores_ht_path} '

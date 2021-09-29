@@ -8,7 +8,7 @@ from hailtop.batch import Batch
 from joint_calling import utils
 
 
-clusters_by_name = dict()
+DataprocCluster = dataproc.DataprocCluster
 
 
 def get_cluster(
@@ -18,27 +18,25 @@ def get_cluster(
     long: bool = False,
     is_test: bool = False,
     phantomjs: bool = False,
-    preempt: bool = True,
+    preemptible: bool = True,
     depends_on: Optional[List[Job]] = None,
-):
+) -> dataproc.DataprocCluster:
     """
     Get or create a Dataproc cluster by name
     """
-    if name not in clusters_by_name:
-        max_age = '1h' if is_test else '8h'
-        if long:
-            max_age = '3h' if is_test else '24h'
+    max_age = '1h' if is_test else '8h'
+    if long:
+        max_age = '3h' if is_test else '24h'
 
-        clusters_by_name[name] = dataproc.setup_dataproc(
-            b,
-            max_age=max_age,
-            packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=num_workers if preempt else 0,
-            num_workers=2 if preempt else num_workers,
-            cluster_name=name,
-            depends_on=depends_on,
-            init=['gs://cpg-reference/hail_dataproc/install_phantomjs.sh']
-            if phantomjs
-            else [],
-        )
-    return clusters_by_name[name]
+    return dataproc.setup_dataproc(
+        b,
+        max_age=max_age,
+        packages=utils.DATAPROC_PACKAGES,
+        num_secondary_workers=num_workers if preemptible else 0,
+        num_workers=2 if preemptible else num_workers,
+        cluster_name=name,
+        depends_on=depends_on,
+        init=['gs://cpg-reference/hail_dataproc/install_phantomjs.sh']
+        if phantomjs
+        else [],
+    )
