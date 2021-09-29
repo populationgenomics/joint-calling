@@ -15,7 +15,7 @@ import hail as hl
 from bokeh.io.export import get_screenshot_as_png
 from bokeh.resources import CDN
 from bokeh.embed import file_html
-from bokeh.transform import factor_cmap
+from bokeh.transform import factor_cmap, factor_mark
 from bokeh.plotting import ColumnDataSource, figure
 from bokeh.palettes import turbo  # pylint: disable=no-name-in-module
 from bokeh.models import CategoricalColorMapper, HoverTool
@@ -112,10 +112,20 @@ def produce_plots(
             provided_pop_ht[scores.s].continental_pop != '',
             provided_pop_ht[scores.s].continental_pop,
         )
-        .default(inferred_pop_ht[scores.s].pop + ' [inferred]'),
+        .default(
+            inferred_pop_ht[scores.s].pop
+            + ' ['
+            + provided_pop_ht[scores.s].project
+            + ', inferred]'
+        ),
         subpop=hl.case()
         .when(provided_pop_ht[scores.s].subpop != '', provided_pop_ht[scores.s].subpop)
-        .default(inferred_pop_ht[scores.s].pop + ' [inferred]'),
+        .default(
+            inferred_pop_ht[scores.s].pop
+            + ' ['
+            + provided_pop_ht[scores.s].project
+            + ', inferred]'
+        ),
         study=provided_pop_ht[scores.s].project,
     )
 
@@ -127,12 +137,13 @@ def produce_plots(
     variance = variance.round(2)
     number_of_pcs = len(eigenvalues) - 1
 
+    studies = scores.study.collect()
+
     tooltips = [('labels', '@label'), ('samples', '@samples')]
 
     # plot by study
-    labels = scores.study.collect()
-    cnt = Counter(labels)
-    labels = [f'{x} ({cnt[x]})' for x in labels]
+    cntr: Counter = Counter(studies)
+    labels = [f'{x} ({cntr[x]})' for x in studies]
     unique_labels = list(Counter(labels).keys())
 
     for i in range(number_of_pcs - 1):
@@ -158,9 +169,7 @@ def produce_plots(
             alpha=0.5,
             source=source,
             size=4,
-            color=factor_cmap(
-                'label', ['#1b9e77', '#d95f02'], unique_labels
-            ),
+            color=factor_cmap('label', ['#1b9e77', '#d95f02'], unique_labels),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')
@@ -174,9 +183,13 @@ def produce_plots(
 
     # plot by continental population
     labels = scores.continental_pop.collect()
-    cnt = Counter(labels)
-    labels = [f'{x} ({cnt[x]})' for x in labels]
+    cntr = Counter(labels)
+    labels = [f'{x} ({cntr[x]})' for x in labels]
     unique_labels = list(Counter(labels).keys())
+
+    unique_studies = remove_duplicates(studies)
+    bg_studies = [s for s in unique_studies if s == 'gnomad']
+    fg_studies = [s for s in unique_studies if s != 'gnomad']
 
     for i in range(number_of_pcs - 1):
         pc1 = i
@@ -195,12 +208,17 @@ def produce_plots(
                 samples=sample_names,
             )
         )
-        plot.circle(
+        plot.scatter(
             'x',
             'y',
-            alpha=0.5,
+            alpha=0.6,
+            marker=factor_mark(
+                'study',
+                ['cross'] * len(bg_studies) + ['circle'] * len(fg_studies),
+                bg_studies + fg_studies,
+            ),
             source=source,
-            size=4,
+            size=2,
             color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
             legend_group='label',
         )
@@ -219,10 +237,10 @@ def produce_plots(
 
     # plot by subpopulation
     labels = scores.subpop.collect()
-    cnt = Counter(labels)
-    labels = [f'{x} ({cnt[x]})' for x in labels]
+    cntr = Counter(labels)
+    labels = [f'{x} ({cntr[x]})' for x in labels]
     unique_labels = list(Counter(labels).keys())
-    
+
     for i in range(number_of_pcs - 1):
         pc1 = i
         pc2 = i + 1
@@ -243,9 +261,14 @@ def produce_plots(
         plot.circle(
             'x',
             'y',
-            alpha=0.5,
+            alpha=0.6,
+            marker=factor_mark(
+                'study',
+                ['cross'] * len(bg_studies) + ['circle'] * len(fg_studies),
+                bg_studies + fg_studies,
+            ),
             source=source,
-            size=4,
+            size=2,
             color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
             legend_group='label',
         )
