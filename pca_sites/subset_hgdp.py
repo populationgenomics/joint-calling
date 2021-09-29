@@ -15,7 +15,7 @@ GNOMAD_HGDP_1KG_MT = (
 )
 
 
-VERSION = 'v5'
+VERSION = 'v4'
 BUCKET = f'gs://cpg-reference/hg38/ancestry/{VERSION}'
 
 
