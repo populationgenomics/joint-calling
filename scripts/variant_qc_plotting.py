@@ -1,6 +1,7 @@
 """
 Functions for variant QC plotting
 """
+# pylint: skip-file
 
 import logging
 from typing import Set, Tuple, Union, Dict, List, Callable, Optional
