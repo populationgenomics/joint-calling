@@ -112,9 +112,6 @@ class TestUploadProcessor(unittest.TestCase):
         )
 
         upload_files(test_sample)
-        print('Submitting a batch with the following inputs')
-        print(test_sample)
-        print(self.main_prefix)
         batch = hb.Batch(name='Test Batch Move Standard')
         batch_move_files(
             batch,
@@ -146,7 +143,6 @@ class TestUploadProcessor(unittest.TestCase):
         full_path = os.path.join('gs://', self.main_prefix, '*')
         subprocess.run(['gsutil', 'rm', '-r', full_path], check=False)
 
-    @unittest.skip('Temporarily skipping')
     def test_invalid_samples(self):
         """Test case that handles invalid sample ID's i.e. samples that don't exist
         in the upload bucket"""
