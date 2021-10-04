@@ -415,7 +415,7 @@ def _add_haplotype_caller_job(
     """
     job_name = f'{project_name}/{sample_name}: HaplotypeCaller'
     if interval_idx is not None:
-        job_name += f', {sample_name} {interval_idx}/{number_of_intervals}'
+        job_name += f', {interval_idx}/{number_of_intervals}'
     if utils.can_reuse(output_gvcf_path, overwrite):
         return b.new_job(f'{job_name} [reuse]')
 

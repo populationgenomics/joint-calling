@@ -16,14 +16,13 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-REF_BUCKET = 'gs://cpg-reference/hg38'
-
+REF_BUCKET = 'gs://cpg-reference'
 NOALT_REGIONS = join(REF_BUCKET, 'noalt.bed')
 SOMALIER_SITES = join(REF_BUCKET, 'somalier/v0/sites.hg38.vcf.gz')
 
-GATK_REF_BUCKET = f'{REF_BUCKET}/v1'
-REF_FASTA = join(GATK_REF_BUCKET, 'Homo_sapiens_assembly38.fasta')
-UNPADDED_INTERVALS = join(GATK_REF_BUCKET, 'hg38.even.handcurated.20k.intervals')
+BROAD_REF_BUCKET = f'{REF_BUCKET}/v1'
+REF_FASTA = join(BROAD_REF_BUCKET, 'Homo_sapiens_assembly38.fasta')
+UNPADDED_INTERVALS = join(BROAD_REF_BUCKET, 'hg38.even.handcurated.20k.intervals')
 
 GNOMAD_REF_BUCKET = f'{REF_BUCKET}/gnomad/v0'
 TEL_AND_CENT_HT = join(
