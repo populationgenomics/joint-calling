@@ -315,10 +315,11 @@ def add_sample_qc_jobs(
         metadata_qc_job = b.new_job(f'{job_name} [reuse]')
 
     if pca_pop:
+        pop_tag = pca_pop
         job_name = f'Subset MT for PCA - {pca_pop}'
-        mt_union_hgdp_pop_path = join(ancestry_bucket, f'mt_union_hgdp_{pca_pop}.mt')
-        if not can_reuse(mt_union_hgdp_pop_path, overwrite):
-            subset_for_pca_job = cluster.add_job(
+        mt_union_hgdp_pop_path = join(ancestry_bucket, pop_tag, 'mt_union_hgdp.mt')
+        if not can_reuse([mt_union_hgdp_pop_path, provided_pop_ht_path], overwrite):
+            pop_subset_for_pca_job = cluster.add_job(
                 f'{utils.SCRIPTS_DIR}/sample_qc_subset_mt_for_pca.py '
                 + (f'--overwrite ' if overwrite else '')
                 + f'--mt {mt_path} '
@@ -330,13 +331,12 @@ def add_sample_qc_jobs(
                 + (f'--hail-billing {billing_project} ' if billing_project else ''),
                 job_name=job_name,
             )
-            subset_for_pca_job.depends_on(combiner_job)
+            pop_subset_for_pca_job.depends_on(combiner_job)
             # To avoid submitting multiple jobs at the same time to the same cluster
-            subset_for_pca_job.depends_on(sample_qc_hardfilter_job)
+            pop_subset_for_pca_job.depends_on(sample_qc_hardfilter_job)
         else:
-            subset_for_pca_job = b.new_job(f'{job_name} [reuse]')
+            pop_subset_for_pca_job = b.new_job(f'{job_name} [reuse]')
 
-        pop_tag = pca_pop
         ancestry_analysis_bucket = join(ancestry_bucket, pop_tag)
         ancestry_web_bucket = join(web_bucket, 'ancestry', pop_tag)
         job_name = f'PCA ({pop_tag})'
@@ -364,7 +364,7 @@ def add_sample_qc_jobs(
                 + (f'--hail-billing {billing_project} ' if billing_project else ''),
                 job_name=job_name,
             )
-            pca_job.depends_on(flag_related_job, subset_for_pca_job)
+            pca_job.depends_on(flag_related_job, pop_subset_for_pca_job)
         else:
             pca_job = b.new_job(f'{job_name} [reuse]')
 
@@ -388,7 +388,12 @@ def add_sample_qc_jobs(
                 + (f'--hail-billing {billing_project} ' if billing_project else ''),
                 job_name=job_name,
             )
-            plot_job.depends_on(pca_job)
+            plot_job.depends_on(
+                pca_job,
+                subset_for_pca_job,  # for provided_pop_ht_path
+                regressed_filters_job,  # for inferred_pop_ht_path
+                pop_subset_for_pca_job,
+            )
         else:
             b.new_job(f'{job_name} [reuse]')
 
