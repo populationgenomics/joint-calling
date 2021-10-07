@@ -40,47 +40,47 @@ def add_pre_combiner_jobs(
     jobs_by_sample = defaultdict(list)
 
     def get_project_bucket(_proj):
-        if proj in ['syndip', 'giab']:
-            proj_bucket = f'gs://cpg-reference/validation/{proj}'
+        if _proj in ['syndip', 'giab']:
+            proj_bucket = f'gs://cpg-reference/validation/{_proj}'
         else:
-            proj_bucket = f'gs://cpg-{proj}-{output_suffix}'
+            proj_bucket = f'gs://cpg-{_proj}-{output_suffix}'
         return proj_bucket
 
     # Samples for which a GVCF is provided as input:
     gvcf_df = samples_df[samples_df.gvcf != '-']
-    for s_id, proj, external_id, gvcf_path in zip(
+    for sn, proj, external_id, gvcf_path in zip(
         gvcf_df.s, gvcf_df.project, gvcf_df.external_id, gvcf_df.gvcf
     ):
         proj_bucket = get_project_bucket(proj)
 
-        output_gvcf_path = join(proj_bucket, 'gvcf', f'{s_id}.g.vcf.gz')
+        output_gvcf_path = join(proj_bucket, 'gvcf', f'{sn}.g.vcf.gz')
         if not utils.can_reuse(output_gvcf_path, overwrite):
             j = _add_postproc_gvcf_jobs(
                 b=b,
                 gvcf_path=gvcf_path,
                 output_path=output_gvcf_path,
-                sample_name=s_id,
+                sample_name=sn,
                 project_name=proj,
                 external_id=external_id,
                 overwrite=overwrite,
             )
-            jobs_by_sample[s_id].append(j)
-        samples_df.loc[s_id, ['gvcf']] = output_gvcf_path
-        logger.info(f'Updating sample {s_id} gvcf to {output_gvcf_path}')
+            jobs_by_sample[sn].append(j)
+        samples_df.loc[sn, ['gvcf']] = output_gvcf_path
+        logger.info(f'Updating sample {sn} gvcf to {output_gvcf_path}')
 
     # Samples for which a CRAM/BAM is provided as input for realignment:
     realign_df = samples_df[samples_df.realign_cram != '-']
-    for s_id, proj, input_cram, input_crai in zip(
+    for sn, proj, input_cram, input_crai in zip(
         realign_df.s,
         realign_df.project,
         realign_df.realign_cram,
         realign_df.realign_crai,
     ):
-        assert isinstance(input_crai, str), (s_id, input_crai)
+        assert isinstance(input_crai, str), (sn, input_crai)
 
         proj_bucket = get_project_bucket(proj)
-        output_cram_fpath = join(proj_bucket, 'cram', f'{s_id}.cram')
-        output_crai_fpath = join(proj_bucket, 'cram', f'{s_id}.cram.crai')
+        output_cram_fpath = join(proj_bucket, 'cram', f'{sn}.cram')
+        output_crai_fpath = join(proj_bucket, 'cram', f'{sn}.cram.crai')
         if not utils.can_reuse(output_cram_fpath, overwrite):
             alignment_input = sm_utils.AlignmentInput(
                 bam_or_cram_path=input_cram,
@@ -89,24 +89,24 @@ def add_pre_combiner_jobs(
             cram_j = _add_realign_jobs(
                 b=b,
                 output_path=output_cram_fpath,
-                sample_name=s_id,
+                sample_name=sn,
                 project_name=proj,
                 alignment_input=alignment_input,
             )
-            jobs_by_sample[s_id].append(cram_j)
-        samples_df.loc[s_id, ['cram']] = output_cram_fpath
-        samples_df.loc[s_id, ['crai']] = output_crai_fpath
+            jobs_by_sample[sn].append(cram_j)
+        samples_df.loc[sn, ['cram']] = output_cram_fpath
+        samples_df.loc[sn, ['crai']] = output_crai_fpath
 
     # Samples for which a CRAM is provided as input for variant calling:
     hc_intervals_j = None
     cram_df = samples_df[samples_df.cram != '-']
-    for s_id, external_id, proj, input_cram, input_crai in zip(
+    for sn, external_id, proj, input_cram, input_crai in zip(
         cram_df.s, cram_df.external_id, cram_df.project, cram_df.cram, cram_df.crai
     ):
-        assert isinstance(input_crai, str), (s_id, input_crai)
+        assert isinstance(input_crai, str), (sn, input_crai)
 
         proj_bucket = get_project_bucket(proj)
-        output_gvcf_path = join(proj_bucket, 'gvcf', f'{s_id}.g.vcf.gz')
+        output_gvcf_path = join(proj_bucket, 'gvcf', f'{sn}.g.vcf.gz')
         if not utils.can_reuse(output_gvcf_path, overwrite):
             if hc_intervals_j is None:
                 hc_intervals_j = _add_split_intervals_job(
@@ -118,7 +118,7 @@ def add_pre_combiner_jobs(
             gvcf_j = _add_produce_gvcf_jobs(
                 b=b,
                 output_path=output_gvcf_path,
-                sample_name=s_id,
+                sample_name=sn,
                 project_name=proj,
                 external_id=external_id,
                 cram_fpath=input_cram,
@@ -126,10 +126,10 @@ def add_pre_combiner_jobs(
                 intervals_j=hc_intervals_j,
                 tmp_bucket=join(pre_combiner_bucket, 'tmp'),
                 overwrite=overwrite,
-                depends_on=jobs_by_sample.get(s_id, []),
+                depends_on=jobs_by_sample.get(sn, []),
             )
-            jobs_by_sample[s_id].append(gvcf_j)
-        samples_df.loc[s_id, ['gvcf']] = output_gvcf_path
+            jobs_by_sample[sn].append(gvcf_j)
+        samples_df.loc[sn, ['gvcf']] = output_gvcf_path
 
     logger.info(f'Updated sample DF after post-processing GVCF inputs: {samples_df}')
     jobs = []

@@ -23,7 +23,8 @@ def pedigree_checks(
     b: hb.Batch,
     samples_df: pd.DataFrame,
     overwrite: bool,  # pylint: disable=unused-argument
-    fingerprints_bucket: str,
+    output_suffix: str,
+    relatedness_bucket: str,
     web_bucket: str,
     web_url: str,
     tmp_bucket: str,
@@ -38,11 +39,19 @@ def pedigree_checks(
     Returns a job, a path to a fixed PED file if able to recover, and a path to a file
     with relatedness information for each sample pair
     """
-
     extract_jobs = []
     fp_file_by_sample = dict()
-    for sn, gvcf_path in zip(samples_df['s'], samples_df['gvcf']):
-        fp_file_by_sample[sn] = join(fingerprints_bucket, f'{sn}.somalier')
+
+    def get_project_bucket(_proj):
+        if _proj in ['syndip', 'giab']:
+            proj_bucket = f'gs://cpg-reference/validation/{_proj}'
+        else:
+            proj_bucket = f'gs://cpg-{_proj}-{output_suffix}'
+        return proj_bucket
+
+    for sn, proj, gvcf_path in zip(samples_df.s, samples_df.project, samples_df.gvcf):
+        proj_bucket = get_project_bucket(proj)
+        fp_file_by_sample[sn] = join(proj_bucket, 'fingerprints', f'{sn}.somalier')
         if utils.can_reuse(fp_file_by_sample[sn], overwrite):
             extract_jobs.append(b.new_job(f'Somalier extract, {sn} [reuse]'))
         else:
@@ -107,8 +116,12 @@ def pedigree_checks(
         samples_df['Mother.ID'] = samples_df['mat_id']
         samples_df['Sex'] = samples_df['sex']
         samples_df['Phenotype'] = 0
-        samples_df[['Family.ID', 'Individual.ID', 'Father.ID', 'Mother.ID', 'Sex', 'Phenotype']].to_csv(
-            ped_fpath, sep='\t', index=False,
+        samples_df[
+            ['Family.ID', 'Individual.ID', 'Father.ID', 'Mother.ID', 'Sex', 'Phenotype']
+        ].to_csv(
+            ped_fpath,
+            sep='\t',
+            index=False,
         )
         ped_file = b.read_input(ped_fpath)
 
@@ -132,7 +145,7 @@ def pedigree_checks(
 
     # Copy somalier outputs to buckets
     sample_hash = utils.hash_sample_ids(samples_df['s'])
-    prefix = join(fingerprints_bucket, sample_hash, 'somalier')
+    prefix = join(relatedness_bucket, 'somalier', sample_hash, 'somalier')
     somalier_samples_path = f'{prefix}.samples.tsv'
     somalier_pairs_path = f'{prefix}.pairs.tsv'
     b.write_output(relate_j.output_samples, somalier_samples_path)
