@@ -394,6 +394,7 @@ def _plot_loadings(number_of_pcs, loadings_ht_path, out_path_pattern=None):
         reference_genome='GRCh38',
         skip_invalid_contigs=True,
         min_partitions=12,
+        force_bgz=True,
     )
     for i in range(number_of_pcs - 1):
         pc = i + 1
