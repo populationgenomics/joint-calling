@@ -119,8 +119,8 @@ def add_sample_qc_jobs(
         subset_for_pca_job = b.new_job(f'{job_name} [reuse]')
 
     relatedness_ht_path = join(relatedness_bucket, 'relatedness.ht')
-    if not can_reuse(relatedness_ht_path, overwrite):
-        if somalier_pairs_path:
+    if somalier_pairs_path:
+        if not can_reuse(relatedness_ht_path, overwrite):
             job_name = 'Somalier pairs to Hail table'
             relatedness_j = cluster.add_job(
                 f'{utils.SCRIPTS_DIR}/sample_qc_somalier_to_ht.py '
@@ -132,6 +132,9 @@ def add_sample_qc_jobs(
             )
             relatedness_j.depends_on(somalier_job)
         else:
+            relatedness_j = b.new_job(f'{job_name} [reuse]')
+    else:
+        if not can_reuse(relatedness_ht_path, overwrite):
             job_name = 'Run pc_relate'
             relatedness_ht_path = join(relatedness_bucket, 'relatedness.ht')
             # PC relate needs non-preemptible workes, so requesting a new cluster
@@ -166,8 +169,8 @@ def add_sample_qc_jobs(
                 depends_on=[relatedness_j],
                 phantomjs=True,
             )
-    else:
-        relatedness_j = b.new_job(f'{job_name} [reuse]')
+        else:
+            relatedness_j = b.new_job(f'{job_name} [reuse]')
 
     job_name = 'Sample QC flag related'
     intermediate_related_samples_to_drop_ht_path = join(
