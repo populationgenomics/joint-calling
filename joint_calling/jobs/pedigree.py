@@ -102,12 +102,13 @@ def pedigree_checks(
     else:
         ped_fpath = join(tmp_bucket, 'samples.ped')
         samples_df['Family.ID'] = samples_df['fam_id']
+        samples_df['Individual.ID'] = samples_df['s']
         samples_df['Father.ID'] = samples_df['pat_id']
         samples_df['Mother.ID'] = samples_df['mat_id']
         samples_df['Sex'] = samples_df['sex']
         samples_df['Phenotype'] = 0
-        samples_df[['Family.ID', 'Father.ID', 'Mother.ID', 'Sex', 'Phenotype']].to_csv(
-            ped_fpath, sep='\t'
+        samples_df[['Family.ID', 'Individual.ID', 'Father.ID', 'Mother.ID', 'Sex', 'Phenotype']].to_csv(
+            ped_fpath, sep='\t', index=False,
         )
         ped_file = b.read_input(ped_fpath)
 
