@@ -14,14 +14,13 @@ GNOMAD_HGDP_1KG_MT = (
     'gnomad.genomes.v3.1.hgdp_1kg_subset_dense.mt'
 )
 
+VERSION = 'v3-90k'
+BUCKET = f'gs://cpg-reference/hg38/ancestry/{VERSION}'
 
-BUCKET = 'gs://cpg-reference/hg38/ancestry/v3'
-# - gnomad_subset.mt          - 105489 rows, 3942 cols
-# - gnomad_subset_test.mt     - 62247 rows, 52 cols
-# - gnomad_subset_test_nfe.mt - 23900 rows, 8 cols
-# - gnomad_subset_nfe.mt      - 87344 rows, 675 cols
 
 NUM_TEST_SAMPLES = 100
+
+USE_SOMALIER = False
 
 
 @click.command()
@@ -31,13 +30,19 @@ def main(pop: Optional[str]):  # pylint: disable=missing-function-docstring
 
     sites_ht_path = join(BUCKET, 'pca_sites.ht')
     if not hl.hadoop_exists(sites_ht_path):
-        somalier_vcf_path = 'gs://cpg-reference/hg38/somalier/v0/sites.hg38.vcf.gz'
-        somalier_ht = (
-            hl.import_vcf(somalier_vcf_path, reference_genome='GRCh38', force=True)
-            .rows()
-            .key_by('locus')
-        )
-        somalier_ht.write(sites_ht_path)
+        if USE_SOMALIER:
+            somalier_vcf_path = 'gs://cpg-reference/hg38/somalier/v0/sites.hg38.vcf.gz'
+            somalier_ht = (
+                hl.import_vcf(somalier_vcf_path, reference_genome='GRCh38', force=True)
+                .rows()
+                .key_by('locus')
+            )
+            somalier_ht.write(sites_ht_path)
+        else:
+            ht = hl.read_table('gs://cpg-reference/hg38/ancestry/v3/pca_sites_90k.ht/')
+            ht = ht.key_by('locus')
+            ht.write(sites_ht_path)
+
     ht = hl.read_table(sites_ht_path)
 
     gnomad_subset_mt_path = join(BUCKET, 'gnomad_subset.mt')

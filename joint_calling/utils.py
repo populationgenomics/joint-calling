@@ -52,6 +52,8 @@ BCFTOOLS_IMAGE = f'{AR_REPO}/bcftools:1.10.2--h4f4756c_2'
 SM_IMAGE = f'{AR_REPO}/sm-api:2.0.3'
 ALIGNMENT_IMAGE = f'{AR_REPO}/alignment:v4'
 PICARD_IMAGE = f'{AR_REPO}/picard-cloud:2.23.8'
+SOMALIER_IMAGE = f'{AR_REPO}/somalier:latest'
+PEDDY_IMAGE = f'{AR_REPO}/peddy:0.4.8--pyh5e36f6f_0'
 
 SCRIPTS_DIR = 'scripts'
 PACKAGE_DIR = package_name
@@ -352,12 +354,58 @@ def parse_input_metadata(
     Parse KCCG metadata (continental_pop and picard metrics)
     """
     local_csv_path = join(local_tmp_dir, basename(meta_csv_path))
-    subprocess.run(
-        f'gsutil cp {meta_csv_path} {local_csv_path}', check=False, shell=True
-    )
-
+    gsutil_cp(meta_csv_path, local_csv_path)
     df = pd.read_table(local_csv_path)
     ht = hl.Table.from_pandas(df).key_by('s')
     if out_ht_path:
         ht = ht.checkpoint(out_ht_path, overwrite=True)
     return ht
+
+
+def hash_sample_ids(sample_names: Iterable[str]) -> str:
+    """
+    Return a unique hash string from a set of strings
+    :param sample_names: set of strings
+    :return: a string hash
+    """
+    for sn in sample_names:
+        assert ' ' not in sn, sn
+    return hashlib.sha256(' '.join(sorted(sample_names)).encode()).hexdigest()[:32]
+
+
+def gsutil_cp(
+    src_path: str,
+    dst_path: str,
+    disable_check_hashes: bool = False,
+    recursive: bool = False,
+    quiet: bool = False,
+):
+    """
+    Wrapper around `gsutil cp`
+
+    :param src_path: path to a file to copy from
+    :param dst_path: path to copy to
+    :param disable_check_hashes:
+        Uses the gsutil option `-o GSUtil:check_hashes=never` which is required to
+        get around the gsutil integrity checking error, as conda gsutil doesn't use
+        CRC32c:
+        > Downloading this composite object requires integrity checking with CRC32c,
+          but your crcmod installation isn't using the module's C extension, so the
+          hash computation will likely throttle download performance.
+
+          To download regardless of crcmod performance or to skip slow integrity
+          checks, see the "check_hashes" option in your boto config file.
+    :param recursive: to copy a directory
+    :param quiet: disable logging of commands and copied files
+    """
+    cmd = (
+        'gsutil '
+        + ('-q ' if quiet else '')
+        + ('-o GSUtil:check_hashes=never ' if disable_check_hashes else '')
+        + 'cp '
+        + ('-r ' if recursive else '')
+        + f'{src_path} {dst_path}'
+    )
+    if not quiet:
+        logger.info(cmd)
+    subprocess.run(cmd, check=False, shell=True)

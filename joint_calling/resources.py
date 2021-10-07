@@ -16,12 +16,13 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-REF_BUCKET = 'gs://cpg-reference/hg38'
+REF_BUCKET = 'gs://cpg-reference'
+NOALT_REGIONS = join(REF_BUCKET, 'noalt.bed')
+SOMALIER_SITES = join(REF_BUCKET, 'somalier/v0/sites.hg38.vcf.gz')
 
-GATK_REF_BUCKET = f'{REF_BUCKET}/v1'
-REF_FASTA = join(GATK_REF_BUCKET, 'Homo_sapiens_assembly38.fasta')
-UNPADDED_INTERVALS = join(GATK_REF_BUCKET, 'hg38.even.handcurated.20k.intervals')
-NOALT_REGIONS = join(GATK_REF_BUCKET, 'noalt.bed')
+BROAD_REF_BUCKET = f'{REF_BUCKET}/hg38/v1'
+REF_FASTA = join(BROAD_REF_BUCKET, 'Homo_sapiens_assembly38.fasta')
+UNPADDED_INTERVALS = join(BROAD_REF_BUCKET, 'hg38.even.handcurated.20k.intervals')
 
 GNOMAD_REF_BUCKET = f'{REF_BUCKET}/gnomad/v0'
 TEL_AND_CENT_HT = join(
@@ -38,11 +39,13 @@ MILLS_HT = join(
     GNOMAD_REF_BUCKET, 'mills/Mills_and_1000G_gold_standard.indels.hg38.ht/'
 )
 
+GENCODE_GTF = join(REF_BUCKET, 'gencode/gencode.v29.annotation.gtf.bgz')
+
 GNOMAD_HT = (
     'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht'
 )
 
-ANCESTRY_BUCKET = f'{REF_BUCKET}/ancestry/v3'
+ANCESTRY_BUCKET = f'{REF_BUCKET}/hg38/ancestry/v3-90k'
 ANCESTRY_HGDP_SUBSET_MTS = {
     'all': f'{ANCESTRY_BUCKET}/gnomad_subset.mt',
     'nfe': f'{ANCESTRY_BUCKET}/gnomad_subset_nfe.mt',

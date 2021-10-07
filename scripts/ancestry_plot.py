@@ -6,7 +6,7 @@ Plot ancestry PCA analysis results
 
 import logging
 from collections import Counter
-from typing import List, Iterable
+from typing import List, Iterable, Optional
 
 import click
 import pandas as pd
@@ -15,12 +15,12 @@ import hail as hl
 from bokeh.io.export import get_screenshot_as_png
 from bokeh.resources import CDN
 from bokeh.embed import file_html
-from bokeh.transform import factor_cmap
+from bokeh.transform import factor_cmap, factor_mark
 from bokeh.plotting import ColumnDataSource, figure
 from bokeh.palettes import turbo  # pylint: disable=no-name-in-module
 from bokeh.models import CategoricalColorMapper, HoverTool
 
-from joint_calling import utils
+from joint_calling import utils, resources
 from joint_calling import _version
 
 
@@ -74,7 +74,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     loadings_ht_path: str,
     provided_pop_ht_path: str,
     inferred_pop_ht_path: str,
-    out_path_pattern: str,
+    out_path_pattern: Optional[str],
     hail_billing: str,  # pylint: disable=unused-argument
 ):
     utils.init_hail(__file__)
@@ -93,10 +93,10 @@ def produce_plots(
     eigenvalues_path: str,
     scores_ht_path: str,
     loadings_ht_path: str,
-    gtf_path: str,
     provided_pop_ht_path: str,
     inferred_pop_ht_path: str,
-    out_path_pattern: str,
+    out_path_pattern: Optional[str] = None,
+    number_of_pcs: Optional[int] = None,
 ):
     """
     Generate plots in png and html formats, write for each PC (of n_pcs) and
@@ -113,10 +113,20 @@ def produce_plots(
             provided_pop_ht[scores.s].continental_pop != '',
             provided_pop_ht[scores.s].continental_pop,
         )
-        .default(inferred_pop_ht[scores.s].pop + ' [inferred]'),
+        .default(
+            inferred_pop_ht[scores.s].pop
+            + ' ['
+            + provided_pop_ht[scores.s].project
+            + ', inferred]'
+        ),
         subpop=hl.case()
         .when(provided_pop_ht[scores.s].subpop != '', provided_pop_ht[scores.s].subpop)
-        .default(inferred_pop_ht[scores.s].pop + ' [inferred]'),
+        .default(
+            inferred_pop_ht[scores.s].pop
+            + ' ['
+            + provided_pop_ht[scores.s].project
+            + ', inferred]'
+        ),
         study=provided_pop_ht[scores.s].project,
     )
 
@@ -126,16 +136,79 @@ def produce_plots(
     eigenvalues = pd.to_numeric(eigenvalues)
     variance = np.divide(eigenvalues[1:], float(eigenvalues.sum())) * 100
     variance = variance.round(2)
-    number_of_pcs = len(eigenvalues) - 1
+    number_of_pcs = number_of_pcs or len(eigenvalues) - 1
 
+    plots = []
+
+    studies = scores.study.collect()
+    unique_studies = remove_duplicates(studies)
+    bg_studies = [s for s in unique_studies if s == 'gnomad']
+    fg_studies = [s for s in unique_studies if s != 'gnomad']
+
+    plots.extend(
+        _plot_study(
+            number_of_pcs,
+            variance,
+            scores,
+            studies,
+            sample_names,
+            bg_studies,
+            fg_studies,
+            out_path_pattern=out_path_pattern,
+        )
+    )
+
+    plots.extend(
+        _plot_continental_pop(
+            number_of_pcs,
+            variance,
+            scores,
+            studies,
+            sample_names,
+            bg_studies,
+            fg_studies,
+            out_path_pattern=out_path_pattern,
+        )
+    )
+
+    plots.extend(
+        _plot_subcontinental_pop(
+            number_of_pcs,
+            variance,
+            scores,
+            studies,
+            sample_names,
+            bg_studies,
+            fg_studies,
+            out_path_pattern=out_path_pattern,
+        )
+    )
+
+    plots.extend(
+        _plot_loadings(
+            number_of_pcs, loadings_ht_path, out_path_pattern=out_path_pattern
+        )
+    )
+
+    return plots
+
+
+def _plot_study(
+    number_of_pcs,
+    variance,
+    scores,
+    studies,
+    sample_names,
+    bg_studies,
+    fg_studies,
+    out_path_pattern=None,
+):
     tooltips = [('labels', '@label'), ('samples', '@samples')]
-
-    # plot by study
-    labels = scores.study.collect()
-    cnt = Counter(labels)
-    labels = [f'{x} ({cnt[x]})' for x in labels]
+    cntr: Counter = Counter(studies)
+    labels = [f'{x} ({cntr[x]})' for x in studies]
     unique_labels = list(Counter(labels).keys())
 
+    plots = []
     for i in range(number_of_pcs - 1):
         pc1 = i
         pc2 = i + 1
@@ -151,34 +224,55 @@ def produce_plots(
                 y=scores.scores[pc2].collect(),
                 label=labels,
                 samples=sample_names,
+                study=studies,
             )
         )
-        plot.circle(
+        plot.scatter(
             'x',
             'y',
             alpha=0.5,
+            marker=factor_mark(
+                'study',
+                ['cross'] * len(bg_studies) + ['circle'] * len(fg_studies),
+                bg_studies + fg_studies,
+            ),
             source=source,
             size=4,
-            color=factor_cmap(
-                'label', ['#1b9e77', '#d95f02'], unique_labels
-            ),
+            color=factor_cmap('label', ['#1b9e77', '#d95f02'], unique_labels),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')
-        plot_filename = out_path_pattern.format(scope='study', pci=pc2, ext='png')
-        with hl.hadoop_open(plot_filename, 'wb') as f:
-            get_screenshot_as_png(plot).save(f, format='PNG')
-        html = file_html(plot, CDN, 'my plot')
-        plot_filename_html = out_path_pattern.format(scope='study', pci=pc2, ext='html')
-        with hl.hadoop_open(plot_filename_html, 'w') as f:
-            f.write(html)
+        plots.append(plot)
+        if out_path_pattern:
+            plot_filename = out_path_pattern.format(scope='study', pci=pc2, ext='png')
+            with hl.hadoop_open(plot_filename, 'wb') as f:
+                get_screenshot_as_png(plot).save(f, format='PNG')
+            html = file_html(plot, CDN, 'my plot')
+            plot_filename_html = out_path_pattern.format(
+                scope='study', pci=pc2, ext='html'
+            )
+            with hl.hadoop_open(plot_filename_html, 'w') as f:
+                f.write(html)
+    return plots
 
-    # plot by continental population
+
+def _plot_continental_pop(
+    number_of_pcs,
+    variance,
+    scores,
+    studies,
+    sample_names,
+    bg_studies,
+    fg_studies,
+    out_path_pattern=None,
+):
+    tooltips = [('labels', '@label'), ('samples', '@samples')]
     labels = scores.continental_pop.collect()
-    cnt = Counter(labels)
-    labels = [f'{x} ({cnt[x]})' for x in labels]
+    cntr = Counter(labels)
+    labels = [f'{x} ({cntr[x]})' for x in labels]
     unique_labels = list(Counter(labels).keys())
 
+    plots = []
     for i in range(number_of_pcs - 1):
         pc1 = i
         pc2 = i + 1
@@ -194,36 +288,57 @@ def produce_plots(
                 y=scores.scores[pc2].collect(),
                 label=labels,
                 samples=sample_names,
+                study=studies,
             )
         )
-        plot.circle(
+        plot.scatter(
             'x',
             'y',
-            alpha=0.5,
+            alpha=0.6,
+            marker=factor_mark(
+                'study',
+                ['cross'] * len(bg_studies) + ['circle'] * len(fg_studies),
+                bg_studies + fg_studies,
+            ),
             source=source,
-            size=4,
+            size=2,
             color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')
-        plot_filename = out_path_pattern.format(
-            scope='continental_pop', pci=pc2, ext='png'
-        )
-        with hl.hadoop_open(plot_filename, 'wb') as f:
-            get_screenshot_as_png(plot).save(f, format='PNG')
-        html = file_html(plot, CDN, 'my plot')
-        plot_filename_html = out_path_pattern.format(
-            scope='continental_pop', pci=pc2, ext='html'
-        )
-        with hl.hadoop_open(plot_filename_html, 'w') as f:
-            f.write(html)
+        plots.append(plot)
+        if out_path_pattern:
+            plot_filename = out_path_pattern.format(
+                scope='continental_pop', pci=pc2, ext='png'
+            )
+            with hl.hadoop_open(plot_filename, 'wb') as f:
+                get_screenshot_as_png(plot).save(f, format='PNG')
+            html = file_html(plot, CDN, 'my plot')
+            plot_filename_html = out_path_pattern.format(
+                scope='continental_pop', pci=pc2, ext='html'
+            )
+            with hl.hadoop_open(plot_filename_html, 'w') as f:
+                f.write(html)
+    return plots
 
-    # plot by subpopulation
+
+def _plot_subcontinental_pop(
+    number_of_pcs,
+    variance,
+    scores,
+    studies,
+    sample_names,
+    bg_studies,
+    fg_studies,
+    out_path_pattern=None,
+):
+    tooltips = [('labels', '@label'), ('samples', '@samples')]
     labels = scores.subpop.collect()
-    cnt = Counter(labels)
-    labels = [f'{x} ({cnt[x]})' for x in labels]
+    cntr = Counter(labels)
+    labels = [f'{x} ({cntr[x]})' for x in labels]
     unique_labels = list(Counter(labels).keys())
-    
+
+    plots = []
     for i in range(number_of_pcs - 1):
         pc1 = i
         pc2 = i + 1
@@ -239,35 +354,47 @@ def produce_plots(
                 y=scores.scores[pc2].collect(),
                 label=labels,
                 samples=sample_names,
+                study=studies,
             )
         )
-        plot.circle(
+        plot.scatter(
             'x',
             'y',
-            alpha=0.5,
+            alpha=0.6,
+            marker=factor_mark(
+                'study',
+                ['cross'] * len(bg_studies) + ['circle'] * len(fg_studies),
+                bg_studies + fg_studies,
+            ),
             source=source,
-            size=4,
+            size=2,
             color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
             legend_group='label',
         )
         plot.add_layout(plot.legend[0], 'left')
-        plot_filename = out_path_pattern.format(scope='subpop', pci=pc2, ext='png')
-        with hl.hadoop_open(plot_filename, 'wb') as f:
-            get_screenshot_as_png(plot).save(f, format='PNG')
-        html = file_html(plot, CDN, 'my plot')
-        plot_filename_html = out_path_pattern.format(
-            scope='subpop', pci=pc2, ext='html'
-        )
-        with hl.hadoop_open(plot_filename_html, 'w') as f:
-            f.write(html)
+        plots.append(plot)
+        if out_path_pattern:
+            plot_filename = out_path_pattern.format(scope='subpop', pci=pc2, ext='png')
+            with hl.hadoop_open(plot_filename, 'wb') as f:
+                get_screenshot_as_png(plot).save(f, format='PNG')
+            html = file_html(plot, CDN, 'my plot')
+            plot_filename_html = out_path_pattern.format(
+                scope='subpop', pci=pc2, ext='html'
+            )
+            with hl.hadoop_open(plot_filename_html, 'w') as f:
+                f.write(html)
+    return plots
 
-    # Plot loadings
+
+def _plot_loadings(number_of_pcs, loadings_ht_path, out_path_pattern=None):
     loadings_ht = hl.read_table(loadings_ht_path)
+    plots = []
     gtf_ht = hl.experimental.import_gtf(
-        gtf_path,
+        resources.GENCODE_GTF,
         reference_genome='GRCh38',
         skip_invalid_contigs=True,
         min_partitions=12,
+        force_bgz=True,
     )
     for i in range(number_of_pcs - 1):
         pc = i + 1
@@ -278,22 +405,24 @@ def produce_plots(
             title='Loadings of PC ' + str(pc),
             collect_all=True,
         )
-        plot_filename = out_path_pattern.format(scope='loadings', pci=pc, ext='png')
-        with hl.hadoop_open(plot_filename, 'wb') as f:
-            get_screenshot_as_png(plot).save(f, format='PNG')
-        html = file_html(plot, CDN, 'my plot')
-        plot_filename_html = out_path_pattern.format(
-            scope='loadings', pci=pc, ext='html'
-        )
-        with hl.hadoop_open(plot_filename_html, 'w') as f:
-            f.write(html)
+        plots.append(plot)
+        if out_path_pattern:
+            plot_filename = out_path_pattern.format(scope='loadings', pci=pc, ext='png')
+            with hl.hadoop_open(plot_filename, 'wb') as f:
+                get_screenshot_as_png(plot).save(f, format='PNG')
+            html = file_html(plot, CDN, 'my plot')
+            plot_filename_html = out_path_pattern.format(
+                scope='loadings', pci=pc, ext='html'
+            )
+            with hl.hadoop_open(plot_filename_html, 'w') as f:
+                f.write(html)
+    return plots
 
 
 def manhattan_loadings(
     iteration,
     gtf,
     loadings,
-    title=None,
     title=None,
     size=4,
     hover_fields=None,
@@ -313,7 +442,7 @@ def manhattan_loadings(
         '#bcbd22',
         '#17becf',
     ]
-    
+
     # add gene names, p-values, and locus info
     loadings = loadings.annotate(gene_names=gtf[loadings.locus].gene_name)
     pvals = hl.abs(loadings.loadings[iteration])
@@ -321,8 +450,6 @@ def manhattan_loadings(
 
     if hover_fields is None:
         hover_fields = {}
-
-    hover_fields['locus'] = hl.str(locus)
 
     hover_fields['locus'] = hl.str(locus)
     hover_fields['gene'] = hl.str(loadings.gene_names)

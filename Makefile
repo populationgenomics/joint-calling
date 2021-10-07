@@ -1,5 +1,5 @@
 ANALYSIS_PROJECT := tob-wgs
-VERSION := v5.1
+VERSION := v6
 TEST_VERSION := v6-25
 SCATTER_COUNT_TEST := 20
 SCATTER_COUNT_PROD := 50
@@ -28,6 +28,16 @@ package:
 .PHONY: sleep
 sleep:
 	sleep 60
+
+.PHONY: 1kg_full
+1kg_full:
+	python batch_workflow.py \
+	--scatter-count 50 \
+	--namespace main \
+	--analysis-project thousand-genomes \
+	--input-project thousand-genomes \
+	--output-version v1-0 \
+	--keep-scratch
 
 .PHONY: 1kg_concordance_test
 1kg_concordance_test:

@@ -25,7 +25,7 @@ from joint_calling import utils
 from joint_calling import sm_utils
 from joint_calling.jobs.variant_qc import add_variant_qc_jobs
 from joint_calling.jobs.sample_qc import add_sample_qc_jobs
-from joint_calling.jobs import pre_combiner
+from joint_calling.jobs import pre_combiner, pedigree
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -69,7 +69,7 @@ logger.setLevel(logging.INFO)
 )
 @click.option(
     '--ped-file',
-    'ped_file',
+    'ped_fpath',
     help='PED file with family information',
     type=str,
     callback=utils.get_validation_callback(ext='ped', must_exist=True),
@@ -122,6 +122,12 @@ logger.setLevel(logging.INFO)
     'on this population',
 )
 @click.option('--dry-run', 'dry_run', is_flag=True)
+@click.option(
+    '--run-somalier/--no-somalier',
+    'run_somalier',
+    default=True,
+    is_flag=True,
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -129,7 +135,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     output_version: str,
     output_projects: Optional[List[str]],  # pylint: disable=unused-argument
     use_gnarly_genotyper: bool,
-    ped_file: str,
+    ped_fpath: Optional[str],
     filter_cutoffs_path: str,
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
@@ -139,6 +145,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     pca_pop: Optional[str],
     num_ancestry_pcs: int,
     dry_run: bool,
+    run_somalier: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -220,6 +227,23 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         analysis_project=analysis_project,
     )
 
+    relatedness_bucket = join(analysis_bucket, 'relatedness')
+    somalier_j = None
+    somalier_pairs_path = None
+    if run_somalier:
+        somalier_j, ped_fpath, somalier_pairs_path = pedigree.pedigree_checks(
+            b,
+            samples_df=samples_df,
+            overwrite=overwrite,
+            ped_fpath=ped_fpath,
+            output_suffix=project_output_suffix,
+            relatedness_bucket=relatedness_bucket,
+            web_bucket=join(web_bucket, 'somalier'),
+            web_url=f'https://{output_namespace}-web.populationgenomics.org.au/{analysis_project}',
+            tmp_bucket=join(tmp_bucket, 'somalier'),
+            depends_on=pre_combiner_jobs,
+        )
+
     if use_gnarly_genotyper:
         combiner_job = b.new_job('Not implemented')
         # combiner_job, vcf_path = make_joint_genotype_jobs(
@@ -263,7 +287,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         ancestry_bucket=join(analysis_bucket, 'ancestry'),
         tmp_bucket=tmp_bucket,
         analysis_bucket=analysis_bucket,
-        relatedness_bucket=join(analysis_bucket, 'relatedness'),
+        relatedness_bucket=relatedness_bucket,
         web_bucket=web_bucket,
         filter_cutoffs_path=filter_cutoffs_path,
         overwrite=overwrite,
@@ -275,6 +299,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         num_ancestry_pcs=num_ancestry_pcs,
         pca_pop=pca_pop,
         is_test=output_namespace in ['test', 'tmp'],
+        somalier_pairs_path=somalier_pairs_path,
+        somalier_job=somalier_j,
     )
 
     var_qc_job = add_variant_qc_jobs(
@@ -286,7 +312,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         meta_ht_path=meta_ht_path,
         out_filtered_combined_mt_path=filtered_combined_mt_path,
         sample_count=len(samples_df),
-        ped_file=ped_file,
+        ped_file=ped_fpath,
         overwrite=overwrite,
         vqsr_params_d=utils.get_filter_cutoffs(filter_cutoffs_path)['vqsr'],
         scatter_count=scatter_count,
