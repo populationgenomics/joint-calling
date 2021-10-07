@@ -128,6 +128,12 @@ logger.setLevel(logging.INFO)
     default=True,
     is_flag=True,
 )
+@click.option(
+    '--check-existence/--no-check-existence',
+    'check_existence',
+    default=False,
+    is_flag=True,
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -146,6 +152,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     num_ancestry_pcs: int,
     dry_run: bool,
     run_somalier: bool,
+    check_existence: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -212,6 +219,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         input_projects=input_projects,
         is_test=output_namespace in ['test', 'tmp'],
         skip_samples=skip_samples,
+        check_existence=check_existence,
     )
 
     (
@@ -374,6 +382,7 @@ def find_inputs(
     input_projects: List[str],
     is_test: bool,
     skip_samples: Optional[Collection[str]] = None,
+    check_existence: bool = True,
 ) -> pd.DataFrame:
     """
     Find inputs, make a sample data DataFrame, save to a TSV file
@@ -395,6 +404,7 @@ def find_inputs(
         input_projects,
         is_test=is_test,
         skip_samples=skip_samples,
+        check_existence=check_existence,
     )
     samples_df = sm_utils.add_validation_samples(samples_df)
     samples_df.to_csv(output_tsv_path, index=False, sep='\t', na_rep='NA')

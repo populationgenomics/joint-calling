@@ -245,6 +245,7 @@ def find_inputs_from_db(
     input_projects: List[str],
     is_test: bool = False,
     skip_samples: Optional[Collection[str]] = None,
+    check_existence: bool = True,
 ) -> pd.DataFrame:
     """
     Determine input samples and pull input files and metadata from
@@ -290,7 +291,7 @@ def find_inputs_from_db(
         for s in samples:
             a = gvcf_analysis_per_sid.get(s['id'])
             if not a:
-                sids_without_gvcf.append(s['id'])
+                sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
                 continue
             gvcf_path = a.output
             if not gvcf_path:
@@ -298,7 +299,7 @@ def find_inputs_from_db(
                     f'"output" is not defined for the latest gvcf analysis, '
                     f'skipping sample {s["id"]}'
                 )
-                sids_without_gvcf.append(s['id'])
+                sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
                 continue
             gvcf_by_sid[s['id']] = gvcf_path
 
@@ -361,7 +362,7 @@ def find_inputs_from_db(
                     f'gs://cpg-{proj}-test',
                 )
                 gvcf_path = gvcf_path.replace(s['id'], s['external_id'])
-                if not utils.file_exists(gvcf_path):
+                if check_existence and not utils.file_exists(gvcf_path):
                     continue
                 logger.info(f'Using {gvcf_path} for a test run')
 
@@ -371,13 +372,13 @@ def find_inputs_from_db(
                     f'is not a GVCF'
                 )
                 continue
-            if not utils.file_exists(gvcf_path):
+            if check_existence and not utils.file_exists(gvcf_path):
                 logger.warning(
                     f'GVCF analysis for sample ID {sample_id} "output" file '
                     f'does not exist: {gvcf_path}'
                 )
                 continue
-            if not utils.file_exists(gvcf_path + '.tbi'):
+            if check_existence and not utils.file_exists(gvcf_path + '.tbi'):
                 logger.warning(
                     f'GVCF analysis for sample ID {sample_id} "output" field '
                     f'does not have a corresponding tbi index: {gvcf_path}.tbi'
