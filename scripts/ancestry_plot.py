@@ -150,8 +150,8 @@ def produce_plots(
             number_of_pcs,
             variance,
             scores,
+            studies,
             sample_names,
-            unique_studies,
             bg_studies,
             fg_studies,
             out_path_pattern=out_path_pattern,
@@ -163,6 +163,7 @@ def produce_plots(
             number_of_pcs,
             variance,
             scores,
+            studies,
             sample_names,
             bg_studies,
             fg_studies,
@@ -175,6 +176,7 @@ def produce_plots(
             number_of_pcs,
             variance,
             scores,
+            studies,
             sample_names,
             bg_studies,
             fg_studies,
@@ -202,7 +204,6 @@ def _plot_study(
     out_path_pattern=None,
 ):
     tooltips = [('labels', '@label'), ('samples', '@samples')]
-    # plot by study
     cntr: Counter = Counter(studies)
     labels = [f'{x} ({cntr[x]})' for x in studies]
     unique_labels = list(Counter(labels).keys())
@@ -223,6 +224,7 @@ def _plot_study(
                 y=scores.scores[pc2].collect(),
                 label=labels,
                 samples=sample_names,
+                study=studies,
             )
         )
         plot.scatter(
@@ -258,6 +260,7 @@ def _plot_continental_pop(
     number_of_pcs,
     variance,
     scores,
+    studies,
     sample_names,
     bg_studies,
     fg_studies,
@@ -278,6 +281,7 @@ def _plot_continental_pop(
             x_axis_label=f'PC{pc1 + 1} ({variance[pc1]})%)',
             y_axis_label=f'PC{pc2 + 1} ({variance[pc2]}%)',
             tooltips=tooltips,
+            study=studies,
         )
         source = ColumnDataSource(
             dict(
@@ -322,6 +326,7 @@ def _plot_subcontinental_pop(
     number_of_pcs,
     variance,
     scores,
+    studies,
     sample_names,
     bg_studies,
     fg_studies,
@@ -349,6 +354,7 @@ def _plot_subcontinental_pop(
                 y=scores.scores[pc2].collect(),
                 label=labels,
                 samples=sample_names,
+                study=studies,
             )
         )
         plot.scatter(
