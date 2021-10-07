@@ -39,6 +39,8 @@ MILLS_HT = join(
     GNOMAD_REF_BUCKET, 'mills/Mills_and_1000G_gold_standard.indels.hg38.ht/'
 )
 
+GENCODE_GTF = join(REF_BUCKET, 'gencode/gencode.v38.annotation.gtf.gz')
+
 GNOMAD_HT = (
     'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht'
 )

@@ -20,7 +20,7 @@ from bokeh.plotting import ColumnDataSource, figure
 from bokeh.palettes import turbo  # pylint: disable=no-name-in-module
 from bokeh.models import CategoricalColorMapper, HoverTool
 
-from joint_calling import utils
+from joint_calling import utils, resources
 from joint_calling import _version
 
 
@@ -281,7 +281,6 @@ def _plot_continental_pop(
             x_axis_label=f'PC{pc1 + 1} ({variance[pc1]})%)',
             y_axis_label=f'PC{pc2 + 1} ({variance[pc2]}%)',
             tooltips=tooltips,
-            study=studies,
         )
         source = ColumnDataSource(
             dict(
@@ -289,6 +288,7 @@ def _plot_continental_pop(
                 y=scores.scores[pc2].collect(),
                 label=labels,
                 samples=sample_names,
+                study=studies,
             )
         )
         plot.scatter(
@@ -389,11 +389,18 @@ def _plot_subcontinental_pop(
 def _plot_loadings(number_of_pcs, loadings_ht_path, out_path_pattern=None):
     loadings_ht = hl.read_table(loadings_ht_path)
     plots = []
+    gtf_ht = hl.experimental.import_gtf(
+        resources.GENCODE_GTF,
+        reference_genome='GRCh38',
+        skip_invalid_contigs=True,
+        min_partitions=12,
+    )
     for i in range(number_of_pcs - 1):
         pc = i + 1
         plot = manhattan_loadings(
-            pvals=hl.abs(loadings_ht.loadings[i]),
-            locus=loadings_ht.locus,
+            iteration=i,
+            gtf=gtf_ht,
+            loadings=loadings_ht,
             title='Loadings of PC ' + str(pc),
             collect_all=True,
         )
@@ -412,8 +419,9 @@ def _plot_loadings(number_of_pcs, loadings_ht_path, out_path_pattern=None):
 
 
 def manhattan_loadings(
-    pvals,
-    locus=None,
+    iteration,
+    gtf,
+    loadings,
     title=None,
     size=4,
     hover_fields=None,
@@ -433,15 +441,17 @@ def manhattan_loadings(
         '#bcbd22',
         '#17becf',
     ]
-    if locus is None:
-        locus = pvals._indices.source.locus  # pylint: disable=protected-access
 
-    ref = locus.dtype.reference_genome
+    # add gene names, p-values, and locus info
+    loadings = loadings.annotate(gene_names=gtf[loadings.locus].gene_name)
+    pvals = hl.abs(loadings.loadings[iteration])
+    locus = loadings.locus
 
     if hover_fields is None:
         hover_fields = {}
 
     hover_fields['locus'] = hl.str(locus)
+    hover_fields['gene'] = hl.str(loadings.gene_names)
 
     source_pd = (
         hl.plot.plots._collect_scatter_plot_data(  # pylint: disable=protected-access
@@ -455,6 +465,7 @@ def manhattan_loadings(
     source_pd['_contig'] = [locus.split(':')[0] for locus in source_pd['locus']]
 
     observed_contigs = set(source_pd['_contig'])
+    ref = locus.dtype.reference_genome
     observed_contigs = [
         contig for contig in ref.contigs.copy() if contig in observed_contigs
     ]
