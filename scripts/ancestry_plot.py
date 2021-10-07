@@ -111,21 +111,30 @@ def produce_plots(
         continental_pop=hl.case()
         .when(
             provided_pop_ht[scores.s].continental_pop != '',
-            provided_pop_ht[scores.s].continental_pop,
+            provided_pop_ht[scores.s].project
+            + ' ['
+            + provided_pop_ht[scores.s].continental_pop
+            + ']',
         )
         .default(
-            inferred_pop_ht[scores.s].pop
-            + ' ['
-            + provided_pop_ht[scores.s].project
-            + ', inferred]'
+            provided_pop_ht[scores.s].project
+            + ' [inferred '
+            + inferred_pop_ht[scores.s].pop
+            + ']'
         ),
         subpop=hl.case()
-        .when(provided_pop_ht[scores.s].subpop != '', provided_pop_ht[scores.s].subpop)
-        .default(
-            inferred_pop_ht[scores.s].pop
+        .when(
+            provided_pop_ht[scores.s].subpop != '',
+            provided_pop_ht[scores.s].project
             + ' ['
-            + provided_pop_ht[scores.s].project
-            + ', inferred]'
+            + provided_pop_ht[scores.s].subpop
+            + ']',
+        )
+        .default(
+            provided_pop_ht[scores.s].project
+            + ' [inferred '
+            + inferred_pop_ht[scores.s].pop
+            + ']'
         ),
         study=provided_pop_ht[scores.s].project,
     )
