@@ -216,7 +216,7 @@ def add_sample_qc_jobs(
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             job_name=job_name,
         )
-        pca_job.depends_on(flag_related_job)
+        pca_job.depends_on(flag_related_job, subset_for_pca_job)
     else:
         pca_job = b.new_job(f'{job_name} [reuse]')
 
