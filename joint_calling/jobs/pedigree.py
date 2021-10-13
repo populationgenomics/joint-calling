@@ -9,6 +9,7 @@ import subprocess
 from os.path import join
 from typing import Optional, List, Tuple
 import pandas as pd
+import numpy as np
 import hailtop.batch as hb
 from hailtop.batch.job import Job
 from joint_calling import resources, utils
@@ -110,18 +111,29 @@ def pedigree_checks(
         ped_file = b.read_input(ped_fpath)
     else:
         ped_fpath = join(tmp_bucket, 'samples.ped')
-        samples_df['Family.ID'] = samples_df['fam_id']
+        samples_df['Family.ID'] = np.where(
+            pd.notna(samples_df['fam_id']),
+            samples_df['fam_id'],
+            samples_df['external_id'],
+        )
         samples_df['Individual.ID'] = samples_df['s']
-        samples_df['Father.ID'] = samples_df['pat_id']
-        samples_df['Mother.ID'] = samples_df['mat_id']
-        samples_df['Sex'] = samples_df['sex']
-        samples_df['Phenotype'] = 0
+        samples_df['Father.ID'] = np.where(
+            pd.notna(samples_df['pat_id']), samples_df['pat_id'], '0'
+        )
+        samples_df['Mother.ID'] = np.where(
+            pd.notna(samples_df['mat_id']), samples_df['mat_id'], '0'
+        )
+        samples_df['Sex'] = np.where(
+            pd.notna(samples_df['sex']), samples_df['sex'], '0'
+        )
+        samples_df['Phenotype'] = '0'
         samples_df[
             ['Family.ID', 'Individual.ID', 'Father.ID', 'Mother.ID', 'Sex', 'Phenotype']
         ].to_csv(
             ped_fpath,
             sep='\t',
             index=False,
+            header=False,
         )
         ped_file = b.read_input(ped_fpath)
 
@@ -142,7 +154,7 @@ def pedigree_checks(
         mv related.samples.tsv {relate_j.output_samples}
         
         # Generated fixed PED file
-        cat {relate_j.output_samples} | cut -f1-6 | grep -v ^# > {relate_j.fixed_ped}
+        cat {relate_j.output_samples} | cut -f1-6 | grep -v ^# | grep Family.ID > {relate_j.fixed_ped}
         """
     )
 
@@ -153,11 +165,11 @@ def pedigree_checks(
     somalier_pairs_path = f'{prefix}.pairs.tsv'
     b.write_output(relate_j.output_samples, somalier_samples_path)
     b.write_output(relate_j.output_pairs, somalier_pairs_path)
-    
+
     # Write fixed PED file with inferred sex, with strictly 6 columns and no header
     fixed_ped_fpath = join(relatedness_bucket, 'samples.ped')
     b.write_output(relate_j.fixed_ped, fixed_ped_fpath)
-    
+
     # Copy somalier HTML to the web bucket
     rel_path = join('loader', sample_hash, 'somalier.html')
     somalier_html_path = join(web_bucket, rel_path)
