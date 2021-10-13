@@ -442,6 +442,7 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
                     's': sn,
                     'external_id': sn,
                     'fam_id': 'CEPH',
+                    'sex': 1 if sn == 'NA12891' else 2,
                     'project': 'giab',
                     'cram': cram,
                     'crai': cram + '.crai',
