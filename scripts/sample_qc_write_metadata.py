@@ -78,9 +78,6 @@ logger.setLevel(logging.INFO)
     help=f'YAML file with filtering cutoffs',
 )
 @click.option(
-    '--age-csv', 'age_csv_path', help='CSV file with 2 columns: `sample` and `age`'
-)
-@click.option(
     '--out-meta-ht',
     'out_meta_ht_path',
     required=True,
@@ -119,7 +116,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     relatedness_ht_path: str,
     pop_ht_path: str,
     filter_cutoffs_path: str,
-    age_csv_path: str,
     out_meta_ht_path: str,
     out_meta_tsv_path: str,
     tmp_bucket: str,
@@ -138,16 +134,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     regressed_metrics_ht = hl.read_table(regressed_metrics_ht_path)
     relatedness_ht = hl.read_table(relatedness_ht_path)
     pop_ht = hl.read_table(pop_ht_path)
-
-    if age_csv_path:
-        age_ht = (
-            hl.import_table(age_csv_path, delimiter=',', types={'age': 'float'})
-            .rename({'TOBIID': 's'})
-            .key_by('s')
-        )
-        input_metadata_ht = input_metadata_ht.annotate(
-            age=age_ht[input_metadata_ht.external_id].age,
-        )
 
     # Re-calculating the maximum set of unrelated samples now that
     # we have metrics adjusted for population, so newly QC-failed samples

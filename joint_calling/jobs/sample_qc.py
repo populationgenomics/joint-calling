@@ -29,7 +29,6 @@ def add_sample_qc_jobs(
     analysis_bucket: str,
     relatedness_bucket: str,
     web_bucket: str,
-    age_csv_path: str,
     filter_cutoffs_path: Optional[str],
     overwrite: bool,
     scatter_count: int,
@@ -287,10 +286,6 @@ def add_sample_qc_jobs(
         ],
         overwrite,
     ):
-        if utils.file_exists(age_csv_path):
-            age_csv_param = f'--age-csv {age_csv_path} '
-        else:
-            age_csv_param = ''
         metadata_qc_job = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_write_metadata.py '
             f'--meta-csv {samples_csv_path} '
@@ -301,7 +296,6 @@ def add_sample_qc_jobs(
             f'--regressed-filtes-ht {regressed_metrics_ht_path} '
             f'--relatedness-ht {relatedness_ht_path} '
             f'--pop-ht {inferred_pop_ht_path} '
-            f'{age_csv_param}'
             f'--tmp-bucket {tmp_bucket} '
             f'--out-meta-ht {meta_ht_path} '
             f'--out-meta-tsv {meta_tsv_path} '

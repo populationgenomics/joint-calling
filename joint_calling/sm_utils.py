@@ -235,15 +235,15 @@ default_entry = {
     'r_duplication': None,
     'median_insert_size': None,
     'fam_id': None,
-    'mat_id': 0,
-    'pat_id': 0,
-    'sex': 0,
+    'mat_id': '0',
+    'pat_id': '0',
+    'sex': '0',
+    'age': '-',
 }
 
 
 def find_inputs_from_db(
     input_projects: List[str],
-    is_test: bool = False,
     skip_samples: Optional[Collection[str]] = None,
     check_existence: bool = True,
 ) -> pd.DataFrame:
@@ -348,24 +348,6 @@ def find_inputs_from_db(
             seq_meta = seq_meta_by_sid[sample_id]
             gvcf_path = gvcf_by_sid[s['id']]
 
-            # TODO: reenable once we support raw data and crams
-            # if is_test:
-            #     s = replace_paths_to_test(s)
-            # if s:
-            #     samples_by_project[proj].append(s)
-
-            if is_test:
-                if '/batch1/' not in gvcf_path:
-                    continue
-                gvcf_path = gvcf_path.replace(
-                    f'gs://cpg-{proj}-main',
-                    f'gs://cpg-{proj}-test',
-                )
-                gvcf_path = gvcf_path.replace(s['id'], s['external_id'])
-                if check_existence and not utils.file_exists(gvcf_path):
-                    continue
-                logger.info(f'Using {gvcf_path} for a test run')
-
             if not gvcf_path.endswith('.g.vcf.gz'):
                 logger.warning(
                     f'GVCF analysis for sample ID {sample_id} "output" field '
@@ -442,7 +424,7 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
                     's': sn,
                     'external_id': sn,
                     'fam_id': 'CEPH',
-                    'sex': 2 if sn == 'NA12891' else 1,
+                    'sex': '1' if sn == 'NA12891' else '2',
                     'project': 'giab',
                     'cram': cram,
                     'crai': cram + '.crai',
