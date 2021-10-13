@@ -142,7 +142,7 @@ def pedigree_checks(
         mv related.samples.tsv {relate_j.output_samples}
         
         # Generated fixed PED file
-        cat related.samples.tsv | cut -f1-6 | grep -v ^# > {relate_j.fixed_ped}'
+        cat related.samples.tsv | cut -f1-6 | grep -v ^# > {relate_j.fixed_ped}
         """
     )
 
