@@ -138,7 +138,7 @@ def pedigree_checks(
         ped_file = b.read_input(ped_fpath)
 
     relate_j.command(
-        f"""set -e
+        f"""set -ex
 
         cat {ped_file} | grep -v Family.ID > samples.ped 
 
@@ -148,13 +148,12 @@ def pedigree_checks(
         -o related \\
         --infer
 
-        ls
         mv related.html {relate_j.output_html}
         mv related.pairs.tsv {relate_j.output_pairs}
         mv related.samples.tsv {relate_j.output_samples}
         
         # Generated fixed PED file
-        cat {relate_j.output_samples} | cut -f1-6 | grep -v ^# | grep Family.ID > {relate_j.fixed_ped}
+        cat {relate_j.output_samples} | cut -f1-6 | grep -v ^# > {relate_j.fixed_ped}
         """
     )
 
