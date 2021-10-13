@@ -2,7 +2,8 @@
 
 """
 This script parses "somalier relate" (https://github.com/brentp/somalier) outputs,
-and returns a non-zero code if either sex or pedigree mismatches the data in a provided PED file.
+and returns a non-zero code if either sex or pedigree mismatches the data in a 
+provided PED file.
 """
 
 import contextlib

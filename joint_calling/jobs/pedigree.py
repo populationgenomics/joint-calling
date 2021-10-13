@@ -140,7 +140,10 @@ def pedigree_checks(
         mv related.html {relate_j.output_html}
         mv related.pairs.tsv {relate_j.output_pairs}
         mv related.samples.tsv {relate_j.output_samples}
-      """
+        
+        # Generated fixed PED file
+        cat related.samples.tsv | cut -f1-6 | grep -v ^# > {relate_j.fixed_ped}'
+        """
     )
 
     # Copy somalier outputs to buckets
@@ -150,6 +153,11 @@ def pedigree_checks(
     somalier_pairs_path = f'{prefix}.pairs.tsv'
     b.write_output(relate_j.output_samples, somalier_samples_path)
     b.write_output(relate_j.output_pairs, somalier_pairs_path)
+    
+    # Write fixed PED file with inferred sex, with strictly 6 columns and no header
+    fixed_ped_fpath = join(relatedness_bucket, 'samples.ped')
+    b.write_output(relate_j.fixed_ped, fixed_ped_fpath)
+    
     # Copy somalier HTML to the web bucket
     rel_path = join('loader', sample_hash, 'somalier.html')
     somalier_html_path = join(web_bucket, rel_path)
@@ -172,7 +180,8 @@ def pedigree_checks(
     with open(script_path) as f:
         script = f.read()
     check_j.command(
-        f"""set -ex
+        f"""
+# This job would fail if the sex of provided relatedness do not match
 cat <<EOT >> {script_name}
 {script}
 EOT
@@ -182,15 +191,7 @@ python {script_name} \
 {('--somalier-html ' + somalier_html_url) if somalier_html_url else ''}
     """
     )
-    check_j.command(f"""
-cat {relate_j.output_samples} | cut -f1-6 | grep -v ^# > {check_j.fixed_ped}
-ls $(dirname {check_j.fixed_ped})
-echo "test test test"
-cat {check_j.fixed_ped}
-    """
-    )
-    fixed_ped_fpath = join(relatedness_bucket, 'samples.ped')
-    b.write_output(check_j.fixed_ped, fixed_ped_fpath)
 
     check_j.depends_on(relate_j)
-    return check_j, fixed_ped_fpath, somalier_samples_path, somalier_pairs_path
+    # Returning relate_j because check_j might fail
+    return relate_j, fixed_ped_fpath, somalier_samples_path, somalier_pairs_path
