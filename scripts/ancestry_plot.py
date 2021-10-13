@@ -111,21 +111,30 @@ def produce_plots(
         continental_pop=hl.case()
         .when(
             provided_pop_ht[scores.s].continental_pop != '',
-            provided_pop_ht[scores.s].continental_pop,
+            provided_pop_ht[scores.s].project
+            + ' ['
+            + provided_pop_ht[scores.s].continental_pop
+            + ']',
         )
         .default(
-            inferred_pop_ht[scores.s].pop
-            + ' ['
-            + provided_pop_ht[scores.s].project
-            + ', inferred]'
+            provided_pop_ht[scores.s].project
+            + ' [inferred '
+            + inferred_pop_ht[scores.s].pop
+            + ']'
         ),
         subpop=hl.case()
-        .when(provided_pop_ht[scores.s].subpop != '', provided_pop_ht[scores.s].subpop)
-        .default(
-            inferred_pop_ht[scores.s].pop
+        .when(
+            provided_pop_ht[scores.s].subpop != '',
+            provided_pop_ht[scores.s].project
             + ' ['
-            + provided_pop_ht[scores.s].project
-            + ', inferred]'
+            + provided_pop_ht[scores.s].subpop
+            + ']',
+        )
+        .default(
+            provided_pop_ht[scores.s].project
+            + ' [inferred '
+            + inferred_pop_ht[scores.s].pop
+            + ']'
         ),
         study=provided_pop_ht[scores.s].project,
     )
@@ -217,6 +226,7 @@ def _plot_study(
             x_axis_label=f'PC{pc1 + 1} ({variance[pc1]})%)',
             y_axis_label=f'PC{pc2 + 1} ({variance[pc2]}%)',
             tooltips=tooltips,
+            width=1000,
         )
         source = ColumnDataSource(
             dict(
@@ -281,6 +291,7 @@ def _plot_continental_pop(
             x_axis_label=f'PC{pc1 + 1} ({variance[pc1]})%)',
             y_axis_label=f'PC{pc2 + 1} ({variance[pc2]}%)',
             tooltips=tooltips,
+            width=1000,
         )
         source = ColumnDataSource(
             dict(
@@ -301,7 +312,7 @@ def _plot_continental_pop(
                 bg_studies + fg_studies,
             ),
             source=source,
-            size=2,
+            size=4,
             color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
             legend_group='label',
         )
@@ -347,6 +358,7 @@ def _plot_subcontinental_pop(
             x_axis_label=f'PC{pc1 + 1} ({variance[pc1]})%)',
             y_axis_label=f'PC{pc2 + 1} ({variance[pc2]}%)',
             tooltips=tooltips,
+            width=1000,
         )
         source = ColumnDataSource(
             dict(
@@ -367,7 +379,7 @@ def _plot_subcontinental_pop(
                 bg_studies + fg_studies,
             ),
             source=source,
-            size=2,
+            size=4,
             color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
             legend_group='label',
         )

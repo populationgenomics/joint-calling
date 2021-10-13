@@ -234,17 +234,18 @@ default_entry = {
     'r_chimera': None,
     'r_duplication': None,
     'median_insert_size': None,
-    'fam_id': None,
-    'mat_id': 0,
-    'pat_id': 0,
-    'sex': 0,
+    'fam_id': '-',
+    'mat_id': '-',
+    'pat_id': '-',
+    'sex': '-',
+    'age': None,
 }
 
 
 def find_inputs_from_db(
     input_projects: List[str],
-    is_test: bool = False,
     skip_samples: Optional[Collection[str]] = None,
+    check_existence: bool = True,
 ) -> pd.DataFrame:
     """
     Determine input samples and pull input files and metadata from
@@ -290,7 +291,7 @@ def find_inputs_from_db(
         for s in samples:
             a = gvcf_analysis_per_sid.get(s['id'])
             if not a:
-                sids_without_gvcf.append(s['id'])
+                sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
                 continue
             gvcf_path = a.output
             if not gvcf_path:
@@ -298,7 +299,7 @@ def find_inputs_from_db(
                     f'"output" is not defined for the latest gvcf analysis, '
                     f'skipping sample {s["id"]}'
                 )
-                sids_without_gvcf.append(s['id'])
+                sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
                 continue
             gvcf_by_sid[s['id']] = gvcf_path
 
@@ -347,37 +348,19 @@ def find_inputs_from_db(
             seq_meta = seq_meta_by_sid[sample_id]
             gvcf_path = gvcf_by_sid[s['id']]
 
-            # TODO: reenable once we support raw data and crams
-            # if is_test:
-            #     s = replace_paths_to_test(s)
-            # if s:
-            #     samples_by_project[proj].append(s)
-
-            if is_test:
-                if '/batch1/' not in gvcf_path:
-                    continue
-                gvcf_path = gvcf_path.replace(
-                    f'gs://cpg-{proj}-main',
-                    f'gs://cpg-{proj}-test',
-                )
-                gvcf_path = gvcf_path.replace(s['id'], s['external_id'])
-                if not utils.file_exists(gvcf_path):
-                    continue
-                logger.info(f'Using {gvcf_path} for a test run')
-
             if not gvcf_path.endswith('.g.vcf.gz'):
                 logger.warning(
                     f'GVCF analysis for sample ID {sample_id} "output" field '
                     f'is not a GVCF'
                 )
                 continue
-            if not utils.file_exists(gvcf_path):
+            if check_existence and not utils.file_exists(gvcf_path):
                 logger.warning(
                     f'GVCF analysis for sample ID {sample_id} "output" file '
                     f'does not exist: {gvcf_path}'
                 )
                 continue
-            if not utils.file_exists(gvcf_path + '.tbi'):
+            if check_existence and not utils.file_exists(gvcf_path + '.tbi'):
                 logger.warning(
                     f'GVCF analysis for sample ID {sample_id} "output" field '
                     f'does not have a corresponding tbi index: {gvcf_path}.tbi'
@@ -441,6 +424,9 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
                     's': sn,
                     'external_id': sn,
                     'fam_id': 'CEPH',
+                    'sex': '1' if sn == 'NA12891' else '2',
+                    'pat_id': 'NA12891' if sn == 'NA12878' else '-',
+                    'mat_id': 'NA12892' if sn == 'NA12878' else '-',
                     'project': 'giab',
                     'cram': cram,
                     'crai': cram + '.crai',

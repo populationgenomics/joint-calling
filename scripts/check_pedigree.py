@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
 """
-This script parses `somalier relate` (https://github.com/brentp/somalier) outputs,
-and returns a non-zero code if either sex or pedigree mismatches the data in a provided PED file.
+This script parses "somalier relate" (https://github.com/brentp/somalier) outputs,
+and returns a non-zero code if either sex or pedigree mismatches the data in a 
+provided PED file.
 """
 
 import contextlib
@@ -168,25 +169,27 @@ def print_info(
     """
     Print useful information to manually review pedigree check results
     """
-    samples_str = samples_df.to_string()
-    pairs_str = pairs_df[
-        [
-            '#sample_a',
-            'sample_b',
-            'relatedness',
-            'ibs0',
-            'ibs2',
-            'n',
-            'expected_relatedness',
-        ]
-    ].to_string()
-    logger.info('')
-    logger.info(
-        f'Somalier results, samples (based on {somalier_samples_fpath}):\n{samples_str}\n'
-    )
-    logger.info(
-        f'Somalier results, sample pairs (based on {somalier_pairs_fpath}):\n{pairs_str}\n'
-    )
+    if len(samples_df) < 400:
+        samples_str = samples_df.to_string()
+        logger.info('')
+        logger.info(
+            f'Somalier results, samples (based on {somalier_samples_fpath}):\n{samples_str}\n'
+        )
+    if len(pairs_df) < 400:
+        pairs_str = pairs_df[
+            [
+                '#sample_a',
+                'sample_b',
+                'relatedness',
+                'ibs0',
+                'ibs2',
+                'n',
+                'expected_relatedness',
+            ]
+        ].to_string()
+        logger.info(
+            f'Somalier results, sample pairs (based on {somalier_pairs_fpath}):\n{pairs_str}\n'
+        )
     if somalier_html_fpath:
         logger.info(f'Somalier HTML report: {somalier_html_fpath}\n')
 

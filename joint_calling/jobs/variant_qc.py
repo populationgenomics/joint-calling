@@ -80,6 +80,7 @@ def add_variant_qc_jobs(
     if any(
         not utils.can_reuse(fp, overwrite)
         for fp in [allele_data_ht_path, qc_ac_ht_path]
+        + ([fam_stats_ht_path] if fam_stats_ht_path else [])
     ):
         var_qc_anno_job = cluster2.add_job(
             f'{utils.SCRIPTS_DIR}/generate_variant_qc_annotations.py '

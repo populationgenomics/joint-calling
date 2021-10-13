@@ -9,8 +9,9 @@ import logging
 import sys
 import time
 import hashlib
+from dataclasses import dataclass
 from os.path import isdir, isfile, exists, join, basename
-from typing import Any, Callable, Dict, Optional, Union, Iterable
+from typing import Callable, Dict, Optional, Union, Iterable, List
 import yaml
 import pandas as pd
 import hail as hl
@@ -95,9 +96,9 @@ def get_validation_callback(
     :return: a callback suitable for Click parameter initialization
     """
 
-    def callback(_: click.Context, param: click.Option, value: Any):
+    def callback(_, param, value):
         if value is None:
-            return value
+            return None
         if ext:
             assert isinstance(value, str), value
             value = value.rstrip('/')
@@ -121,6 +122,70 @@ def get_validation_callback(
         return value
 
     return callback
+
+
+@dataclass
+class ColumnInFile:
+    """
+    For inputes where data is a column in a file. Column numbers are 0-based.
+    """
+
+    fpath: str
+    sample_col: int
+    data_col: int
+
+    @staticmethod
+    def callback(_, param, value):
+        """
+        Callback for using with click: @click.option(callback=ColumnInFile.callback)
+        """
+        if value is None:
+            return None
+
+        items = value.split('::')
+        if len(items) != 3:
+            raise click.BadParameter(
+                f'Format for the command line parameter {param.name}: '
+                f'<fpath>::<column-number>::<column-number>, got: {value}'
+            )
+        fpath, sample_col, data_col = items
+        try:
+            sample_col = int(sample_col)
+        except ValueError as e:
+            raise click.BadParameter(
+                f'Column number in {param.name} must be an integrer, '
+                f'got 2nd column: {sample_col}'
+            ) from e
+        try:
+            data_col = int(data_col)
+        except ValueError as e:
+            raise click.BadParameter(
+                f'Column number in {param.name} must be an integrer, '
+                f'got 3nd column: {data_col}'
+            ) from e
+        if not file_exists(fpath):
+            raise click.BadParameter(f'File doesn\'t exist: {fpath}')
+
+        return ColumnInFile(fpath, sample_col, data_col)
+
+    def parse(self, expected_samples: List[str]):
+        """
+        Parse the column and return a dictionary mapping the sample name to data,
+        only for samples provided in expected_samples
+        """
+        data_by_sample = dict()
+        with hl.hadoop_open(self.fpath) as fh:
+            lines = [line.strip() for line in fh if line.strip()]
+        sep = '\t' if lines[0].count('\t') > lines[0].count(',') else ','
+        logger.info(f'Parsing {self.fpath} with sep="{sep}"')
+        for line in lines:
+            items = line.split(sep)
+            if self.sample_col < len(items):
+                sn = items[self.sample_col]
+                if sn in expected_samples:
+                    data = items[self.data_col]
+                    data_by_sample[sn] = data
+        return data_by_sample
 
 
 def file_exists(path: str) -> bool:

@@ -9,6 +9,7 @@ import subprocess
 from os.path import join
 from typing import Optional, List, Tuple
 import pandas as pd
+import numpy as np
 import hailtop.batch as hb
 from hailtop.batch.job import Job
 from joint_calling import resources, utils
@@ -30,7 +31,7 @@ def pedigree_checks(
     tmp_bucket: str,
     ped_fpath: Optional[str] = None,
     depends_on: Optional[List[Job]] = None,
-) -> Tuple[Job, str, str]:
+) -> Tuple[Job, str, str, str]:
     """
     Add somalier and peddy based jobs that infer relatedness and sex, compare that
     to the provided PED file, and attempt to recover it. If unable to recover, cancel
@@ -110,23 +111,32 @@ def pedigree_checks(
         ped_file = b.read_input(ped_fpath)
     else:
         ped_fpath = join(tmp_bucket, 'samples.ped')
-        samples_df['Family.ID'] = samples_df['fam_id']
+        samples_df['Family.ID'] = np.where(
+            pd.notna(samples_df['fam_id']),
+            samples_df['fam_id'],
+            samples_df['external_id'],
+        )
         samples_df['Individual.ID'] = samples_df['s']
-        samples_df['Father.ID'] = samples_df['pat_id']
-        samples_df['Mother.ID'] = samples_df['mat_id']
-        samples_df['Sex'] = samples_df['sex']
-        samples_df['Phenotype'] = 0
+        samples_df['Father.ID'] = np.where(
+            samples_df['pat_id'] != '-', samples_df['pat_id'], '0'
+        )
+        samples_df['Mother.ID'] = np.where(
+            samples_df['mat_id'] != '-', samples_df['mat_id'], '0'
+        )
+        samples_df['Sex'] = np.where(samples_df['sex'] != '-', samples_df['sex'], '0')
+        samples_df['Phenotype'] = '0'
         samples_df[
             ['Family.ID', 'Individual.ID', 'Father.ID', 'Mother.ID', 'Sex', 'Phenotype']
         ].to_csv(
             ped_fpath,
             sep='\t',
             index=False,
+            header=False,
         )
         ped_file = b.read_input(ped_fpath)
 
     relate_j.command(
-        f"""set -e
+        f"""set -ex
 
         cat {ped_file} | grep -v Family.ID > samples.ped 
 
@@ -136,11 +146,13 @@ def pedigree_checks(
         -o related \\
         --infer
 
-        ls
         mv related.html {relate_j.output_html}
         mv related.pairs.tsv {relate_j.output_pairs}
         mv related.samples.tsv {relate_j.output_samples}
-      """
+        
+        # Generated fixed PED file
+        cat {relate_j.output_samples} | cut -f1-6 | grep -v ^# > {relate_j.fixed_ped}
+        """
     )
 
     # Copy somalier outputs to buckets
@@ -150,6 +162,11 @@ def pedigree_checks(
     somalier_pairs_path = f'{prefix}.pairs.tsv'
     b.write_output(relate_j.output_samples, somalier_samples_path)
     b.write_output(relate_j.output_pairs, somalier_pairs_path)
+
+    # Write fixed PED file with inferred sex, with strictly 6 columns and no header
+    fixed_ped_fpath = join(relatedness_bucket, 'samples.ped')
+    b.write_output(relate_j.fixed_ped, fixed_ped_fpath)
+
     # Copy somalier HTML to the web bucket
     rel_path = join('loader', sample_hash, 'somalier.html')
     somalier_html_path = join(web_bucket, rel_path)
@@ -172,7 +189,8 @@ def pedigree_checks(
     with open(script_path) as f:
         script = f.read()
     check_j.command(
-        f"""set -e
+        f"""
+# This job would fail if the sex of provided relatedness do not match
 cat <<EOT >> {script_name}
 {script}
 EOT
@@ -184,4 +202,5 @@ python {script_name} \
     )
 
     check_j.depends_on(relate_j)
-    return relate_j, somalier_samples_path, somalier_pairs_path
+    # Returning relate_j because check_j might fail
+    return relate_j, fixed_ped_fpath, somalier_samples_path, somalier_pairs_path

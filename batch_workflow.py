@@ -71,8 +71,21 @@ logger.setLevel(logging.INFO)
     '--ped-file',
     'ped_fpath',
     help='PED file with family information',
-    type=str,
     callback=utils.get_validation_callback(ext='ped', must_exist=True),
+)
+@click.option(
+    '--age-file',
+    'age_data',
+    help='format: --age-file <tsv-or-csv-path>::<sample-col>::<age-col>. '
+    'E.g.: --age-file gs://path_to/age.csv::1::2',
+    callback=utils.ColumnInFile.callback,
+)
+@click.option(
+    '--reported-sex-file',
+    'reported_sex_data',
+    help='format: --reported-sex-file <tsv-or-csv-path>::<sample-col>::<sex-col>. '
+    'E.g.: --reported-sex-file gs://path_to/reported_sex.tsv::0::1',
+    callback=utils.ColumnInFile.callback,
 )
 @click.option(
     '--filter-cutoffs-file',
@@ -123,9 +136,9 @@ logger.setLevel(logging.INFO)
 )
 @click.option('--dry-run', 'dry_run', is_flag=True)
 @click.option(
-    '--run-somalier/--no-somalier',
-    'run_somalier',
-    default=True,
+    '--check-existence/--no-check-existence',
+    'check_existence',
+    default=False,
     is_flag=True,
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
@@ -136,6 +149,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     output_projects: Optional[List[str]],  # pylint: disable=unused-argument
     use_gnarly_genotyper: bool,
     ped_fpath: Optional[str],
+    age_data: Optional[utils.ColumnInFile],
+    reported_sex_data: Optional[utils.ColumnInFile],
     filter_cutoffs_path: str,
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
@@ -145,7 +160,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     pca_pop: Optional[str],
     num_ancestry_pcs: int,
     dry_run: bool,
-    run_somalier: bool,
+    check_existence: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -210,8 +225,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         tmp_bucket=tmp_bucket,
         overwrite=overwrite,
         input_projects=input_projects,
-        is_test=output_namespace in ['test', 'tmp'],
         skip_samples=skip_samples,
+        check_existence=check_existence,
+        age_data=age_data,
+        reported_sex_data=reported_sex_data,
     )
 
     (
@@ -228,21 +245,18 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     )
 
     relatedness_bucket = join(analysis_bucket, 'relatedness')
-    somalier_j = None
-    somalier_pairs_path = None
-    if run_somalier:
-        somalier_j, ped_fpath, somalier_pairs_path = pedigree.pedigree_checks(
-            b,
-            samples_df=samples_df,
-            overwrite=overwrite,
-            ped_fpath=ped_fpath,
-            output_suffix=project_output_suffix,
-            relatedness_bucket=relatedness_bucket,
-            web_bucket=join(web_bucket, 'somalier'),
-            web_url=f'https://{output_namespace}-web.populationgenomics.org.au/{analysis_project}',
-            tmp_bucket=join(tmp_bucket, 'somalier'),
-            depends_on=pre_combiner_jobs,
-        )
+    somalier_j, ped_fpath, _, somalier_pairs_path = pedigree.pedigree_checks(
+        b,
+        samples_df=samples_df,
+        overwrite=overwrite,
+        ped_fpath=ped_fpath,
+        output_suffix=project_output_suffix,
+        relatedness_bucket=relatedness_bucket,
+        web_bucket=join(web_bucket, 'somalier'),
+        web_url=f'https://{output_namespace}-web.populationgenomics.org.au/{analysis_project}',
+        tmp_bucket=join(tmp_bucket, 'somalier'),
+        depends_on=pre_combiner_jobs,
+    )
 
     if use_gnarly_genotyper:
         combiner_job = b.new_job('Not implemented')
@@ -295,7 +309,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         combiner_job=combiner_job,
         billing_project=billing_project,
         sample_count=len(samples_df),
-        age_csv_path=f'gs://cpg-{analysis_project}-main-analysis/metadata/age.csv',
         num_ancestry_pcs=num_ancestry_pcs,
         pca_pop=pca_pop,
         is_test=output_namespace in ['test', 'tmp'],
@@ -372,8 +385,10 @@ def find_inputs(
     tmp_bucket: str,
     overwrite: bool,
     input_projects: List[str],
-    is_test: bool,
     skip_samples: Optional[Collection[str]] = None,
+    check_existence: bool = True,
+    age_data: Optional[utils.ColumnInFile] = None,
+    reported_sex_data: Optional[utils.ColumnInFile] = None,
 ) -> pd.DataFrame:
     """
     Find inputs, make a sample data DataFrame, save to a TSV file
@@ -385,20 +400,54 @@ def find_inputs(
         samples_df = pd.read_csv(output_tsv_path, sep='\t', na_values='NA').set_index(
             's', drop=False
         )
-        return samples_df
-
-    logger.info(
-        f'Querying samples from the sample-metadata server '
-        f'for the projects: {", ".join(input_projects)}'
-    )
-    samples_df = sm_utils.find_inputs_from_db(
-        input_projects,
-        is_test=is_test,
-        skip_samples=skip_samples,
-    )
+    else:
+        logger.info(
+            f'Querying samples from the sample-metadata server '
+            f'for the projects: {", ".join(input_projects)}'
+        )
+        samples_df = sm_utils.find_inputs_from_db(
+            input_projects,
+            skip_samples=skip_samples,
+            check_existence=check_existence,
+        )
+    if age_data:
+        samples_df = _add_sex(samples_df, age_data)
+    if reported_sex_data:
+        samples_df = _add_reported_sex(samples_df, reported_sex_data)
     samples_df = sm_utils.add_validation_samples(samples_df)
     samples_df.to_csv(output_tsv_path, index=False, sep='\t', na_rep='NA')
     samples_df = samples_df[pd.notnull(samples_df.s)]
+    return samples_df
+
+
+def _add_sex(samples_df: pd.DataFrame, data: utils.ColumnInFile) -> pd.DataFrame:
+    data_by_external_id = data.parse(list(samples_df['external_id']))
+    for external_id, value in data_by_external_id.items():
+        try:
+            age = int(value)
+        except ValueError:
+            pass
+        else:
+            samples_df = samples_df.set_index('external_id', drop=False)
+            samples_df.loc[external_id, ['age']] = age
+            samples_df = samples_df.set_index('s', drop=False)
+    return samples_df
+
+
+def _add_reported_sex(
+    samples_df: pd.DataFrame, data: utils.ColumnInFile
+) -> pd.DataFrame:
+    data_by_external_id = data.parse(list(samples_df['external_id']))
+    for external_id, value in data_by_external_id.items():
+        if value == 'M':
+            sex = '1'
+        elif value == 'F':
+            sex = '2'
+        else:
+            sex = '0'
+        samples_df = samples_df.set_index('external_id', drop=False)
+        samples_df.loc[external_id, ['sex']] = sex
+        samples_df = samples_df.set_index('s', drop=False)
     return samples_df
 
 

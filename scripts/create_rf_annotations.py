@@ -21,6 +21,8 @@ Annotations that are included:
 
 from os.path import join
 import logging
+from typing import Optional
+
 import click
 import hail as hl
 
@@ -147,7 +149,7 @@ TRUTH_DATA = ['hapmap', 'omni', 'mills', 'kgp_phase1_hc']
 def main(  # pylint: disable=too-many-arguments,too-many-locals
     info_split_ht_path: str,
     freq_ht_path: str,
-    fam_stats_ht_path: str,
+    fam_stats_ht_path: Optional[str],
     allele_data_ht_path: str,
     qc_ac_ht_path: str,
     out_ht_path: str,
