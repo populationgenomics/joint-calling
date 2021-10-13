@@ -142,11 +142,11 @@ class ColumnInFile:
         if value is None:
             return None
 
-        items = value.split(':')
+        items = value.split('::')
         if len(items) != 3:
             raise click.BadParameter(
                 f'Format for the command line parameter {param.name}: '
-                f'<fpath>:<column-number>:<column-number>, got: {value}'
+                f'<fpath>::<column-number>::<column-number>, got: {value}'
             )
         fpath, sample_col, data_col = items
         try:

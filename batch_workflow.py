@@ -76,13 +76,15 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--age-file',
     'age_data',
-    help='format: --age-file <tsv-or-csv-path>:<sample-col>:<age-col>. E.g.: --age-file gs://path_to/age.csv:1:2',
+    help='format: --age-file <tsv-or-csv-path>::<sample-col>::<age-col>. '
+    'E.g.: --age-file gs://path_to/age.csv::1::2',
     callback=utils.ColumnInFile.callback,
 )
 @click.option(
     '--reported-sex-file',
     'reported_sex_data',
-    help='format: --reported-sex-file <tsv-or-csv-path>:<sample-col>:<sex-col>. E.g.: --reported-sex-file gs://path_to/reported_sex.tsv:0:1',
+    help='format: --reported-sex-file <tsv-or-csv-path>::<sample-col>::<sex-col>. '
+    'E.g.: --reported-sex-file gs://path_to/reported_sex.tsv::0::1',
     callback=utils.ColumnInFile.callback,
 )
 @click.option(
