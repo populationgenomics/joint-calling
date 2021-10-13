@@ -183,9 +183,9 @@ python {script_name} \
     """
     )
     check_j.command(f"""
-# fix ped
 cat {relate_j.output_samples} | cut -f1-6 | grep -v ^# > {check_j.fixed_ped}
 ls $(dirname {check_j.fixed_ped})
+echo "test test test"
 cat {check_j.fixed_ped}
     """
     )
