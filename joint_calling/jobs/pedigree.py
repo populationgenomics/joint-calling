@@ -172,7 +172,7 @@ def pedigree_checks(
     with open(script_path) as f:
         script = f.read()
     check_j.command(
-        f"""set -e
+        f"""set -ex
 cat <<EOT >> {script_name}
 {script}
 EOT
@@ -181,8 +181,8 @@ python {script_name} \
 --somalier-pairs {relate_j.output_pairs} \
 {('--somalier-html ' + somalier_html_url) if somalier_html_url else ''}
     
-    # Fixed PED file:
-    cat {relate_j.output_samples} | cut -f1-6 | grep -v ^# > {check_j.fixed_ped}
+# Fixed PED file:
+cat {relate_j.output_samples} | cut -f1-6 | grep -v ^# > {check_j.fixed_ped}
     """
     )
     fixed_ped_fpath = join(relatedness_bucket, 'samples.ped')
