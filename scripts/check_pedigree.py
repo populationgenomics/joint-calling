@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-This script parses `somalier relate` (https://github.com/brentp/somalier) outputs,
+This script parses "somalier relate" (https://github.com/brentp/somalier) outputs,
 and returns a non-zero code if either sex or pedigree mismatches the data in a provided PED file.
 """
 
