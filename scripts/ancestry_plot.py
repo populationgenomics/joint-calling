@@ -226,6 +226,7 @@ def _plot_study(
             x_axis_label=f'PC{pc1 + 1} ({variance[pc1]})%)',
             y_axis_label=f'PC{pc2 + 1} ({variance[pc2]}%)',
             tooltips=tooltips,
+            width=1000,
         )
         source = ColumnDataSource(
             dict(
@@ -290,6 +291,7 @@ def _plot_continental_pop(
             x_axis_label=f'PC{pc1 + 1} ({variance[pc1]})%)',
             y_axis_label=f'PC{pc2 + 1} ({variance[pc2]}%)',
             tooltips=tooltips,
+            width=1000,
         )
         source = ColumnDataSource(
             dict(
@@ -356,6 +358,7 @@ def _plot_subcontinental_pop(
             x_axis_label=f'PC{pc1 + 1} ({variance[pc1]})%)',
             y_axis_label=f'PC{pc2 + 1} ({variance[pc2]}%)',
             tooltips=tooltips,
+            width=1000,
         )
         source = ColumnDataSource(
             dict(
