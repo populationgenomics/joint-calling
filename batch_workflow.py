@@ -239,7 +239,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     somalier_j = None
     somalier_pairs_path = None
     if run_somalier:
-        somalier_j, ped_fpath, somalier_pairs_path = pedigree.pedigree_checks(
+        (somalier_j, ped_fpath, _, somalier_pairs_path,) = pedigree.pedigree_checks(
             b,
             samples_df=samples_df,
             overwrite=overwrite,

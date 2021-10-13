@@ -30,7 +30,7 @@ def pedigree_checks(
     tmp_bucket: str,
     ped_fpath: Optional[str] = None,
     depends_on: Optional[List[Job]] = None,
-) -> Tuple[Job, str, str]:
+) -> Tuple[Job, str, str, str]:
     """
     Add somalier and peddy based jobs that infer relatedness and sex, compare that
     to the provided PED file, and attempt to recover it. If unable to recover, cancel
@@ -184,4 +184,4 @@ python {script_name} \
     )
 
     check_j.depends_on(relate_j)
-    return relate_j, somalier_samples_path, somalier_pairs_path
+    return relate_j, ped_fpath, somalier_samples_path, somalier_pairs_path
