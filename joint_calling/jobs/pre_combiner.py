@@ -36,7 +36,7 @@ def add_pre_combiner_jobs(
     submitting the combiner job
     """
 
-    logger.info(f'Samples DF: {samples_df}')
+    logger.info(f'Samples DF:\n{samples_df}')
     jobs_by_sample = defaultdict(list)
 
     def get_project_bucket(_proj):

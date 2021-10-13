@@ -11,7 +11,7 @@ import time
 import hashlib
 from dataclasses import dataclass
 from os.path import isdir, isfile, exists, join, basename
-from typing import Callable, Dict, Optional, Union, Iterable
+from typing import Callable, Dict, Optional, Union, Iterable, List
 import yaml
 import pandas as pd
 import hail as hl
@@ -168,7 +168,7 @@ class ColumnInFile:
 
         return ColumnInFile(fpath, sample_col, data_col)
 
-    def parse(self, expected_samples):
+    def parse(self, expected_samples: List[str]):
         """
         Parse the column and return a dictionary mapping the sample name to data,
         only for samples provided in expected_samples
@@ -177,12 +177,14 @@ class ColumnInFile:
         with hl.hadoop_open(self.fpath) as fh:
             lines = [line.strip() for line in fh if line.strip()]
         sep = '\t' if lines[0].count('\t') > lines[0].count(',') else ','
+        logger.info(f'Parsing {self.fpath} with sep="{sep}"')
         for line in lines:
             items = line.split(sep)
-            sn = items[self.sample_col]
-            if sn in expected_samples:
-                data = items[self.data_col]
-                data_by_sample[sn] = data
+            if self.sample_col < len(items):
+                sn = items[self.sample_col]
+                if sn in expected_samples:
+                    data = items[self.data_col]
+                    data_by_sample[sn] = data
         return data_by_sample
 
 

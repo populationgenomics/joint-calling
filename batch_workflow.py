@@ -421,7 +421,7 @@ def find_inputs(
 
 
 def _add_sex(samples_df: pd.DataFrame, data: utils.ColumnInFile) -> pd.DataFrame:
-    data_by_external_id = data.parse(samples_df['external_id'])
+    data_by_external_id = data.parse(list(samples_df['external_id']))
     for external_id, value in data_by_external_id.items():
         try:
             age = int(value)
@@ -437,7 +437,7 @@ def _add_sex(samples_df: pd.DataFrame, data: utils.ColumnInFile) -> pd.DataFrame
 def _add_reported_sex(
     samples_df: pd.DataFrame, data: utils.ColumnInFile
 ) -> pd.DataFrame:
-    data_by_external_id = data.parse(samples_df['external_id'])
+    data_by_external_id = data.parse(list(samples_df['external_id']))
     for external_id, value in data_by_external_id.items():
         if value == 'M':
             sex = '1'
