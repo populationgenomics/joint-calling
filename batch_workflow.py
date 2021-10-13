@@ -123,12 +123,6 @@ logger.setLevel(logging.INFO)
 )
 @click.option('--dry-run', 'dry_run', is_flag=True)
 @click.option(
-    '--run-somalier/--no-somalier',
-    'run_somalier',
-    default=True,
-    is_flag=True,
-)
-@click.option(
     '--check-existence/--no-check-existence',
     'check_existence',
     default=False,
@@ -151,7 +145,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     pca_pop: Optional[str],
     num_ancestry_pcs: int,
     dry_run: bool,
-    run_somalier: bool,
     check_existence: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
@@ -236,21 +229,18 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     )
 
     relatedness_bucket = join(analysis_bucket, 'relatedness')
-    somalier_j = None
-    somalier_pairs_path = None
-    if run_somalier:
-        (somalier_j, ped_fpath, _, somalier_pairs_path,) = pedigree.pedigree_checks(
-            b,
-            samples_df=samples_df,
-            overwrite=overwrite,
-            ped_fpath=ped_fpath,
-            output_suffix=project_output_suffix,
-            relatedness_bucket=relatedness_bucket,
-            web_bucket=join(web_bucket, 'somalier'),
-            web_url=f'https://{output_namespace}-web.populationgenomics.org.au/{analysis_project}',
-            tmp_bucket=join(tmp_bucket, 'somalier'),
-            depends_on=pre_combiner_jobs,
-        )
+    somalier_j, ped_fpath, _, somalier_pairs_path = pedigree.pedigree_checks(
+        b,
+        samples_df=samples_df,
+        overwrite=overwrite,
+        ped_fpath=ped_fpath,
+        output_suffix=project_output_suffix,
+        relatedness_bucket=relatedness_bucket,
+        web_bucket=join(web_bucket, 'somalier'),
+        web_url=f'https://{output_namespace}-web.populationgenomics.org.au/{analysis_project}',
+        tmp_bucket=join(tmp_bucket, 'somalier'),
+        depends_on=pre_combiner_jobs,
+    )
 
     if use_gnarly_genotyper:
         combiner_job = b.new_job('Not implemented')

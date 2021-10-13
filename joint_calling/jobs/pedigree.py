@@ -180,8 +180,13 @@ python {script_name} \
 --somalier-samples {relate_j.output_samples} \
 --somalier-pairs {relate_j.output_pairs} \
 {('--somalier-html ' + somalier_html_url) if somalier_html_url else ''}
+    
+    # Fixed PED file:
+    cat {relate_j.output_samples} | cut -f1-6 | grep -v ^# > {check_j.fixed_ped}
     """
     )
+    fixed_ped_fpath = join(relatedness_bucket, 'samples.ped')
+    b.write_output(check_j.fixed_ped, fixed_ped_fpath)
 
     check_j.depends_on(relate_j)
-    return relate_j, ped_fpath, somalier_samples_path, somalier_pairs_path
+    return check_j, fixed_ped_fpath, somalier_samples_path, somalier_pairs_path
