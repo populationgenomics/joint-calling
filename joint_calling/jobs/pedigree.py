@@ -118,14 +118,12 @@ def pedigree_checks(
         )
         samples_df['Individual.ID'] = samples_df['s']
         samples_df['Father.ID'] = np.where(
-            pd.notna(samples_df['pat_id']), samples_df['pat_id'], '0'
+            samples_df['pat_id'] != '-', samples_df['pat_id'], '0'
         )
         samples_df['Mother.ID'] = np.where(
-            pd.notna(samples_df['mat_id']), samples_df['mat_id'], '0'
+            samples_df['mat_id'] != '-', samples_df['mat_id'], '0'
         )
-        samples_df['Sex'] = np.where(
-            pd.notna(samples_df['sex']), samples_df['sex'], '0'
-        )
+        samples_df['Sex'] = np.where(samples_df['sex'] != '-', samples_df['sex'], '0')
         samples_df['Phenotype'] = '0'
         samples_df[
             ['Family.ID', 'Individual.ID', 'Father.ID', 'Mother.ID', 'Sex', 'Phenotype']
