@@ -310,7 +310,7 @@ def _plot_continental_pop(
                 bg_studies + fg_studies,
             ),
             source=source,
-            size=2,
+            size=4,
             color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
             legend_group='label',
         )
@@ -376,7 +376,7 @@ def _plot_subcontinental_pop(
                 bg_studies + fg_studies,
             ),
             source=source,
-            size=2,
+            size=4,
             color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
             legend_group='label',
         )
