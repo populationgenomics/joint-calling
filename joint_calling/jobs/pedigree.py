@@ -180,8 +180,10 @@ python {script_name} \
 --somalier-samples {relate_j.output_samples} \
 --somalier-pairs {relate_j.output_pairs} \
 {('--somalier-html ' + somalier_html_url) if somalier_html_url else ''}
-
-# Making fixed PED file
+    """
+    )
+    check_j.command(f"""
+# fix ped
 cat {relate_j.output_samples} | cut -f1-6 | grep -v ^# > {check_j.fixed_ped}
 ls $(dirname {check_j.fixed_ped})
 cat {check_j.fixed_ped}
