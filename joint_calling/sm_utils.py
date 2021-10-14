@@ -391,7 +391,10 @@ def find_inputs_from_db(
         logger.error('No found any projects with samples good for processing')
         sys.exit(1)
 
-    logger.info(f'Using {len(entries)} samples from {len(input_projects)} projects')
+    logger.info(
+        f'Using {len(entries)} samples from {len(input_projects)} projects: '
+        + ', '.join(input_projects)
+    )
 
     df = pd.DataFrame(entries).set_index('s', drop=False)
     return df

@@ -51,6 +51,7 @@ logger.setLevel(logging.INFO)
     'input_projects',
     multiple=True,
     help='Only read samples that belong to these project(s). Can be multiple.',
+    callback=lambda c, p, value: list(set(value)),
 )
 @click.option('--output-version', 'output_version', type=str, required=True)
 @click.option(
