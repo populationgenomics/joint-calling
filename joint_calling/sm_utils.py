@@ -251,7 +251,7 @@ def find_inputs_from_db(
     Determine input samples and pull input files and metadata from
     the CPG sample-metadata server database.
     """
-    inputs = []
+    entries = []
 
     for proj in input_projects:
         logger.info(f'Processing project {proj}')
@@ -385,13 +385,15 @@ def find_inputs_from_db(
                     'median_insert_size': seq_meta.get('raw_data.MEDIAN_INSERT_SIZE'),
                 }
             )
-            inputs.append(entry)
+            entries.append(entry)
 
-    if not inputs:
+    if not entries:
         logger.error('No found any projects with samples good for processing')
         sys.exit(1)
 
-    df = pd.DataFrame(inputs).set_index('s', drop=False)
+    logger.info(f'Using {len(entries)} samples from {len(input_projects)} projects')
+
+    df = pd.DataFrame(entries).set_index('s', drop=False)
     return df
 
 

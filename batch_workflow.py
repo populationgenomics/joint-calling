@@ -61,13 +61,6 @@ logger.setLevel(logging.INFO)
     'The name will be suffixed with the dataset version (set by --version)',
 )
 @click.option(
-    '--use-gnarly-genotyper',
-    'use_gnarly_genotyper',
-    is_flag=True,
-    help='Whether to use a GenomicsDB and Gnarly genotyper to merge GVCFs instead of '
-    'the Hail combiner',
-)
-@click.option(
     '--ped-file',
     'ped_fpath',
     help='PED file with family information',
@@ -147,7 +140,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     input_projects: List[str],  # pylint: disable=unused-argument
     output_version: str,
     output_projects: Optional[List[str]],  # pylint: disable=unused-argument
-    use_gnarly_genotyper: bool,
     ped_fpath: Optional[str],
     age_data: Optional[utils.ColumnInFile],
     reported_sex_data: Optional[utils.ColumnInFile],
@@ -258,40 +250,23 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         depends_on=pre_combiner_jobs,
     )
 
-    if use_gnarly_genotyper:
-        combiner_job = b.new_job('Not implemented')
-        # combiner_job, vcf_path = make_joint_genotype_jobs(
-        #     b=b,
-        #     genomicsdb_bucket=join(work_bucket, 'genomicsdbs'),
-        #     samples_df=samples_df,
-        #     reference=reference,
-        #     dbsnp=utils.DBSNP_VCF,
-        #     out_bucket=out_bucket,
-        #     tmp_bucket=out_bucket,
-        #     local_tmp_dir=local_tmp_dir,
-        #     overwrite=overwrite,
-        #     analysis_project=analysis_project,
-        #     completed_analysis=jc_analysis,
-        #     depends_on=gvcf_jobs,
-        # )
+    if not utils.can_reuse(raw_combined_mt_path, overwrite):
+        combiner_job = dataproc.hail_dataproc_job(
+            b,
+            f'{utils.SCRIPTS_DIR}/combine_gvcfs.py '
+            f'--meta-csv {samples_csv_path} '
+            f'--out-mt {raw_combined_mt_path} '
+            f'--bucket {combiner_bucket}/work '
+            f'--hail-billing {billing_project} '
+            f'--n-partitions {scatter_count * 25}',
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=scatter_count,
+            depends_on=pre_combiner_jobs,
+            job_name='Combine GVCFs',
+        )
     else:
-        if not utils.can_reuse(raw_combined_mt_path, overwrite):
-            combiner_job = dataproc.hail_dataproc_job(
-                b,
-                f'{utils.SCRIPTS_DIR}/combine_gvcfs.py '
-                f'--meta-csv {samples_csv_path} '
-                f'--out-mt {raw_combined_mt_path} '
-                f'--bucket {combiner_bucket}/work '
-                f'--hail-billing {billing_project} '
-                f'--n-partitions {scatter_count * 25}',
-                max_age='8h',
-                packages=utils.DATAPROC_PACKAGES,
-                num_secondary_workers=scatter_count,
-                depends_on=pre_combiner_jobs,
-                job_name='Combine GVCFs',
-            )
-        else:
-            combiner_job = b.new_job('Combine GVCFs [reuse]')
+        combiner_job = b.new_job('Combine GVCFs [reuse]')
 
     sample_qc_job, hard_filter_ht_path, meta_ht_path = add_sample_qc_jobs(
         b=b,
