@@ -53,9 +53,7 @@ def pedigree_checks(
     for sn, proj, gvcf_path in zip(samples_df.s, samples_df.project, samples_df.gvcf):
         proj_bucket = get_project_bucket(proj)
         fp_file_by_sample[sn] = join(proj_bucket, 'fingerprints', f'{sn}.somalier')
-        if utils.can_reuse(fp_file_by_sample[sn], overwrite):
-            extract_jobs.append(b.new_job(f'Somalier extract, {sn} [reuse]'))
-        else:
+        if not utils.can_reuse(fp_file_by_sample[sn], overwrite):
             j = b.new_job(f'Somalier extract, {sn}')
             j.image(utils.SOMALIER_IMAGE)
             j.memory('standard')

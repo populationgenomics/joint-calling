@@ -61,6 +61,12 @@ logger.setLevel(logging.INFO)
     required=True,
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
+@click.option(
+    '--meta-csv',
+    'meta_csv_path',
+    required=True,
+    callback=utils.get_validation_callback(ext='csv', must_exist=True),
+)
 @click.option('--out-path-pattern', 'out_path_pattern')
 @click.option(
     '--hail-billing',
@@ -74,10 +80,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     loadings_ht_path: str,
     provided_pop_ht_path: str,
     inferred_pop_ht_path: str,
+    meta_csv_path: str,
     out_path_pattern: Optional[str],
     hail_billing: str,  # pylint: disable=unused-argument
 ):
-    utils.init_hail(__file__)
+    local_tmp_dir = utils.init_hail(__file__)
+
+    meta_ht = utils.parse_input_metadata(meta_csv_path, local_tmp_dir)
 
     produce_plots(
         eigenvalues_path=eigenvalues_path,
@@ -85,8 +94,22 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         loadings_ht_path=loadings_ht_path,
         provided_pop_ht_path=provided_pop_ht_path,
         inferred_pop_ht_path=inferred_pop_ht_path,
+        meta_ht=meta_ht,
         out_path_pattern=out_path_pattern,
     )
+
+
+def key_by_external_id(ht, sample_map_ht):
+    """
+    Assuming ht.s is a CPG id, replaces it with external ID, using map in sample_map_ht
+    """
+    ht = ht.annotate(internal_id=ht.s).key_by('internal_id')
+    ht = (
+        ht.annotate(s=sample_map_ht[ht.internal_id].external_id)
+        .key_by('s')
+        .drop('internal_id')
+    )
+    return ht
 
 
 def produce_plots(
@@ -95,6 +118,7 @@ def produce_plots(
     loadings_ht_path: str,
     provided_pop_ht_path: str,
     inferred_pop_ht_path: str,
+    meta_ht: hl.Table,
     out_path_pattern: Optional[str] = None,
     number_of_pcs: Optional[int] = None,
 ):
@@ -103,53 +127,60 @@ def produce_plots(
     scope ("study", "continental_pop", "subpop", plus for loadings) into
     file paths defined by `out_path_pattern`.
     """
-    scores = hl.read_table(scores_ht_path)
-    sample_names = scores.s.collect()
+    sample_map_ht = meta_ht.select('external_id')
+
+    scores_ht = hl.read_table(scores_ht_path)
     provided_pop_ht = hl.read_table(provided_pop_ht_path)
     inferred_pop_ht = hl.read_table(inferred_pop_ht_path)
-    scores = scores.annotate(
+
+    scores_ht = key_by_external_id(scores_ht, sample_map_ht)
+    provided_pop_ht = key_by_external_id(provided_pop_ht, sample_map_ht)
+    inferred_pop_ht = key_by_external_id(inferred_pop_ht, sample_map_ht)
+
+    scores_ht = scores_ht.annotate(
         continental_pop=hl.case()
         .when(
-            provided_pop_ht[scores.s].continental_pop != '',
-            provided_pop_ht[scores.s].project
+            provided_pop_ht[scores_ht.s].continental_pop != '',
+            provided_pop_ht[scores_ht.s].project
             + ' ['
-            + provided_pop_ht[scores.s].continental_pop
+            + provided_pop_ht[scores_ht.s].continental_pop
             + ']',
         )
         .default(
-            provided_pop_ht[scores.s].project
+            provided_pop_ht[scores_ht.s].project
             + ' [inferred '
-            + inferred_pop_ht[scores.s].pop
+            + inferred_pop_ht[scores_ht.s].pop
             + ']'
         ),
         subpop=hl.case()
         .when(
-            provided_pop_ht[scores.s].subpop != '',
-            provided_pop_ht[scores.s].project
+            provided_pop_ht[scores_ht.s].subpop != '',
+            provided_pop_ht[scores_ht.s].project
             + ' ['
-            + provided_pop_ht[scores.s].subpop
+            + provided_pop_ht[scores_ht.s].subpop
             + ']',
         )
         .default(
-            provided_pop_ht[scores.s].project
+            provided_pop_ht[scores_ht.s].project
             + ' [inferred '
-            + inferred_pop_ht[scores.s].pop
+            + inferred_pop_ht[scores_ht.s].pop
             + ']'
         ),
-        study=provided_pop_ht[scores.s].project,
+        study=provided_pop_ht[scores_ht.s].project,
     )
 
-    eigenvalues = hl.import_table(
+    eigenvalues_ht = hl.import_table(
         eigenvalues_path, no_header=True, types={'f0': hl.tfloat}
     ).f0.collect()
-    eigenvalues = pd.to_numeric(eigenvalues)
-    variance = np.divide(eigenvalues[1:], float(eigenvalues.sum())) * 100
+    eigenvalues_ht = pd.to_numeric(eigenvalues_ht)
+    variance = np.divide(eigenvalues_ht[1:], float(eigenvalues_ht.sum())) * 100
     variance = variance.round(2)
-    number_of_pcs = number_of_pcs or len(eigenvalues) - 1
+    number_of_pcs = number_of_pcs or len(eigenvalues_ht) - 1
 
     plots = []
 
-    studies = scores.study.collect()
+    sample_names = scores_ht.external_id.collect()
+    studies = scores_ht.study.collect()
     unique_studies = remove_duplicates(studies)
     bg_studies = [s for s in unique_studies if s == 'gnomad']
     fg_studies = [s for s in unique_studies if s != 'gnomad']
@@ -158,7 +189,7 @@ def produce_plots(
         _plot_study(
             number_of_pcs,
             variance,
-            scores,
+            scores_ht,
             studies,
             sample_names,
             bg_studies,
@@ -171,7 +202,7 @@ def produce_plots(
         _plot_continental_pop(
             number_of_pcs,
             variance,
-            scores,
+            scores_ht,
             studies,
             sample_names,
             bg_studies,
@@ -184,7 +215,7 @@ def produce_plots(
         _plot_subcontinental_pop(
             number_of_pcs,
             variance,
-            scores,
+            scores_ht,
             studies,
             sample_names,
             bg_studies,

@@ -80,7 +80,6 @@ test_to_test:
 	--namespace test \
 	--input-project tob-wgs \
 	--analysis-project $(ANALYSIS_PROJECT) \
-	--input-project tob-wgs \
 	--output-version $(VERSION) \
 	--keep-scratch \
 	--pca-pop ${PCA_POP} \
@@ -100,7 +99,6 @@ main_to_main:
 	--namespace main \
 	--input-project tob-wgs \
 	--analysis-project $(ANALYSIS_PROJECT) \
-	--input-project tob-wgs \
 	--output-version $(VERSION) \
 	--pca-pop ${PCA_POP} \
 	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/reported_sex.tsv::1::2 \

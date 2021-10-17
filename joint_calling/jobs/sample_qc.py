@@ -268,6 +268,7 @@ def add_sample_qc_jobs(
             f'--loadings-ht {loadings_ht_path} '
             f'--provided-pop-ht {provided_pop_ht_path} '
             f'--inferred-pop-ht {inferred_pop_ht_path} '
+            f'--meta-csv {samples_csv_path} '
             + f'--out-path-pattern {out_path_ptn} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             job_name=job_name,
@@ -378,6 +379,7 @@ def add_sample_qc_jobs(
                 f'--loadings-ht {loadings_ht_path} '
                 f'--provided-pop-ht {provided_pop_ht_path} '
                 f'--inferred-pop-ht {inferred_pop_ht_path} '
+                f'--meta-csv {samples_csv_path} '
                 + f'--out-path-pattern {out_path_ptn} '
                 + (f'--hail-billing {billing_project} ' if billing_project else ''),
                 job_name=job_name,
