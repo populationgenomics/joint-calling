@@ -38,8 +38,8 @@ logger.setLevel(logging.INFO)
     help='path to the Matrix Table',
 )
 @click.option(
-    '--meta-csv',
-    'meta_csv_path',
+    '--meta-tsv',
+    'meta_tsv_path',
     required=True,
     help='path to a CSV with QC and population metadata for the samples',
 )
@@ -94,7 +94,7 @@ logger.setLevel(logging.INFO)
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_path: str,
-    meta_csv_path: str,
+    meta_tsv_path: str,
     out_hgdp_union_mt_path: str,
     pop: Optional[str],
     out_provided_pop_ht_path: Optional[str],
@@ -106,7 +106,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 ):
     local_tmp_dir = utils.init_hail(__file__)
 
-    input_metadata_ht = utils.parse_input_metadata(meta_csv_path, local_tmp_dir)
+    input_metadata_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
 
     if pop and pop in resources.ANCESTRY_HGDP_SUBSET_MTS:
         if is_test:
