@@ -127,12 +127,11 @@ def produce_plots(
     scope ("study", "continental_pop", "subpop", plus for loadings) into
     file paths defined by `out_path_pattern`.
     """
-    sample_map_ht = meta_ht.select('external_id')
-
     scores_ht = hl.read_table(scores_ht_path)
     provided_pop_ht = hl.read_table(provided_pop_ht_path)
     inferred_pop_ht = hl.read_table(inferred_pop_ht_path)
 
+    sample_map_ht = meta_ht.select('external_id')
     scores_ht = key_by_external_id(scores_ht, sample_map_ht)
     provided_pop_ht = key_by_external_id(provided_pop_ht, sample_map_ht)
     inferred_pop_ht = key_by_external_id(inferred_pop_ht, sample_map_ht)
@@ -179,7 +178,7 @@ def produce_plots(
 
     plots = []
 
-    sample_names = scores_ht.external_id.collect()
+    sample_names = scores_ht.s.collect()
     studies = scores_ht.study.collect()
     unique_studies = remove_duplicates(studies)
     bg_studies = [s for s in unique_studies if s == 'gnomad']
