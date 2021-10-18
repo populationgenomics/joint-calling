@@ -62,10 +62,10 @@ logger.setLevel(logging.INFO)
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
-    '--meta-csv',
-    'meta_csv_path',
+    '--meta-tsv',
+    'meta_tsv_path',
     required=True,
-    callback=utils.get_validation_callback(ext='csv', must_exist=True),
+    callback=utils.get_validation_callback(ext='tsv', must_exist=True),
 )
 @click.option('--out-path-pattern', 'out_path_pattern')
 @click.option(
@@ -80,13 +80,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     loadings_ht_path: str,
     provided_pop_ht_path: str,
     inferred_pop_ht_path: str,
-    meta_csv_path: str,
+    meta_tsv_path: str,
     out_path_pattern: Optional[str],
     hail_billing: str,  # pylint: disable=unused-argument
 ):
     local_tmp_dir = utils.init_hail(__file__)
 
-    meta_ht = utils.parse_input_metadata(meta_csv_path, local_tmp_dir)
+    meta_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
 
     produce_plots(
         eigenvalues_path=eigenvalues_path,

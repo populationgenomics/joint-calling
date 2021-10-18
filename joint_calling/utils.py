@@ -411,15 +411,15 @@ def get_filter_cutoffs(
 
 
 def parse_input_metadata(
-    meta_csv_path: str,
+    meta_tsv_path: str,
     local_tmp_dir: str,
     out_ht_path: Optional[str] = None,
 ) -> hl.Table:
     """
     Parse KCCG metadata (continental_pop and picard metrics)
     """
-    local_csv_path = join(local_tmp_dir, basename(meta_csv_path))
-    gsutil_cp(meta_csv_path, local_csv_path)
+    local_csv_path = join(local_tmp_dir, basename(meta_tsv_path))
+    gsutil_cp(meta_tsv_path, local_csv_path)
     df = pd.read_table(local_csv_path)
     ht = hl.Table.from_pandas(df).key_by('s')
     if out_ht_path:

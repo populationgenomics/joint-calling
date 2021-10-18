@@ -25,10 +25,10 @@ logger.setLevel(logging.INFO)
 @click.command()
 @click.version_option(_version.__version__)
 @click.option(
-    '--meta-csv',
-    'meta_csv_path',
+    '--meta-tsv',
+    'meta_tsv_path',
     required=True,
-    help='path to a CSV with QC and population metadata for the samples',
+    help='path to a TSV with QC and population metadata for the samples',
 )
 @click.option(
     '--hard-filtered-samples-ht',
@@ -107,7 +107,7 @@ logger.setLevel(logging.INFO)
     help='Hail billing account ID.',
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
-    meta_csv_path: str,
+    meta_tsv_path: str,
     hard_filtered_samples_ht_path: str,
     hail_sample_qc_ht_path: str,
     sex_ht_path: str,
@@ -126,7 +126,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
 
-    input_metadata_ht = utils.parse_input_metadata(meta_csv_path, local_tmp_dir)
+    input_metadata_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
     hard_filtered_samples_ht = hl.read_table(hard_filtered_samples_ht_path)
     sex_ht = hl.read_table(sex_ht_path)
     custom_qc_ht = hl.read_table(custom_qc_ht_path)

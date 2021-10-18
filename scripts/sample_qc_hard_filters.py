@@ -28,8 +28,8 @@ logger.setLevel(logging.INFO)
     'To generate it, run the `combine_gvcfs` script',
 )
 @click.option(
-    '--meta-csv',
-    'meta_csv_path',
+    '--meta-tsv',
+    'meta_tsv_path',
     required=True,
     help='path to a CSV with QC metadata for the samples in the input Matrix Table. '
     'The following columns are expected: '
@@ -92,7 +92,7 @@ logger.setLevel(logging.INFO)
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_path: str,
-    meta_csv_path: str,
+    meta_tsv_path: str,
     filter_cutoffs_path: str,
     out_hard_filtered_samples_ht_path: str,
     out_sex_ht_path: str,
@@ -111,7 +111,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
 
     input_metadata_ht = utils.parse_input_metadata(
-        meta_csv_path=meta_csv_path,
+        meta_tsv_path=meta_tsv_path,
         local_tmp_dir=local_tmp_dir,
     )
 
