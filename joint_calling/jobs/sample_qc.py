@@ -256,7 +256,7 @@ def add_sample_qc_jobs(
     out_path_ptn = join(ancestry_web_bucket, '{scope}_pc{pci}.{ext}')
     paths = []
     for scope in ['study', 'continental_pop', 'subpop', 'loadings']:
-        for ext in ['png', 'html']:
+        for ext in ['html']:
             paths.append(
                 out_path_ptn.format(scope=scope, pci=num_ancestry_pcs - 1, ext=ext)
             )
@@ -367,7 +367,7 @@ def add_sample_qc_jobs(
         out_path_ptn = join(ancestry_web_bucket, '{scope}_pc{pci}.{ext}')
         paths = []
         for scope in ['study', 'continental_pop', 'subpop', 'loadings']:
-            for ext in ['png', 'html']:
+            for ext in ['html']:
                 paths.append(
                     out_path_ptn.format(scope=scope, pci=num_ancestry_pcs - 1, ext=ext)
                 )

@@ -12,7 +12,6 @@ import click
 import pandas as pd
 import numpy as np
 import hail as hl
-from bokeh.io.export import get_screenshot_as_png
 from bokeh.resources import CDN
 from bokeh.embed import file_html
 from bokeh.transform import factor_cmap, factor_mark
@@ -123,7 +122,7 @@ def produce_plots(
     number_of_pcs: Optional[int] = None,
 ):
     """
-    Generate plots in png and html formats, write for each PC (of n_pcs) and
+    Generate plots in HTML format, write for each PC (of n_pcs) and
     scope ("study", "continental_pop", "subpop", plus for loadings) into
     file paths defined by `out_path_pattern`.
     """
@@ -284,9 +283,6 @@ def _plot_study(
         plot.add_layout(plot.legend[0], 'left')
         plots.append(plot)
         if out_path_pattern:
-            plot_filename = out_path_pattern.format(scope='study', pci=pc2, ext='png')
-            with hl.hadoop_open(plot_filename, 'wb') as f:
-                get_screenshot_as_png(plot).save(f, format='PNG')
             html = file_html(plot, CDN, 'my plot')
             plot_filename_html = out_path_pattern.format(
                 scope='study', pci=pc2, ext='html'
@@ -349,11 +345,6 @@ def _plot_continental_pop(
         plot.add_layout(plot.legend[0], 'left')
         plots.append(plot)
         if out_path_pattern:
-            plot_filename = out_path_pattern.format(
-                scope='continental_pop', pci=pc2, ext='png'
-            )
-            with hl.hadoop_open(plot_filename, 'wb') as f:
-                get_screenshot_as_png(plot).save(f, format='PNG')
             html = file_html(plot, CDN, 'my plot')
             plot_filename_html = out_path_pattern.format(
                 scope='continental_pop', pci=pc2, ext='html'
@@ -416,9 +407,6 @@ def _plot_subcontinental_pop(
         plot.add_layout(plot.legend[0], 'left')
         plots.append(plot)
         if out_path_pattern:
-            plot_filename = out_path_pattern.format(scope='subpop', pci=pc2, ext='png')
-            with hl.hadoop_open(plot_filename, 'wb') as f:
-                get_screenshot_as_png(plot).save(f, format='PNG')
             html = file_html(plot, CDN, 'my plot')
             plot_filename_html = out_path_pattern.format(
                 scope='subpop', pci=pc2, ext='html'
@@ -449,9 +437,6 @@ def _plot_loadings(number_of_pcs, loadings_ht_path, out_path_pattern=None):
         )
         plots.append(plot)
         if out_path_pattern:
-            plot_filename = out_path_pattern.format(scope='loadings', pci=pc, ext='png')
-            with hl.hadoop_open(plot_filename, 'wb') as f:
-                get_screenshot_as_png(plot).save(f, format='PNG')
             html = file_html(plot, CDN, 'my plot')
             plot_filename_html = out_path_pattern.format(
                 scope='loadings', pci=pc, ext='html'
