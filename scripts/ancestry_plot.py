@@ -104,7 +104,13 @@ def key_by_external_id(ht, sample_map_ht):
     """
     ht = ht.annotate(internal_id=ht.s).key_by('internal_id')
     ht = (
-        ht.annotate(s=sample_map_ht[ht.internal_id].external_id)
+        ht.annotate(
+            s=hl.if_else(
+                hl.is_defined(sample_map_ht[ht.internal_id]),
+                sample_map_ht[ht.internal_id].external_id,
+                ht.internal_id,
+            )
+        )
         .key_by('s')
         .drop('internal_id')
     )
@@ -131,9 +137,9 @@ def produce_plots(
     inferred_pop_ht = hl.read_table(inferred_pop_ht_path)
 
     sample_map_ht = meta_ht.select('external_id')
-    scores_ht = key_by_external_id(scores_ht, sample_map_ht)
-    provided_pop_ht = key_by_external_id(provided_pop_ht, sample_map_ht)
-    inferred_pop_ht = key_by_external_id(inferred_pop_ht, sample_map_ht)
+    scores_ht = key_by_external_id(scores_ht, sample_map_ht).cache()
+    provided_pop_ht = key_by_external_id(provided_pop_ht, sample_map_ht).cache()
+    inferred_pop_ht = key_by_external_id(inferred_pop_ht, sample_map_ht).cache()
 
     scores_ht = scores_ht.annotate(
         continental_pop=hl.case()
@@ -165,7 +171,7 @@ def produce_plots(
             + ']'
         ),
         study=provided_pop_ht[scores_ht.s].project,
-    )
+    ).cache()
 
     eigenvalues_ht = hl.import_table(
         eigenvalues_path, no_header=True, types={'f0': hl.tfloat}
