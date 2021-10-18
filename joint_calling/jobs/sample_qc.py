@@ -318,7 +318,7 @@ def add_sample_qc_jobs(
                 f'{utils.SCRIPTS_DIR}/sample_qc_subset_mt_for_pca.py '
                 + (f'--overwrite ' if overwrite else '')
                 + f'--mt {mt_path} '
-                f'--meta-tsv {meta_tsv_path} '
+                f'--meta-tsv {samples_tsv_path} '
                 f'--out-hgdp-union-mt {mt_union_hgdp_pop_path} '
                 f'--pop {pca_pop} '
                 f'--tmp-bucket {join(tmp_bucket, f"subset_mt_for_pca_{pop_tag}")} '
