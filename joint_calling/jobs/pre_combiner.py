@@ -38,6 +38,12 @@ def add_pre_combiner_jobs(
 
     logger.info(f'Samples DF:\n{samples_df}')
     jobs_by_sample = defaultdict(list)
+    gvcfs_tsv_path = join(pre_combiner_bucket, 'gvcfs.tsv')
+    if utils.can_reuse(gvcfs_tsv_path, overwrite):
+        samples_df = pd.read_csv(gvcfs_tsv_path, sep='\t', na_values='NA').set_index(
+            's', drop=False
+        )
+        return samples_df, gvcfs_tsv_path, []
 
     def get_project_bucket(_proj):
         if _proj in ['syndip', 'giab']:
@@ -137,7 +143,6 @@ def add_pre_combiner_jobs(
         jobs.extend(js)
 
     # Saving the resulting DataFrame as a TSV file
-    gvcfs_tsv_path = join(pre_combiner_bucket, 'gvcfs.tsv')
     samples_df.to_csv(gvcfs_tsv_path, index=False, sep='\t', na_rep='NA')
     logger.info(f'Saved combiner-ready GVCF data to {gvcfs_tsv_path}')
     return samples_df, gvcfs_tsv_path, jobs

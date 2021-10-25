@@ -40,6 +40,21 @@ def pedigree_checks(
     Returns a job, a path to a fixed PED file if able to recover, and a path to a file
     with relatedness information for each sample pair
     """
+    sample_hash = utils.hash_sample_ids(samples_df['s'])
+    prefix = join(relatedness_bucket, 'somalier', sample_hash, 'somalier')
+    somalier_samples_path = f'{prefix}.samples.tsv'
+    somalier_pairs_path = f'{prefix}.pairs.tsv'
+    fixed_ped_fpath = join(relatedness_bucket, 'samples.ped')
+    if utils.can_reuse(
+        [somalier_samples_path, somalier_pairs_path, fixed_ped_fpath], overwrite
+    ):
+        return (
+            b.new_job('Somalier relate [reuse]'),
+            fixed_ped_fpath,
+            somalier_samples_path,
+            somalier_pairs_path,
+        )
+
     extract_jobs = []
     fp_file_by_sample = dict()
 
@@ -53,9 +68,7 @@ def pedigree_checks(
     for sn, proj, gvcf_path in zip(samples_df.s, samples_df.project, samples_df.gvcf):
         proj_bucket = get_project_bucket(proj)
         fp_file_by_sample[sn] = join(proj_bucket, 'fingerprints', f'{sn}.somalier')
-        if utils.can_reuse(fp_file_by_sample[sn], overwrite):
-            extract_jobs.append(b.new_job(f'Somalier extract, {sn} [reuse]'))
-        else:
+        if not utils.can_reuse(fp_file_by_sample[sn], overwrite):
             j = b.new_job(f'Somalier extract, {sn}')
             j.image(utils.SOMALIER_IMAGE)
             j.memory('standard')
@@ -156,15 +169,9 @@ def pedigree_checks(
     )
 
     # Copy somalier outputs to buckets
-    sample_hash = utils.hash_sample_ids(samples_df['s'])
-    prefix = join(relatedness_bucket, 'somalier', sample_hash, 'somalier')
-    somalier_samples_path = f'{prefix}.samples.tsv'
-    somalier_pairs_path = f'{prefix}.pairs.tsv'
     b.write_output(relate_j.output_samples, somalier_samples_path)
     b.write_output(relate_j.output_pairs, somalier_pairs_path)
-
     # Write fixed PED file with inferred sex, with strictly 6 columns and no header
-    fixed_ped_fpath = join(relatedness_bucket, 'samples.ped')
     b.write_output(relate_j.fixed_ped, fixed_ped_fpath)
 
     # Copy somalier HTML to the web bucket

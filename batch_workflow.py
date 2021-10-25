@@ -207,6 +207,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     backend = hb.ServiceBackend(
         billing_project=billing_project,
         bucket=hail_bucket.replace('gs://', ''),
+        token=os.getenv('HAIL_TOKEN'),
     )
     b = hb.Batch(
         f'Joint calling: {analysis_project}'
@@ -233,7 +234,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     (
         samples_df,
-        samples_csv_path,
+        samples_tsv_path,
         pre_combiner_jobs,
     ) = pre_combiner.add_pre_combiner_jobs(
         b=b,
@@ -279,7 +280,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             combiner_job = dataproc.hail_dataproc_job(
                 b,
                 f'{utils.SCRIPTS_DIR}/combine_gvcfs.py '
-                f'--meta-csv {samples_csv_path} '
+                f'--meta-csv {samples_tsv_path} '
                 f'--out-mt {raw_combined_mt_path} '
                 f'--bucket {combiner_bucket}/work '
                 f'--hail-billing {billing_project} '
@@ -296,7 +297,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     sample_qc_job, hard_filter_ht_path, meta_ht_path = add_sample_qc_jobs(
         b=b,
         mt_path=raw_combined_mt_path,
-        samples_csv_path=samples_csv_path,
+        samples_tsv_path=samples_tsv_path,
         sample_qc_bucket=join(analysis_bucket, 'sample_qc'),
         ancestry_bucket=join(analysis_bucket, 'ancestry'),
         tmp_bucket=tmp_bucket,

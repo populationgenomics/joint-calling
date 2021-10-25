@@ -22,7 +22,7 @@ logger.setLevel(logging.INFO)
 def add_sample_qc_jobs(
     b: hb.Batch,
     mt_path: str,
-    samples_csv_path: str,
+    samples_tsv_path: str,
     sample_qc_bucket: str,
     ancestry_bucket: str,
     tmp_bucket: str,
@@ -71,7 +71,7 @@ def add_sample_qc_jobs(
         sample_qc_hardfilter_job = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_hard_filters.py '
             f'--mt {mt_path} '
-            f'--meta-csv {samples_csv_path} '
+            f'--meta-tsv {samples_tsv_path} '
             f'{_make_filter_cutoff_param(filter_cutoffs_path, sample_qc_bucket)} '
             f'--out-hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
             f'--out-sex-ht {sex_ht_path} '
@@ -102,11 +102,11 @@ def add_sample_qc_jobs(
             f'{utils.SCRIPTS_DIR}/sample_qc_subset_mt_for_pca.py '
             + (f'--overwrite ' if overwrite else '')
             + f'--mt {mt_path} '
-            f'--meta-csv {samples_csv_path} '
+            f'--meta-tsv {samples_tsv_path} '
             f'--out-hgdp-union-mt {mt_union_hgdp_path} '
             f'--out-provided-pop-ht {provided_pop_ht_path} '
             f'--out-mt {mt_for_pca_path} '
-            f'--tmp-bucket {tmp_bucket} '
+            f'--tmp-bucket {join(tmp_bucket, f"subset_mt_for_pca_all")} '
             + ('--is-test ' if is_test else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             job_name=job_name,
@@ -256,7 +256,7 @@ def add_sample_qc_jobs(
     out_path_ptn = join(ancestry_web_bucket, '{scope}_pc{pci}.{ext}')
     paths = []
     for scope in ['study', 'continental_pop', 'subpop', 'loadings']:
-        for ext in ['png', 'html']:
+        for ext in ['html']:
             paths.append(
                 out_path_ptn.format(scope=scope, pci=num_ancestry_pcs - 1, ext=ext)
             )
@@ -268,6 +268,7 @@ def add_sample_qc_jobs(
             f'--loadings-ht {loadings_ht_path} '
             f'--provided-pop-ht {provided_pop_ht_path} '
             f'--inferred-pop-ht {inferred_pop_ht_path} '
+            f'--meta-tsv {samples_tsv_path} '
             + f'--out-path-pattern {out_path_ptn} '
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             job_name=job_name,
@@ -288,7 +289,7 @@ def add_sample_qc_jobs(
     ):
         metadata_qc_job = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_write_metadata.py '
-            f'--meta-csv {samples_csv_path} '
+            f'--meta-tsv {samples_tsv_path} '
             f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
             f'--sex-ht {sex_ht_path} '
             f'--custom-qc-ht {custom_qc_ht_path} '
@@ -317,10 +318,10 @@ def add_sample_qc_jobs(
                 f'{utils.SCRIPTS_DIR}/sample_qc_subset_mt_for_pca.py '
                 + (f'--overwrite ' if overwrite else '')
                 + f'--mt {mt_path} '
-                f'--meta-csv {samples_csv_path} '
+                f'--meta-tsv {samples_tsv_path} '
                 f'--out-hgdp-union-mt {mt_union_hgdp_pop_path} '
                 f'--pop {pca_pop} '
-                f'--tmp-bucket {tmp_bucket} '
+                f'--tmp-bucket {join(tmp_bucket, f"subset_mt_for_pca_{pop_tag}")} '
                 + ('--is-test ' if is_test else '')
                 + (f'--hail-billing {billing_project} ' if billing_project else ''),
                 job_name=job_name,
@@ -366,7 +367,7 @@ def add_sample_qc_jobs(
         out_path_ptn = join(ancestry_web_bucket, '{scope}_pc{pci}.{ext}')
         paths = []
         for scope in ['study', 'continental_pop', 'subpop', 'loadings']:
-            for ext in ['png', 'html']:
+            for ext in ['html']:
                 paths.append(
                     out_path_ptn.format(scope=scope, pci=num_ancestry_pcs - 1, ext=ext)
                 )
@@ -378,6 +379,7 @@ def add_sample_qc_jobs(
                 f'--loadings-ht {loadings_ht_path} '
                 f'--provided-pop-ht {provided_pop_ht_path} '
                 f'--inferred-pop-ht {inferred_pop_ht_path} '
+                f'--meta-tsv {samples_tsv_path} '
                 + f'--out-path-pattern {out_path_ptn} '
                 + (f'--hail-billing {billing_project} ' if billing_project else ''),
                 job_name=job_name,
