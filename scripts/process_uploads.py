@@ -35,7 +35,7 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
     # Take the first 300 samples without analysis
     sample_ids_without_analysis = samples_without_analysis['sample_ids'][:300]
     sequences = seqapi.get_sequences_by_sample_ids(
-        sample_ids=sample_ids_without_analysis
+        request_body=sample_ids_without_analysis
     )
 
     external_sample_mapping = sapi.get_sample_id_map_by_internal(
