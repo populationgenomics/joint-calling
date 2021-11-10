@@ -52,6 +52,10 @@ logger.setLevel(logging.INFO)
     multiple=True,
     help='Only read samples that belong to these project(s). Can be multiple.',
 )
+@click.option(
+    '--input-tsv',
+    'input_tsv_path',
+)
 @click.option('--output-version', 'output_version', type=str, required=True)
 @click.option(
     '--output-project',
@@ -145,6 +149,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     output_namespace: str,
     analysis_project: str,
     input_projects: List[str],  # pylint: disable=unused-argument
+    input_tsv_path: Optional[str],  # pylint: disable=unused-argument
     output_version: str,
     output_projects: Optional[List[str]],  # pylint: disable=unused-argument
     use_gnarly_genotyper: bool,
@@ -212,7 +217,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     b = hb.Batch(
         f'Joint calling: {analysis_project}'
         f', version: {output_version}'
-        f', projects: {", ".join(input_projects)}'
+        f', data from: {input_tsv_path or ", ".join(input_projects)}'
         + (
             f', limit output projects to {", ".join(output_projects)}'
             if output_projects
@@ -226,6 +231,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         tmp_bucket=tmp_bucket,
         overwrite=overwrite,
         input_projects=input_projects,
+        input_tsv_path=input_tsv_path,
         skip_samples=skip_samples,
         check_existence=check_existence,
         age_data=age_data,
@@ -386,6 +392,7 @@ def find_inputs(
     tmp_bucket: str,
     overwrite: bool,
     input_projects: List[str],
+    input_tsv_path: Optional[str] = None,
     skip_samples: Optional[Collection[str]] = None,
     check_existence: bool = True,
     age_data: Optional[utils.ColumnInFile] = None,
@@ -394,7 +401,7 @@ def find_inputs(
     """
     Find inputs, make a sample data DataFrame, save to a TSV file
     """
-    output_tsv_path = join(tmp_bucket, 'samples.tsv')
+    output_tsv_path = input_tsv_path or join(tmp_bucket, 'samples.tsv')
 
     if utils.can_reuse(output_tsv_path, overwrite):
         logger.info(f'Reading already found DB inputs from {output_tsv_path}')
