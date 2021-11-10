@@ -53,9 +53,9 @@ def add_pre_combiner_jobs(
         return proj_bucket
 
     # Samples for which a GVCF is provided as input:
-    gvcf_df = samples_df[samples_df.gvcf != '-']
+    gvcf_df = samples_df[samples_df.topostproc_gvcf != '-']
     for sn, proj, external_id, gvcf_path in zip(
-        gvcf_df.s, gvcf_df.project, gvcf_df.external_id, gvcf_df.gvcf
+        gvcf_df.s, gvcf_df.project, gvcf_df.external_id, gvcf_df.topostproc_gvcf
     ):
         proj_bucket = get_project_bucket(proj)
 

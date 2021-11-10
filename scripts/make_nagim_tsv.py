@@ -15,6 +15,7 @@ default_entry = {
     'continental_pop': '-',
     'subpop': '-',
     'gvcf': '-',
+    'topostproc_gvcf': '-',
     'cram': '-',
     'crai': '-',
     'realign_cram': '-',
@@ -46,7 +47,7 @@ with open('gvcflist.txt') as in_f:
             {
                 's': sample_name,
                 'external_id': sample_name,
-                'gvcf': gvcf_path,
+                'topostproc_gvcf': gvcf_path,
                 'project': 'nagim',
             }
         )
