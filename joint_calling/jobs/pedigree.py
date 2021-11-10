@@ -5,7 +5,6 @@ Adds Batch job that drive Somalier for ancestry/pedigree
 """
 
 import logging
-import subprocess
 from os.path import join
 from typing import Optional, List, Tuple
 import pandas as pd
@@ -186,13 +185,7 @@ def pedigree_checks(
     check_j.memory('standard')  # ~ 4G/core ~ 4G
 
     script_name = 'check_pedigree.py'
-    try:
-        script_path = (
-            subprocess.check_output(f'which {script_name}', shell=True).decode().strip()
-        )
-    except subprocess.CalledProcessError:
-        script_path = join(utils.SCRIPTS_DIR, script_name)
-
+    script_path = join(utils.SCRIPTS_DIR, script_name)
     with open(script_path) as f:
         script = f.read()
     check_j.command(
