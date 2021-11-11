@@ -145,6 +145,12 @@ logger.setLevel(logging.INFO)
     default=False,
     is_flag=True,
 )
+@click.option(
+    '--add-validation-samples/--no-add-validation-samples',
+    'add_validation_samples',
+    default=True,
+    is_flag=True,
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -166,6 +172,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     num_ancestry_pcs: int,
     dry_run: bool,
     check_existence: bool,
+    add_validation_samples: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -236,6 +243,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         check_existence=check_existence,
         age_data=age_data,
         reported_sex_data=reported_sex_data,
+        add_validation_samples=add_validation_samples,
     )
 
     (
@@ -397,6 +405,7 @@ def find_inputs(
     check_existence: bool = True,
     age_data: Optional[utils.ColumnInFile] = None,
     reported_sex_data: Optional[utils.ColumnInFile] = None,
+    add_validation_samples: bool = True,
 ) -> pd.DataFrame:
     """
     Find inputs, make a sample data DataFrame, save to a TSV file
@@ -422,7 +431,8 @@ def find_inputs(
         samples_df = _add_sex(samples_df, age_data)
     if reported_sex_data:
         samples_df = _add_reported_sex(samples_df, reported_sex_data)
-    samples_df = sm_utils.add_validation_samples(samples_df)
+    if add_validation_samples:
+        samples_df = sm_utils.add_validation_samples(samples_df)
     samples_df.to_csv(output_tsv_path, index=False, sep='\t', na_rep='NA')
     samples_df = samples_df[pd.notnull(samples_df.s)]
     return samples_df
