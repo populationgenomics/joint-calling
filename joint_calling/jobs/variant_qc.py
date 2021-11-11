@@ -210,7 +210,7 @@ def add_variant_qc_jobs(
             scatter_count,
             is_test=is_test,
             long=True,
-            depends_on=[rf_anno_job],
+            depends_on=[rf_anno_job, vqsr_vcf_job],
         )
         eval_job = add_vqsr_eval_jobs(
             b=b,
