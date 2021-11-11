@@ -247,15 +247,9 @@ def add_vqsr_jobs(
             )
         ]
         scattered_vcfs = [
-            b.read_input_group(
-                **{
-                    'vcf.gz': vcf_path,
-                    'vcf.gz.tbi': vcf_path + '.tbi',
-                }
-            )
-            for vcf_path in hard_filtered_vcf_paths
+            j.output_vcf
+            for j in hard_filtered_vcf_jobs
         ]
-
         gathered_vcf_path = join(work_bucket, 'sites_only_gathered.vcf.gz')
         gathered_vcf_j = add_sites_only_gather_vcf_step(
             b,
@@ -265,12 +259,7 @@ def add_vqsr_jobs(
             overwrite=overwrite,
         )
         gathered_vcf_j.depends_on(hard_filtered_vcf_jobs)
-        gathered_vcf = b.read_input_group(
-            **{
-                'vcf.gz': gathered_vcf_path,
-                'vcf.gz.tbi': gathered_vcf_path + '.tbi',
-            }
-        )
+        gathered_vcf = gathered_vcf_j.output_vcf
 
     indels_variant_recalibrator_job = add_indels_variant_recalibrator_step(
         b,
