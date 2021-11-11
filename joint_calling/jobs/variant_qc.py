@@ -34,6 +34,7 @@ def add_variant_qc_jobs(
     is_test: bool,
     depends_on: Optional[List[Job]] = None,
     run_rf: bool = False,
+    do_filter_excesshet: bool = True,
 ) -> Job:
     """
     Add variant QC Hail-query jobs
@@ -196,6 +197,7 @@ def add_variant_qc_jobs(
                 scatter_count=scatter_count,
                 output_vcf_path=vqsred_vcf_path,
                 overwrite=overwrite,
+                do_filter_excesshet=do_filter_excesshet,
             )
         else:
             vqsr_vcf_job = b.new_job('AS-VQSR [reuse]')

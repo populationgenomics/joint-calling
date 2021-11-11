@@ -151,6 +151,12 @@ logger.setLevel(logging.INFO)
     default=True,
     is_flag=True,
 )
+@click.option(
+    '--filter-excesshet/--no-filter-excesshet',
+    'do_filter_excesshet',
+    default=True,
+    is_flag=True,
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -173,6 +179,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     dry_run: bool,
     check_existence: bool,
     add_validation_samples: bool,
+    do_filter_excesshet: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -346,6 +353,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         scatter_count=scatter_count,
         is_test=output_namespace in ['test', 'tmp'],
         depends_on=[combiner_job, sample_qc_job],
+        do_filter_excesshet=do_filter_excesshet,
     )
 
     # Interacting with the sample metadata server.

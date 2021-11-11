@@ -120,15 +120,11 @@ make_nagim_tsv:
 # probably no reason to do that, it's a prototype after all
 .PHONY: nagim_test
 nagim_test:
-	analysis-runner \
-	--dataset nagim \
-	--output-dir "joint-calling/nagim_test" \
-	--description "Joint calling nagim_test" \
-	--access-level test \
-	batch_workflow.py \
+	python batch_workflow.py \
 	--scatter-count $(SCATTER_COUNT_PROD) \
 	--namespace test \
 	--input-tsv gs://cpg-nagim-test/joint_calling/samples.tsv \
 	--analysis-project nagim \
 	--output-version v0 \
+	--no-add-validation-samples \
 	$(REUSE_ARG)
