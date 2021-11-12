@@ -125,7 +125,7 @@ nagim_test:
 	--namespace test \
 	--input-tsv gs://cpg-nagim-test/joint_calling/samples.tsv \
 	--analysis-project nagim \
-	--output-version v0-1 \
+	--output-version v0-3 \
 	--no-add-validation-samples \
 	--keep-scratch \
 	$(REUSE_ARG)

@@ -140,9 +140,9 @@ def pedigree_checks(
             samples_df['mat_id'],
         )
         samples_df['Sex'] = np.where(
-            pd.isna(samples_df['sex']) | (samples_df['mat_id'] == '-'),
+            pd.isna(samples_df['sex']) | (samples_df['sex'] == '-'),
             '0',
-            samples_df['mat_id'],
+            samples_df['sex'],
         )
         samples_df['Phenotype'] = '0'
         samples_df[
