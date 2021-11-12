@@ -129,7 +129,11 @@ def main(
                 'unknown': ['unknown'],
             }.get(peddy_rel)
 
-        if 'unknown' in _parse_peddy_label(peddy_rel) and inferred_rel != 'unknown':
+        if (
+            'unknown' in _parse_peddy_label(peddy_rel)
+            or 'unrelated' in _parse_peddy_label(peddy_rel)
+            and inferred_rel != 'unknown'
+        ):
             pairs_provided_as_unrelated_but_inferred_related.append(
                 f'"{s1}" and "{s2}", inferred: "{inferred_rel}"'
             )
