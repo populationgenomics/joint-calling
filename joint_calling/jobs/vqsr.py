@@ -246,10 +246,7 @@ def add_vqsr_jobs(
                 hard_filtered_vcf_paths, range(scatter_count)
             )
         ]
-        scattered_vcfs = [
-            j.output_vcf
-            for j in hard_filtered_vcf_jobs
-        ]
+        scattered_vcfs = [j.output_vcf for j in hard_filtered_vcf_jobs]
         gathered_vcf_path = join(work_bucket, 'sites_only_gathered.vcf.gz')
         gathered_vcf_j = add_sites_only_gather_vcf_step(
             b,
@@ -1042,7 +1039,7 @@ def add_apply_recalibration_step(
     gatk --java-options -Xms5g \\
       ApplyVQSR \\
       --tmp-dir $TMP_DIR \\
-      -O tmp.indel.recalibrated.vcf.gz \\
+      -O /io/batch/tmp.indel.recalibrated.vcf.gz \\
       -V {input_vcf['vcf.gz']} \\
       --recal-file {indels_recalibration} \\
       --tranches-file {indels_tranches} \\
