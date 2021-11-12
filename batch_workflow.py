@@ -98,7 +98,12 @@ logger.setLevel(logging.INFO)
     help=f'YAML file with filtering cutoffs. '
     f'Default is the file within the package: {utils.get_filter_cutoffs()}',
 )
-@click.option('--keep-scratch', 'keep_scratch', is_flag=True)
+@click.option(
+    '--keep-scratch/--remove-scratch',
+    'keep_scratch',
+    default=True,
+    is_flag=True,
+)
 @click.option(
     '--reuse-scratch-run-id',
     'reuse_scratch_run_id',

@@ -127,4 +127,5 @@ nagim_test:
 	--analysis-project nagim \
 	--output-version v0 \
 	--no-add-validation-samples \
+	--keep-scratch \
 	$(REUSE_ARG)
