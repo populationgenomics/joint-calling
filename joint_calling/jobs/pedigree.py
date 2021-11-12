@@ -124,7 +124,7 @@ def pedigree_checks(
     else:
         ped_fpath = join(tmp_bucket, 'samples.ped')
         samples_df['Family.ID'] = np.where(
-            pd.notna(samples_df['fam_id']),
+            pd.notna(samples_df['fam_id']) & samples_df['fam_id'] != '-',
             samples_df['fam_id'],
             samples_df['external_id'],
         )
