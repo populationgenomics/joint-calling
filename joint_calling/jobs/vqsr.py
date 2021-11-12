@@ -1035,11 +1035,12 @@ def add_apply_recalibration_step(
     
     TMP_DIR=$(dirname {j.recalibrated_vcf['vcf.gz']})/tmp
     mkdir $TMP_DIR
+    TMP_INDEL_RECALIBRATED=$TMP_DIR/tmp.indel.recalibrated.vcf.gz
 
     gatk --java-options -Xms5g \\
       ApplyVQSR \\
       --tmp-dir $TMP_DIR \\
-      -O /io/batch/tmp.indel.recalibrated.vcf.gz \\
+      -O $TMP_INDEL_RECALIBRATED \\
       -V {input_vcf['vcf.gz']} \\
       --recal-file {indels_recalibration} \\
       --tranches-file {indels_tranches} \\
@@ -1061,7 +1062,7 @@ def add_apply_recalibration_step(
       ApplyVQSR \\
       --tmp-dir $TMP_DIR \\
       -O {j.recalibrated_vcf['vcf.gz']} \\
-      -V tmp.indel.recalibrated.vcf.gz \\
+      -V $TMP_INDEL_RECALIBRATED \\
       --recal-file {snps_recalibration} \\
       --tranches-file {snps_tranches} \\
       --truth-sensitivity-filter-level {snp_filter_level} \\
