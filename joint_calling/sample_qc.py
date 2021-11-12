@@ -679,28 +679,28 @@ def compute_hard_filters(
 
     ht = add_filter(
         ht,
-        hl.is_missing(picard_metrics_ht[ht.key].r_contamination)
-        | (
+        hl.is_defined(picard_metrics_ht[ht.key].r_contamination)
+        & (
             picard_metrics_ht[ht.key].r_contamination > cutoffs_d['max_r_contamination']
         ),
         'contamination',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(picard_metrics_ht[ht.key].r_chimera)
-        | (picard_metrics_ht[ht.key].r_chimera > cutoffs_d['max_r_chimera']),
+        hl.is_defined(picard_metrics_ht[ht.key].r_chimera)
+        & (picard_metrics_ht[ht.key].r_chimera > cutoffs_d['max_r_chimera']),
         'chimera',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(picard_metrics_ht[ht.key].r_duplication)
-        | (picard_metrics_ht[ht.key].r_duplication > cutoffs_d['max_r_duplication']),
+        hl.is_defined(picard_metrics_ht[ht.key].r_duplication)
+        & (picard_metrics_ht[ht.key].r_duplication > cutoffs_d['max_r_duplication']),
         'dup_rate',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(picard_metrics_ht[ht.key].median_insert_size)
-        | (
+        hl.is_defined(picard_metrics_ht[ht.key].median_insert_size)
+        & (
             picard_metrics_ht[ht.key].median_insert_size
             < cutoffs_d['min_median_insert_size']
         ),
