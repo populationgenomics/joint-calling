@@ -180,9 +180,11 @@ def add_vqsr_jobs(
     is_huge_callset = gvcf_count >= 100000
     # For huge callsets, we allocate more memory for the SNPs Create Model step
 
-    small_disk = 30 if is_small_callset else (50 if not is_huge_callset else 100)
-    medium_disk = 50 if is_small_callset else (100 if not is_huge_callset else 200)
-    huge_disk = 100 if is_small_callset else (500 if not is_huge_callset else 2000)
+    # To fit only a site-only VCF
+    small_disk = 50 if is_small_callset else (100 if not is_huge_callset else 200)
+    # To fit a joint-called VCF
+    medium_disk = 100 if is_small_callset else (200 if not is_huge_callset else 500)
+    huge_disk = 200 if is_small_callset else (500 if not is_huge_callset else 2000)
 
     job_name = 'AS-VQSR: MT to VCF'
     combined_vcf_path = join(work_bucket, 'input.vcf.gz')
