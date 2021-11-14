@@ -2,16 +2,25 @@
 Prepare input tsv file for nagim to run with the workflow as follows:
 batch_workflow.py --input-tsv gs://cpg-nagim-test/joint_calling/samples.tsv
 """
-
 import os
 import pandas as pd
-from joint_calling import utils
+
 
 def run_cmd(cmd):
     print(cmd)
     os.system(cmd)
 
-run_cmd('gsutil ls \'gs://cpg-nagim-test-upload/gvcf/*.vcf.gz\' > gvcflist.txt')
+
+gvcf_list_fpath = 'gvcflist.txt'
+tbi_list_fpath = 'tbilist.txt'
+if not os.path.isfile(gvcf_list_fpath):
+    run_cmd(
+        f'gsutil ls \'gs://cpg-nagim-test-upload/gvcf/*.vcf.gz\' > {gvcf_list_fpath}'
+    )
+if not os.path.isfile(tbi_list_fpath):
+    run_cmd(
+        f'gsutil ls \'gs://cpg-nagim-test-upload/gvcf/*.vcf.gz.tbi\' > {tbi_list_fpath}'
+    )
 
 default_entry = {
     's': None,
@@ -42,30 +51,41 @@ default_entry = {
     'age': None,
 }
 
+gvcf_by_sample = dict()
+with open(gvcf_list_fpath) as gvcf_f:
+    for line in gvcf_f:
+        fname = line.strip()
+        sample = os.path.basename(fname).replace('.hard-filtered.g.vcf.gz', '')
+        gvcf_by_sample[sample] = fname
+
+tbi_by_sample = dict()
+with open(tbi_list_fpath) as tbi_f:
+    for line in tbi_f:
+        fname = line.strip()
+        sample = os.path.basename(fname).replace('.hard-filtered.g.vcf.gz.tbi', '')
+        if sample not in gvcf_by_sample:
+            print(f'Found TBI without GVCF: {fname}')
+        else:
+            tbi_by_sample[sample] = fname
+
 datas = []
-with open('gvcflist.txt') as in_f:
-    for line in in_f:
-        gvcf_path = line.strip()
-        sample_name = os.path.basename(gvcf_path).replace('.hard-filtered.g.vcf.gz', '')
-        if not utils.file_exists(gvcf_path):
-            print(f'gvcf doesnt exist for {sample_name}: {gvcf_path}')
-            continue
-            
-        if not utils.file_exists(gvcf_path + '.tbi'):
-            print(f'tbi doesnt exist for {sample_name}: {gvcf_path + ".tbi"}')
-            continue
-        
-        print(f'adding sample {sample_name} with gvcf {gvcf_path}')
-        entry = default_entry.copy()
-        entry.update(
-            {
-                's': sample_name,
-                'external_id': sample_name,
-                'topostproc_gvcf': gvcf_path,
-                'project': 'nagim',
-            }
-        )
-        datas.append(entry)
+for sname, gvcf_path in gvcf_by_sample.items():
+    tbi_path = tbi_by_sample.get(sname)
+    if not tbi_path:
+        print(f'tbi doesnt exist for {gvcf_path}')
+        continue
+
+    print(f'adding sample {sname} with gvcf {gvcf_path}')
+    entry = default_entry.copy()
+    entry.update(
+        {
+            's': sname,
+            'external_id': sname,
+            'topostproc_gvcf': gvcf_path,
+            'project': 'nagim',
+        }
+    )
+    datas.append(entry)
 
 df = pd.DataFrame(datas)
 out_fname = 'samples.tsv'
