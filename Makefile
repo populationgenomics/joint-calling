@@ -105,6 +105,43 @@ main_to_main:
 	--age-file gs://cpg-tob-wgs-main-analysis/metadata/age.csv::0::1 \
 	$(REUSE_ARG)
 
+.PHONY: main_to_main
+main_to_main:
+	analysis-runner \
+	--dataset $(ANALYSIS_PROJECT) \
+	--output-dir "joint-calling/main-to-main" \
+	--description "Joint calling main-to-main" \
+	--access-level full \
+	batch_workflow.py \
+	--scatter-count $(SCATTER_COUNT_PROD) \
+	--namespace main \
+	--input-project tob-wgs \
+	--analysis-project $(ANALYSIS_PROJECT) \
+	--output-version $(VERSION) \
+	--pca-pop ${PCA_POP} \
+	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/reported_sex.tsv::1::2 \
+	--age-file gs://cpg-tob-wgs-main-analysis/metadata/age.csv::0::1 \
+	--age-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::3 \
+	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::4 \
+	--no-filter-excesshet
+	$(REUSE_ARG)
+
+.PHONY: main_to_main_cmd
+main_to_main_cmd:
+	python batch_workflow.py \
+	--scatter-count $(SCATTER_COUNT_PROD) \
+	--namespace main \
+	--input-project tob-wgs \
+	--analysis-project $(ANALYSIS_PROJECT) \
+	--output-version $(VERSION) \
+	--pca-pop ${PCA_POP} \
+	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/reported_sex.tsv::1::2 \
+	--age-file gs://cpg-tob-wgs-main-analysis/metadata/age.csv::0::1 \
+	--age-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::3 \
+	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::4 \
+	--no-filter-excesshet
+	$(REUSE_ARG)
+
 .PHONY: transfer_nagim
 transfer_nagim:
 	# Australian terra workspace

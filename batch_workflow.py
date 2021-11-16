@@ -79,14 +79,16 @@ logger.setLevel(logging.INFO)
 )
 @click.option(
     '--age-file',
-    'age_data',
+    'age_datas',
+    multiple=True,
     help='format: --age-file <tsv-or-csv-path>::<sample-col>::<age-col>. '
     'E.g.: --age-file gs://path_to/age.csv::1::2',
     callback=utils.ColumnInFile.callback,
 )
 @click.option(
     '--reported-sex-file',
-    'reported_sex_data',
+    'reported_sex_datas',
+    multiple=True,
     help='format: --reported-sex-file <tsv-or-csv-path>::<sample-col>::<sex-col>. '
     'E.g.: --reported-sex-file gs://path_to/reported_sex.tsv::0::1',
     callback=utils.ColumnInFile.callback,
@@ -176,8 +178,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     output_projects: Optional[List[str]],  # pylint: disable=unused-argument
     use_gnarly_genotyper: bool,
     ped_fpath: Optional[str],
-    age_data: Optional[utils.ColumnInFile],
-    reported_sex_data: Optional[utils.ColumnInFile],
+    age_datas: Optional[List[utils.ColumnInFile]],
+    reported_sex_datas: Optional[List[utils.ColumnInFile]],
     filter_cutoffs_path: str,
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
@@ -259,8 +261,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         input_tsv_path=input_tsv_path,
         skip_samples=skip_samples,
         check_existence=check_existence,
-        age_data=age_data,
-        reported_sex_data=reported_sex_data,
+        age_datas=age_datas,
+        reported_sex_datas=reported_sex_datas,
         add_validation_samples=add_validation_samples,
     )
 
@@ -423,8 +425,8 @@ def find_inputs(
     input_tsv_path: Optional[str] = None,
     skip_samples: Optional[Collection[str]] = None,
     check_existence: bool = True,
-    age_data: Optional[utils.ColumnInFile] = None,
-    reported_sex_data: Optional[utils.ColumnInFile] = None,
+    age_datas: Optional[List[utils.ColumnInFile]] = None,
+    reported_sex_datas: Optional[List[utils.ColumnInFile]] = None,
     add_validation_samples: bool = True,
 ) -> pd.DataFrame:
     """
@@ -447,10 +449,12 @@ def find_inputs(
             skip_samples=skip_samples,
             check_existence=check_existence,
         )
-    if age_data:
-        samples_df = _add_age(samples_df, age_data)
-    if reported_sex_data:
-        samples_df = _add_reported_sex(samples_df, reported_sex_data)
+    if age_datas:
+        for age_data in age_datas:
+            samples_df = _add_age(samples_df, age_data)
+    if reported_sex_datas:
+        for reported_sex_data in reported_sex_datas:
+            samples_df = _add_reported_sex(samples_df, reported_sex_data)
     if add_validation_samples:
         samples_df = sm_utils.add_validation_samples(samples_df)
     samples_df.to_csv(output_tsv_path, index=False, sep='\t', na_rep='NA')
@@ -462,12 +466,15 @@ def _add_age(samples_df: pd.DataFrame, data: utils.ColumnInFile) -> pd.DataFrame
     data_by_external_id = data.parse(list(samples_df['external_id']))
     for external_id, value in data_by_external_id.items():
         try:
-            age = int(value)
+            age = float(value)
         except ValueError:
             pass
         else:
             samples_df = samples_df.set_index('external_id', drop=False)
-            samples_df.loc[external_id, ['age']] = age
+            try:
+                samples_df.loc[external_id, ['age']] = int(age)
+            except ValueError:
+                pass
             samples_df = samples_df.set_index('s', drop=False)
     return samples_df
 
@@ -477,9 +484,9 @@ def _add_reported_sex(
 ) -> pd.DataFrame:
     data_by_external_id = data.parse(list(samples_df['external_id']))
     for external_id, value in data_by_external_id.items():
-        if value == 'M':
+        if value in ['M', 'Male', '1']:
             sex = '1'
-        elif value == 'F':
+        elif value in ['F', 'Female', '2']:
             sex = '2'
         else:
             sex = '0'

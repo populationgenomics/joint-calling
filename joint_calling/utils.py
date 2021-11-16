@@ -135,38 +135,44 @@ class ColumnInFile:
     data_col: int
 
     @staticmethod
-    def callback(_, param, value):
+    def callback(_, param, values):
         """
         Callback for using with click: @click.option(callback=ColumnInFile.callback)
+        Assumes the click option specified with multiple=True, so values is a List
         """
-        if value is None:
+        if values is None:
             return None
 
-        items = value.split('::')
-        if len(items) != 3:
-            raise click.BadParameter(
-                f'Format for the command line parameter {param.name}: '
-                f'<fpath>::<column-number>::<column-number>, got: {value}'
-            )
-        fpath, sample_col, data_col = items
-        try:
-            sample_col = int(sample_col)
-        except ValueError as e:
-            raise click.BadParameter(
-                f'Column number in {param.name} must be an integrer, '
-                f'got 2nd column: {sample_col}'
-            ) from e
-        try:
-            data_col = int(data_col)
-        except ValueError as e:
-            raise click.BadParameter(
-                f'Column number in {param.name} must be an integrer, '
-                f'got 3nd column: {data_col}'
-            ) from e
-        if not file_exists(fpath):
-            raise click.BadParameter(f'File doesn\'t exist: {fpath}')
+        datacols = []
+        for value in values:
+            logger.info(f'Parsing metadata {value}')
+            items = value.split('::')
+            if len(items) != 3:
+                raise click.BadParameter(
+                    f'Format for the command line parameter {param.name}: '
+                    f'<fpath>::<column-number>::<column-number>, got: {value}'
+                )
+            fpath, sample_col, data_col = items
+            try:
+                sample_col = int(sample_col)
+            except ValueError as e:
+                raise click.BadParameter(
+                    f'Column number in {param.name} must be an integrer, '
+                    f'got 2nd column: {sample_col}'
+                ) from e
+            try:
+                data_col = int(data_col)
+            except ValueError as e:
+                raise click.BadParameter(
+                    f'Column number in {param.name} must be an integrer, '
+                    f'got 3nd column: {data_col}'
+                ) from e
+            if not file_exists(fpath):
+                raise click.BadParameter(f'File doesn\'t exist: {fpath}')
 
-        return ColumnInFile(fpath, sample_col, data_col)
+            datacols.append(ColumnInFile(fpath, sample_col, data_col))
+
+        return datacols
 
     def parse(self, expected_samples: List[str]):
         """
@@ -175,9 +181,9 @@ class ColumnInFile:
         """
         data_by_sample = dict()
         with hl.hadoop_open(self.fpath) as fh:
-            lines = [line.strip() for line in fh if line.strip()]
+            lines = [line.rstrip('\n') for line in fh if line.strip()]
         sep = '\t' if lines[0].count('\t') > lines[0].count(',') else ','
-        logger.info(f'Parsing {self.fpath} with sep="{sep}"')
+        logger.info(f'Parsing {self.fpath} with sep="{repr(sep)}"')
         for line in lines:
             items = line.split(sep)
             if self.sample_col < len(items):
