@@ -162,6 +162,11 @@ logger.setLevel(logging.INFO)
     default=True,
     is_flag=True,
 )
+@click.option(
+    '--assume-gvcfs-are-ready',
+    'assume_gvcfs_are_ready',
+    is_flag=True,
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -185,6 +190,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     check_existence: bool,
     add_validation_samples: bool,
     do_filter_excesshet: bool,
+    assume_gvcfs_are_ready: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -269,6 +275,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         output_suffix=project_output_suffix,
         overwrite=overwrite,
         analysis_project=analysis_project,
+        assume_gvcfs_are_ready=assume_gvcfs_are_ready,
     )
 
     relatedness_bucket = join(analysis_bucket, 'relatedness')
@@ -441,7 +448,7 @@ def find_inputs(
             check_existence=check_existence,
         )
     if age_data:
-        samples_df = _add_sex(samples_df, age_data)
+        samples_df = _add_age(samples_df, age_data)
     if reported_sex_data:
         samples_df = _add_reported_sex(samples_df, reported_sex_data)
     if add_validation_samples:
@@ -451,7 +458,7 @@ def find_inputs(
     return samples_df
 
 
-def _add_sex(samples_df: pd.DataFrame, data: utils.ColumnInFile) -> pd.DataFrame:
+def _add_age(samples_df: pd.DataFrame, data: utils.ColumnInFile) -> pd.DataFrame:
     data_by_external_id = data.parse(list(samples_df['external_id']))
     for external_id, value in data_by_external_id.items():
         try:

@@ -27,6 +27,7 @@ def add_pre_combiner_jobs(
     output_suffix: str,
     overwrite: bool,
     analysis_project: str,  # pylint: disable=unused-argument
+    assume_gvcfs_are_ready: bool = False,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
@@ -38,12 +39,6 @@ def add_pre_combiner_jobs(
 
     logger.info(f'Samples DF:\n{samples_df}')
     jobs_by_sample = defaultdict(list)
-    gvcfs_tsv_path = join(pre_combiner_bucket, 'gvcfs.tsv')
-    if utils.can_reuse(gvcfs_tsv_path, overwrite):
-        samples_df = pd.read_csv(gvcfs_tsv_path, sep='\t', na_values='NA').set_index(
-            's', drop=False
-        )
-        return samples_df, gvcfs_tsv_path, []
 
     def get_project_bucket(_proj):
         if _proj in ['syndip', 'giab']:
@@ -60,7 +55,9 @@ def add_pre_combiner_jobs(
         proj_bucket = get_project_bucket(proj)
 
         output_gvcf_path = join(proj_bucket, 'gvcf', f'{sn}.g.vcf.gz')
-        if not utils.can_reuse(output_gvcf_path, overwrite):
+        if not assume_gvcfs_are_ready and not utils.can_reuse(
+            output_gvcf_path, overwrite
+        ):
             j = _add_postproc_gvcf_jobs(
                 b=b,
                 gvcf_path=gvcf_path,
@@ -143,6 +140,7 @@ def add_pre_combiner_jobs(
         jobs.extend(js)
 
     # Saving the resulting DataFrame as a TSV file
+    gvcfs_tsv_path = join(pre_combiner_bucket, 'gvcfs.tsv')
     samples_df.to_csv(gvcfs_tsv_path, index=False, sep='\t', na_rep='NA')
     logger.info(f'Saved combiner-ready GVCF data to {gvcfs_tsv_path}')
     return samples_df, gvcfs_tsv_path, jobs

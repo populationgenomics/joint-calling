@@ -226,6 +226,8 @@ default_entry = {
     'realign_cram': '-',
     'realign_crai': '-',
     'batch': '-',
+    'resequencing_label': '-',
+    'primary_study': '-',
     'operation': 'add',
     'flowcell_lane': '-',
     'library_id': '-',
@@ -346,6 +348,9 @@ def find_inputs_from_db(
         for s in samples:
             sample_id = s['id']
             external_id = s['external_id']
+            resequencing_label = '-'
+            if '-' in external_id:
+                external_id, resequencing_label = external_id.split('-', maxsplit=1)
             seq_meta = seq_meta_by_sid[sample_id]
             gvcf_path = gvcf_by_sid[s['id']]
 
@@ -376,14 +381,34 @@ def find_inputs_from_db(
                     'project': proj,
                     'topostproc_gvcf': gvcf_path,
                     'batch': seq_meta.get('batch', '-'),
-                    'flowcell_lane': seq_meta.get('sample.flowcell_lane', '-'),
-                    'library_id': seq_meta.get('sample.library_id', '-'),
-                    'platform': seq_meta.get('sample.platform', '-'),
-                    'centre': seq_meta.get('sample.centre', '-'),
-                    'r_contamination': seq_meta.get('raw_data.FREEMIX'),
-                    'r_chimera': seq_meta.get('raw_data.PCT_CHIMERAS'),
-                    'r_duplication': seq_meta.get('raw_data.PERCENT_DUPLICATION'),
-                    'median_insert_size': seq_meta.get('raw_data.MEDIAN_INSERT_SIZE'),
+                    'flowcell_lane': seq_meta.get(
+                        'sample.flowcell_lane', seq_meta.get('flowcell_lane', '-')
+                    ),
+                    'library_id': seq_meta.get(
+                        'sample.library_id', seq_meta.get('library_id', '-')
+                    ),
+                    'platform': seq_meta.get(
+                        'sample.platform', seq_meta.get('platform', '-')
+                    ),
+                    'centre': seq_meta.get(
+                        'sample.centre', seq_meta.get('centre', '-')
+                    ),
+                    'primary_study': seq_meta.get('Primary study', 'TOB'),
+                    'resequencing_label': resequencing_label,
+                    'r_contamination': seq_meta.get(
+                        'raw_data.FREEMIX', seq_meta.get('freemix')
+                    ),
+                    'r_chimera': seq_meta.get(
+                        'raw_data.PCT_CHIMERAS', seq_meta.get('pct_chimeras')
+                    ),
+                    'r_duplication': seq_meta.get(
+                        'raw_data.PERCENT_DUPLICATION',
+                        seq_meta.get('percent_duplication'),
+                    ),
+                    'median_insert_size': seq_meta.get(
+                        'raw_data.MEDIAN_INSERT_SIZE',
+                        seq_meta.get('median_insert_size'),
+                    ),
                 }
             )
             inputs.append(entry)

@@ -35,6 +35,8 @@ default_entry = {
     'realign_cram': '-',
     'realign_crai': '-',
     'batch': '-',
+    'resequencing_label': '-',
+    'primary_study': '-',
     'operation': 'add',
     'flowcell_lane': '-',
     'library_id': '-',
