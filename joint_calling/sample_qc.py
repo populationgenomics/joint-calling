@@ -163,6 +163,12 @@ def infer_sex(
         gt_expr='LGT',
     )
 
+    # Adding chrX het/hom count as another sex check
+    chrx_mt = hl.filter_intervals(mt, [hl.parse_locus_interval('chrX')])
+    chrx_ht = hl.sample_qc(chrx_mt).cols()
+    ht = ht.annotate(chrx_qc=chrx_ht[ht.key].sample_qc)
+    ht = ht.annotate(chrx_r_het_hom_var=ht.chrx_qc.r_het_hom_var)
+
     return ht.checkpoint(out_ht_path, overwrite=True)
 
 
