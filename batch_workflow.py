@@ -354,7 +354,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     var_qc_job = add_variant_qc_jobs(
         b=b,
-        work_bucket=join(tmp_bucket, 'variant_qc'),
+        work_bucket=join(analysis_bucket, 'variant_qc'),
         web_bucket=join(web_bucket, 'variant_qc'),
         raw_combined_mt_path=raw_combined_mt_path,
         hard_filter_ht_path=hard_filter_ht_path,

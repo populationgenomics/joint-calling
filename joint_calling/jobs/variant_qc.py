@@ -237,6 +237,7 @@ def add_variant_qc_jobs(
             f'{utils.SCRIPTS_DIR}/make_finalised_mt.py --overwrite '
             f'--mt {raw_combined_mt_path} '
             f'--final-filter-ht {final_filter_ht_path} '
+            f'--freq-ht {freq_ht_path} '
             f'--out-mt {out_filtered_combined_mt_path} '
             f'--meta-ht {meta_ht_path} ',
             job_name=job_name,

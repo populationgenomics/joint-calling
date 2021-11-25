@@ -1,5 +1,5 @@
 ANALYSIS_PROJECT := tob-wgs
-VERSION := v6
+VERSION := v7
 TEST_VERSION := v6-26
 SCATTER_COUNT_TEST := 20
 SCATTER_COUNT_PROD := 50
@@ -139,7 +139,8 @@ main_to_main_cmd:
 	--age-file gs://cpg-tob-wgs-main-analysis/metadata/age.csv::0::1 \
 	--age-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::3 \
 	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::4 \
-	--no-filter-excesshet
+	--no-filter-excesshet \
+	--assume-gvcfs-are-ready \
 	$(REUSE_ARG)
 
 .PHONY: transfer_nagim
