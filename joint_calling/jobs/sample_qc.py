@@ -305,7 +305,7 @@ def add_sample_qc_jobs(
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             job_name=job_name,
         )
-        metadata_qc_job.depends_on(regressed_filters_job)
+        metadata_qc_job.depends_on(regressed_filters_job, sample_qc_hardfilter_job)
     else:
         metadata_qc_job = b.new_job(f'{job_name} [reuse]')
 

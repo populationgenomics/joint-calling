@@ -233,7 +233,7 @@ def add_variant_qc_jobs(
 
     job_name = 'Making final MT'
     if not utils.can_reuse(out_filtered_combined_mt_path, overwrite):
-        final_job = cluster.add_job(
+        final_mt_j = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/make_finalised_mt.py --overwrite '
             f'--mt {raw_combined_mt_path} '
             f'--final-filter-ht {final_filter_ht_path} '
@@ -242,11 +242,25 @@ def add_variant_qc_jobs(
             f'--meta-ht {meta_ht_path} ',
             job_name=job_name,
         )
-        final_job.depends_on(eval_job)
+        final_mt_j.depends_on(eval_job)
     else:
-        final_job = b.new_job(f'{job_name} [reuse]')
+        final_mt_j = b.new_job(f'{job_name} [reuse]')
 
-    return final_job
+    job_name = 'Making final VCF'
+    out_vcf_path = out_filtered_combined_mt_path.replace('.mt', '.vcf.gz')
+    if not utils.can_reuse([out_vcf_path], overwrite):
+        final_vcf_j = cluster.add_job(
+            f'{utils.SCRIPTS_DIR}/prepare_vcf_data_release.py --overwrite '
+            f'--mt_path {out_filtered_combined_mt_path} '
+            f'--export_vcf --prepare_vcf_header_dict --prepare_vcf_ht '
+            f'--out_vcf_path {out_vcf_path} '
+            f'--work_dir {work_bucket} ',
+            job_name=job_name,
+        )
+        final_vcf_j.depends_on(final_mt_j)
+    else:
+        final_vcf_j = b.new_job(f'{job_name} [reuse]')
+    return final_vcf_j
 
 
 def add_rf_eval_jobs(
