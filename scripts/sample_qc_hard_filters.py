@@ -124,8 +124,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     )
 
     # Calculate separately the number of non-gnomAD SNPs
-    sqc.snps_not_in_gnomad(
-        mt=mt_split,
+    sqc.cpg_custom_metrics(
+        split_mt=mt_split,
         tmp_bucket=tmp_bucket,
         out_ht_path=out_custom_qc_ht_path,
         overwrite=overwrite,
