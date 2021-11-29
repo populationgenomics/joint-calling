@@ -99,41 +99,54 @@ def cpg_custom_metrics(
 
     Resulting table fields:
         nongnomad_snps: int
-        chrx_r_het_hom_var: float
+        chrX_r_het_hom_var: float
 
     :param split_mt: MatrixTable, with multiallelics split, GT field for genotype
     :param tmp_bucket: bucket path to write checkpoints
     :param out_ht_path: location to write the result to
     :param overwrite: overwrite checkpoints if they exist
     :param gnomad_path: path to GnomAD Hail Table
-    :return: per-sample Table.
+    :return: per-sample Ta§ble.
     """
-    logger.info('Count the number of variants per sample that do not occur in gnomAD')
     out_ht_path = out_ht_path or join(tmp_bucket, 'custom_qc.ht')
     if utils.can_reuse(out_ht_path, overwrite):
         return hl.read_table(out_ht_path)
 
-    split_mt = split_mt.filter_rows(hl.len(split_mt.alleles) > 1)
-    split_mt = split_mt.filter_rows(hl.is_snp(split_mt.alleles[0], split_mt.alleles[1]))
+    def _count_gnomad_snps(mt, ht):
+        logger.info(
+            'Count the number of variants per sample that do not occur in gnomAD'
+        )
 
-    # Get entries (table annotated with locus, allele, sample)
-    ht = split_mt.entries()
+        mt = mt.filter_rows(hl.len(mt.alleles) > 1)
+        mt = mt.filter_rows(hl.is_snp(mt.alleles[0], mt.alleles[1]))
 
-    # Filter to those variants that are not in gnomad
-    gnomad = hl.read_table(gnomad_path)
-    ht = ht.key_by('locus', 'alleles').anti_join(gnomad)
-    # Count non-gnomad variants for each sample
-    stats_ht = ht.group_by(ht.s).aggregate(nongnomad_snps=hl.agg.count())
+        # Get entries (table annotated with locus, allele, sample)
+        entries_ht = mt.entries()
 
-    logger.info('Counting het/hom ratio on chrX as an extra sex check')
-    # Number of hom/hem on chrX, as an extra sex check measure
-    chrx_mt = hl.filter_intervals(split_mt, [hl.parse_locus_interval('chrX')])
-    chrx_ht = hl.sample_qc(chrx_mt).cols()
-    stats_ht = stats_ht.annotate(chrx_qc=chrx_ht[stats_ht.key].sample_qc)
-    stats_ht = stats_ht.annotate(chrx_r_het_hom_var=stats_ht.chrx_qc.r_het_hom_var)
+        # Filter to those variants that are not in gnomad
+        gnomad_ht = hl.read_table(gnomad_path)
+        entries_ht = entries_ht.key_by('locus', 'alleles').anti_join(gnomad_ht)
 
-    # Writing result
-    return stats_ht.checkpoint(out_ht_path, overwrite=True)
+        # Count non-gnomad variants for each sample
+        cols_ht = entries_ht.group_by(entries_ht.s).aggregate(
+            nongnomad_snps=hl.agg.count()
+        )
+        ht = ht.annotate(nongnomad_snps=cols_ht.nongnomad_snps)
+        return ht
+
+    def _chrx_het_hom(mt, ht):
+        logger.info('Counting het/hom ratio on chrX as an extra sex check')
+        # Number of hom/hem on chrX, as an extra sex check measure
+        chrx_mt = hl.filter_intervals(mt, [hl.parse_locus_interval('chrX')])
+        chrx_ht = hl.sample_qc(mt).cols()
+        ht = ht.annotate(chrX_sample_qc=chrx_ht[ht.key].sample_qc)
+        ht = ht.annotate(chrX_r_het_hom_var=ht.chrX_sample_qc.r_het_hom_var)
+        return ht
+
+    ht = split_mt.cols()
+    ht = _count_gnomad_snps(split_mt, ht)
+    ht = _chrx_het_hom(split_mt, ht)
+    return ht.checkpoint(out_ht_path, overwrite=True)
 
 
 def infer_sex(

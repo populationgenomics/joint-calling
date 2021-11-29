@@ -228,7 +228,7 @@ def _generate_metadata(
 
         meta_ht = meta_ht.annotate(
             sample_qc=sample_qc_ht[meta_ht.key].bi_allelic_sample_qc,
-            nongnomad_snps=custom_qc_ht[meta_ht.key].nongnomad_snps,
+            custom_qc=custom_qc_ht[meta_ht.key],
             **hard_filtered_samples_ht[meta_ht.key],
             **regressed_metrics_ht[meta_ht.key],
             **pop_ht[meta_ht.key],
