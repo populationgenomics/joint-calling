@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 from typing import NamedTuple
 import hailtop.batch as hb
-from sample_metadata.api.sample_api import SampleApi
+from sample_metadata.apis import SampleApi
 from joint_calling.upload_processor import batch_move_files, SampleGroup, FileGroup
 
 
