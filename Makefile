@@ -59,13 +59,15 @@ test_to_tmp:
 	batch_workflow.py \
 	--scatter-count $(SCATTER_COUNT_TEST) \
 	--namespace tmp \
-	--analysis-project $(ANALYSIS_PROJECT) \
 	--input-project tob-wgs \
+	--analysis-project $(ANALYSIS_PROJECT) \
 	--output-version ${TEST_VERSION} \
 	--keep-scratch \
 	--pca-pop ${PCA_POP} \
 	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/reported_sex.tsv::1::2 \
 	--age-file gs://cpg-tob-wgs-main-analysis/metadata/age.csv::0::1 \
+	--age-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::3 \
+	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::4 \
 	$(REUSE_ARG)
 
 .PHONY: test_to_test
@@ -85,6 +87,8 @@ test_to_test:
 	--pca-pop ${PCA_POP} \
 	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/reported_sex.tsv::1::2 \
 	--age-file gs://cpg-tob-wgs-main-analysis/metadata/age.csv::0::1 \
+	--age-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::3 \
+	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::4 \
 	$(REUSE_ARG)
 
 .PHONY: main_to_main
@@ -100,24 +104,7 @@ main_to_main:
 	--input-project tob-wgs \
 	--analysis-project $(ANALYSIS_PROJECT) \
 	--output-version $(VERSION) \
-	--pca-pop ${PCA_POP} \
-	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/reported_sex.tsv::1::2 \
-	--age-file gs://cpg-tob-wgs-main-analysis/metadata/age.csv::0::1 \
-	$(REUSE_ARG)
-
-.PHONY: main_to_main
-main_to_main:
-	analysis-runner \
-	--dataset $(ANALYSIS_PROJECT) \
-	--output-dir "joint-calling/main-to-main" \
-	--description "Joint calling main-to-main" \
-	--access-level full \
-	batch_workflow.py \
-	--scatter-count $(SCATTER_COUNT_PROD) \
-	--namespace main \
-	--input-project tob-wgs \
-	--analysis-project $(ANALYSIS_PROJECT) \
-	--output-version $(VERSION) \
+	--keep-scratch \
 	--pca-pop ${PCA_POP} \
 	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/reported_sex.tsv::1::2 \
 	--age-file gs://cpg-tob-wgs-main-analysis/metadata/age.csv::0::1 \
