@@ -247,12 +247,18 @@ def _generate_metadata(
 
         meta_ht = meta_ht.annotate(
             hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
-            # hard_filters + related + qc_metrics_filters:
-            release_filters=add_filters_expr(
-                filters={'related': meta_ht.related} if not release_related else {},
-                current_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters),
-            ),
         )
+        if release_related:
+            meta_ht = meta_ht.annotate(
+                release_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters),
+            )
+        else:
+            meta_ht = meta_ht.annotate(
+                release_filters=add_filters_expr(
+                    filters={'related': meta_ht.related},
+                    current_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters),
+                ),
+            )
 
         meta_ht = meta_ht.annotate(
             high_quality=(hl.len(meta_ht.hard_filters) == 0),
