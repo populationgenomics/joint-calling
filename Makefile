@@ -52,7 +52,7 @@ sleep:
 	--analysis-project thousand-genomes \
 	--input-project thousand-genomes \
 	--output-version 1kg_concordance_test \
-	--keep-scratc
+	--keep-scratch
 
 .PHONY: tob_wgs_tmp
 tob_wgs_tmp:
