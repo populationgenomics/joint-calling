@@ -12,12 +12,12 @@ from typing import List, Optional, Tuple
 import hailtop.batch as hb
 
 # Import SampleAPI
-from sample_metadata.api import SampleApi
-from sample_metadata.api import AnalysisApi
-from sample_metadata.api import SequenceApi
-from sample_metadata.models.analysis_type import AnalysisType
-from sample_metadata.models.analysis_status import AnalysisStatus
-from sample_metadata.models.analysis_model import AnalysisModel
+from sample_metadata.apis import SampleApi
+from sample_metadata.apis import AnalysisApi
+from sample_metadata.apis import SequenceApi
+from sample_metadata.model.analysis_type import AnalysisType
+from sample_metadata.model.analysis_status import AnalysisStatus
+from sample_metadata.model.analysis_model import AnalysisModel
 
 from joint_calling.upload_processor import batch_move_files, SampleGroup, FileGroup
 
@@ -140,7 +140,7 @@ def create_analysis_in_sm_db(
     new_analysis = AnalysisModel(
         sample_ids=[internal_id],
         type=analysis_type,
-        status=AnalysisStatus.COMPLETED,
+        status=AnalysisStatus('completed'),
         output=output_path,
     )
 
@@ -248,7 +248,7 @@ def run_processor():
             sample_group,
             project,
             output_path,
-            AnalysisType.GVCF,
+            AnalysisType('gvcf'),
         )
         status_job.depends_on(validate_job)
         main_jobs.append(status_job)
@@ -286,7 +286,7 @@ def run_processor():
             sample_group,
             project,
             output_path,
-            AnalysisType.CRAM,
+            AnalysisType('cram'),
         )
         status_job.depends_on(validate_job)
         archive_jobs.append(status_job)
