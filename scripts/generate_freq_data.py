@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 
 """
-Generates input for random_forest.py:
-- frequencies.ht
+Generate frequency annotations (AF, AC, AN, InbreedingCoeff)
 """
 
 import logging
@@ -243,10 +242,18 @@ def _compute_age_hists(mt: hl.MatrixTable) -> hl.Table:
 
 
 def _calc_inbreeding_coeff(mt: hl.MatrixTable) -> hl.MatrixTable:
-    logger.info('Calculating InbreedingCoeff...')
     # NOTE: This is not the ideal location to calculate this, but added here
     # to avoid another densify
-    mt = mt.annotate_rows(InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT))
+    logger.info('Calculating InbreedingCoeff...')
+    # the algorithm assumes all samples are unrelated:
+    unrelated_mt = mt.filter_cols(~mt.meta.related)
+    logger.info(
+        f'Using {unrelated_mt.count_cols()}/{mt.count_cols()} unrelated samples'
+    )
+    unrelated_mt = unrelated_mt.annotate_rows(
+        InbreedingCoeff=bi_allelic_site_inbreeding_expr(unrelated_mt.GT)
+    )
+    mt = mt.annotate_rows(InbreedingCoeff=unrelated_mt[mt.row_key].InbreedingCoeff)
     return mt
 
 

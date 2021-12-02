@@ -28,11 +28,11 @@ def add_sample_qc_jobs(
     tmp_bucket: str,
     analysis_bucket: str,
     relatedness_bucket: str,
+    release_related: bool,
     web_bucket: str,
     filter_cutoffs_path: Optional[str],
     overwrite: bool,
     scatter_count: int,
-    sample_count: int,  # pylint: disable=unused-argument
     combiner_job: Job,
     num_ancestry_pcs: int,
     pca_pop: Optional[str] = None,
@@ -296,7 +296,8 @@ def add_sample_qc_jobs(
             f'--hail-sample-qc-ht {hail_sample_qc_ht_path} '
             f'--regressed-filtes-ht {regressed_metrics_ht_path} '
             f'--relatedness-ht {relatedness_ht_path} '
-            f'--pop-ht {inferred_pop_ht_path} '
+            + (f'--release-related ' if release_related else '')
+            + f'--pop-ht {inferred_pop_ht_path} '
             f'--tmp-bucket {tmp_bucket} '
             f'--out-meta-ht {meta_ht_path} '
             f'--out-meta-tsv {meta_tsv_path} '

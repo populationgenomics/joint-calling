@@ -34,7 +34,6 @@ def add_variant_qc_jobs(
     is_test: bool,
     depends_on: Optional[List[Job]] = None,
     run_rf: bool = False,
-    do_filter_excesshet: bool = True,
 ) -> Job:
     """
     Add variant QC Hail-query jobs
@@ -197,7 +196,6 @@ def add_variant_qc_jobs(
                 scatter_count=scatter_count,
                 output_vcf_path=vqsred_vcf_path,
                 overwrite=overwrite,
-                do_filter_excesshet=do_filter_excesshet,
             )
         else:
             vqsr_vcf_job = b.new_job('AS-VQSR [reuse]')
@@ -245,22 +243,7 @@ def add_variant_qc_jobs(
         final_mt_j.depends_on(eval_job)
     else:
         final_mt_j = b.new_job(f'{job_name} [reuse]')
-
-    job_name = 'Making final VCF'
-    out_vcf_path = out_filtered_combined_mt_path.replace('.mt', '.vcf.gz')
-    if not utils.can_reuse([out_vcf_path], overwrite):
-        final_vcf_j = cluster.add_job(
-            f'{utils.SCRIPTS_DIR}/prepare_vcf_data_release.py --overwrite '
-            f'--mt_path {out_filtered_combined_mt_path} '
-            f'--export_vcf --prepare_vcf_header_dict --prepare_vcf_ht '
-            f'--out_vcf_path {out_vcf_path} '
-            f'--work_dir {work_bucket} ',
-            job_name=job_name,
-        )
-        final_vcf_j.depends_on(final_mt_j)
-    else:
-        final_vcf_j = b.new_job(f'{job_name} [reuse]')
-    return final_vcf_j
+    return final_mt_j
 
 
 def add_rf_eval_jobs(

@@ -78,7 +78,6 @@ def add_vqsr_jobs(
     scatter_count: int,
     output_vcf_path: str,
     overwrite: bool,
-    do_filter_excesshet: bool = True,
 ) -> Job:
     """
     Add jobs that perform the allele-specific VQSR variant QC
@@ -96,7 +95,6 @@ def add_vqsr_jobs(
     :param scatter_count: number of shards to patition data for scattering
     :param output_vcf_path: path to write final recalibrated VCF to
     :param overwrite: whether to not reuse existing intermediate and output files
-    :param do_filter_excesshet: perform ExcessHet filter for non-small datasets
     :return: a final Job, and a path to the VCF with VQSR annotations
     """
 
@@ -173,8 +171,7 @@ def add_vqsr_jobs(
     dbsnp_resource_vcf = dbsnp_vcf
 
     is_small_callset = gvcf_count < 1000
-    # 1. For small callsets, we don't apply the ExcessHet filtering.
-    # 2. For small callsets, we gather the VCF shards and collect QC metrics directly.
+    # For small callsets, we gather the VCF shards and collect QC metrics directly.
     # For anything larger, we need to keep the VCF sharded and gather metrics
     # collected from them.
     is_huge_callset = gvcf_count >= 100000
@@ -223,42 +220,6 @@ def add_vqsr_jobs(
 
     gathered_vcf = tabix_job.combined_vcf
     scattered_vcfs = [gathered_vcf for _ in range(scatter_count)]
-
-    if not is_small_callset and do_filter_excesshet:
-        # ExcessHet filtering applies only to callsets with a large number of samples,
-        # e.g. hundreds of unrelated samples. Small cohorts should not trigger ExcessHet
-        # filtering as values should remain small. Note cohorts of consanguinous samples
-        # will inflate ExcessHet, and it is possible to limit the annotation to founders
-        # for such cohorts by providing a pedigree file during variant calling.
-        hard_filtered_vcf_paths = [
-            join(work_bucket, 'hard_filter', f'{idx}.vcf.gz')
-            for idx in range(scatter_count)
-        ]
-        hard_filtered_vcf_jobs = [
-            add_hard_filter_step(
-                b,
-                input_vcf=gathered_vcf,
-                interval=intervals[f'interval_{idx}'],
-                excess_het_threshold=vqsr_params_d['min_excess_het'],
-                disk_size=medium_disk,
-                output_vcf_path=hard_filter_vcf_path,
-                overwrite=overwrite,
-            )
-            for hard_filter_vcf_path, idx in zip(
-                hard_filtered_vcf_paths, range(scatter_count)
-            )
-        ]
-        scattered_vcfs = [j.output_vcf for j in hard_filtered_vcf_jobs]
-        gathered_vcf_path = join(work_bucket, 'sites_only_gathered.vcf.gz')
-        gathered_vcf_j = add_sites_only_gather_vcf_step(
-            b,
-            input_vcfs=scattered_vcfs,
-            disk_size=medium_disk,
-            output_vcf_path=gathered_vcf_path,
-            overwrite=overwrite,
-        )
-        gathered_vcf_j.depends_on(hard_filtered_vcf_jobs)
-        gathered_vcf = gathered_vcf_j.output_vcf
 
     indels_variant_recalibrator_job = add_indels_variant_recalibrator_step(
         b,
@@ -501,63 +462,6 @@ def add_gnarly_genotyper_on_vcf_step(
       {f'-L {interval} ' if interval else ''} \\
       --create-output-variant-index"""
     )
-    return j
-
-
-def add_hard_filter_step(
-    b: hb.Batch,
-    input_vcf: hb.ResourceGroup,
-    excess_het_threshold: float,
-    disk_size: int,
-    interval: Optional[hb.ResourceGroup] = None,
-    output_vcf_path: Optional[str] = None,
-    overwrite: bool = False,
-) -> Job:
-    """
-    Hard-filter a large cohort callset on Excess Heterozygosity.
-
-    Applies only to large callsets (`not is_small_callset`)
-
-    Requires all samples to be unrelated.
-
-    ExcessHet estimates the probability of the called samples exhibiting excess
-    heterozygosity with respect to the null hypothesis that the samples are unrelated.
-    The higher the score, the higher the chance that the variant is a technical artifact
-    or that there is consanguinuity among the samples. In contrast to Inbreeding
-    Coefficient, there is no minimal number of samples for this annotation.
-
-    Returns: a Job object with a single output j.output_vcf of type ResourceGroup
-    """
-    j = b.new_job('AS-VQSR: HardFilter')
-    if output_vcf_path and utils.can_reuse(output_vcf_path, overwrite):
-        j.name += ' [reuse]'
-        return j
-
-    j.image(utils.GATK_IMAGE)
-    j.memory('8G')
-    j.storage(f'{disk_size}G')
-    j.declare_resource_group(
-        output_vcf={'vcf.gz': '{root}.vcf.gz', 'vcf.gz.tbi': '{root}.vcf.gz.tbi'}
-    )
-
-    j.command(
-        f"""set -euo pipefail
-
-    # Captring stderr to avoid Batch pod from crashing with OOM from millions of
-    # warning messages from VariantFiltration, e.g.:
-    # > JexlEngine - ![0,9]: 'ExcessHet > 54.69;' undefined variable ExcessHet
-    gatk --java-options -Xms6g \\
-      VariantFiltration \\
-      --filter-expression 'ExcessHet > {excess_het_threshold}' \\
-      --filter-name ExcessHet \\
-      {f'-L {interval} ' if interval else ''} \\
-      -O {j.output_vcf['vcf.gz']} \\
-      -V {input_vcf['vcf.gz']} \\
-      2> {j.stderr}
-    """
-    )
-    if output_vcf_path:
-        b.write_output(j.output_vcf, output_vcf_path.replace('.vcf.gz', ''))
     return j
 
 

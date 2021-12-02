@@ -106,7 +106,7 @@ def cpg_custom_metrics(
     :param out_ht_path: location to write the result to
     :param overwrite: overwrite checkpoints if they exist
     :param gnomad_path: path to GnomAD Hail Table
-    :return: per-sample Ta§ble.
+    :return: per-sample Table.
     """
     out_ht_path = out_ht_path or join(tmp_bucket, 'custom_qc.ht')
     if utils.can_reuse(out_ht_path, overwrite):

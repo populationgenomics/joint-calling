@@ -131,6 +131,7 @@ nagim_test:
 	--input-project tob-wgs \
 	--input-project acute-care \
 	--source-tag nagim \
+	--release-related \
 	--no-add-validation-samples \
 	--keep-scratch \
 	--output-version $(NAGIM_TEST_VERSION) \
@@ -155,6 +156,7 @@ nagim_main:
 	--input-project tob-wgs \
 	--input-project acute-care \
 	--source-tag nagim \
+	--release-related \
 	--no-add-validation-samples \
 	--keep-scratch \
 	--output-version $(NAGIM_VERSION) \

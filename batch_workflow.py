@@ -166,15 +166,18 @@ logger.setLevel(logging.INFO)
     is_flag=True,
 )
 @click.option(
-    '--filter-excesshet/--no-filter-excesshet',
-    'do_filter_excesshet',
-    default=True,
-    is_flag=True,
-)
-@click.option(
     '--assume-gvcfs-are-ready',
+    '--validate-smdb',
     'assume_gvcfs_are_ready',
     is_flag=True,
+    help='Do not validate the existence of `analysis.output` of SMDB GVCF records',
+)
+@click.option(
+    '--release-related/--release-unrelated',
+    'release_related',
+    default=False,
+    is_flag=True,
+    help='Whether to keep or remove related samples from the release',
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
@@ -199,8 +202,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     dry_run: bool,
     check_existence: bool,
     add_validation_samples: bool,
-    do_filter_excesshet: bool,
     assume_gvcfs_are_ready: bool,
+    release_related: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -349,13 +352,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         tmp_bucket=tmp_bucket,
         analysis_bucket=analysis_bucket,
         relatedness_bucket=relatedness_bucket,
+        release_related=release_related,
         web_bucket=web_bucket,
         filter_cutoffs_path=filter_cutoffs_path,
         overwrite=overwrite,
         scatter_count=scatter_count,
         combiner_job=combiner_job,
         billing_project=billing_project,
-        sample_count=len(samples_df),
         num_ancestry_pcs=num_ancestry_pcs,
         pca_pop=pca_pop,
         is_test=output_namespace in ['test', 'tmp'],
@@ -378,7 +381,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         scatter_count=scatter_count,
         is_test=output_namespace in ['test', 'tmp'],
         depends_on=[combiner_job, sample_qc_job],
-        do_filter_excesshet=do_filter_excesshet,
     )
 
     # Interacting with the sample metadata server.
