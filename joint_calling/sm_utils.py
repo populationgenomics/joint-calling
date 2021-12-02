@@ -318,7 +318,7 @@ def find_inputs_from_db(
 
         reblocked_gvcf_analysis_per_sid = find_analyses_by_sid(
             sample_ids=[s['id'] for s in samples],
-            analysis_type=AnalysisType('gvcf'),
+            analysis_type='gvcf',
             project=proj,
             meta=dict(staging=False, **meta),
         )
@@ -328,7 +328,7 @@ def find_inputs_from_db(
             staging_gvcf_analysis_per_sid = find_analyses_by_sid(
                 sample_ids=[s['id'] for s in samples],
                 project=proj,
-                analysis_type=AnalysisType('gvcf'),
+                analysis_type='gvcf',
                 meta=dict(staging=True, **meta),
             )
 
