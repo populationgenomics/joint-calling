@@ -131,7 +131,7 @@ def cpg_custom_metrics(
         cols_ht = entries_ht.group_by(entries_ht.s).aggregate(
             nongnomad_snps=hl.agg.count()
         )
-        ht = ht.annotate(nongnomad_snps=cols_ht.nongnomad_snps)
+        ht = ht.annotate(nongnomad_snps=cols_ht[ht.key].nongnomad_snps)
         return ht
 
     def _chrx_het_hom(mt, ht):
