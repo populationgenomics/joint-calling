@@ -19,7 +19,8 @@ import click
 import pandas as pd
 import hailtop.batch as hb
 from analysis_runner import dataproc
-from sample_metadata import AnalysisApi, AnalysisModel
+from sample_metadata.apis import AnalysisApi
+from sample_metadata.models import AnalysisModel, AnalysisStatus, AnalysisType
 
 from joint_calling import utils
 from joint_calling import sm_utils
@@ -53,8 +54,14 @@ logger.setLevel(logging.INFO)
     help='Only read samples that belong to these project(s). Can be multiple.',
 )
 @click.option(
+    '--source-tag',
+    'source_tag',
+    help='Filter analysis entries by this tag to get GVCF inputs',
+)
+@click.option(
     '--input-tsv',
     'input_tsv_path',
+    help='Instead of pulling samples from the sample-metadata, use this TSV directly',
 )
 @click.option('--output-version', 'output_version', type=str, required=True)
 @click.option(
@@ -173,6 +180,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     output_namespace: str,
     analysis_project: str,
     input_projects: List[str],  # pylint: disable=unused-argument
+    source_tag: Optional[str],
     input_tsv_path: Optional[str],  # pylint: disable=unused-argument
     output_version: str,
     output_projects: Optional[List[str]],  # pylint: disable=unused-argument
@@ -198,9 +206,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     if output_namespace in ['test', 'tmp']:
         tmp_bucket_suffix = 'test-tmp'
         project_output_suffix = 'test'  # from crams and gvcfs
+        input_sm_projects = [p + '-test' for p in input_projects]
     else:
         tmp_bucket_suffix = 'main-tmp'
         project_output_suffix = 'main'
+        input_sm_projects = input_projects
 
     if output_namespace in ['test', 'main']:
         output_suffix = output_namespace
@@ -257,7 +267,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     samples_df = find_inputs(
         tmp_bucket=tmp_bucket,
         overwrite=overwrite,
-        input_projects=input_projects,
+        input_projects=input_sm_projects,
+        source_tag=source_tag,
         input_tsv_path=input_tsv_path,
         skip_samples=skip_samples,
         check_existence=check_existence,
@@ -374,10 +385,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     aapi = AnalysisApi()
     # 1. Create a "queued" analysis
     am = AnalysisModel(
-        type='joint-calling',
+        type=AnalysisType('joint-calling'),
+        status=AnalysisStatus('queued'),
         output=filtered_combined_mt_path,
-        status='queued',
-        sample_ids=samples_df.s,
+        sample_ids=list(samples_df.s),
     )
     try:
         aid = aapi.create_new_analysis(project=analysis_project, analysis_model=am)
@@ -422,6 +433,7 @@ def find_inputs(
     tmp_bucket: str,
     overwrite: bool,
     input_projects: List[str],
+    source_tag: Optional[str] = None,
     input_tsv_path: Optional[str] = None,
     skip_samples: Optional[Collection[str]] = None,
     check_existence: bool = True,
@@ -430,7 +442,10 @@ def find_inputs(
     add_validation_samples: bool = True,
 ) -> pd.DataFrame:
     """
-    Find inputs, make a sample data DataFrame, save to a TSV file
+    Find inputs, make a sample data DataFrame, save to a TSV file.
+
+    To specify where to search raw GVCFs, specify `raw_gvcf_source_tag` which
+    corresponds with meta.source value in 'in-progress 'analysis entries
     """
     output_tsv_path = input_tsv_path or join(tmp_bucket, 'samples.tsv')
 
@@ -448,6 +463,7 @@ def find_inputs(
             input_projects,
             skip_samples=skip_samples,
             check_existence=check_existence,
+            source_tag=source_tag,
         )
     if age_datas:
         for age_data in age_datas:

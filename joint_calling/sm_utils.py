@@ -10,13 +10,21 @@ from typing import List, Dict, Optional, Set, Collection
 import pandas as pd
 from hailtop.batch import Batch
 from hailtop.batch.job import Job
-from sample_metadata import (
+
+from sample_metadata.apis import (
     AnalysisApi,
     SequenceApi,
     SampleApi,
-    exceptions,
 )
+from sample_metadata.models import (
+    AnalysisStatus,
+    AnalysisType,
+    AnalysisQueryModel,
+)
+from sample_metadata import exceptions
+
 from joint_calling import utils
+
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -39,6 +47,8 @@ class Analysis:
     status: str
     sample_ids: Set[str]
     output: Optional[str]
+    timestamp_completed: str
+    meta: Dict
 
 
 def _parse_analysis(data: Dict) -> Optional[Analysis]:
@@ -59,6 +69,8 @@ def _parse_analysis(data: Dict) -> Optional[Analysis]:
         status=data['status'],
         sample_ids=set(data.get('sample_ids', [])),
         output=data.get('output', None),
+        timestamp_completed=data.get('timestamp_completed', None),
+        meta=data.get('meta', {}),
     )
     return a
 
@@ -86,8 +98,10 @@ def find_joint_calling_analysis(
 
 def find_analyses_by_sid(
     sample_ids: Collection[str],
-    analysis_project: str,
+    project: str,
     analysis_type: str,
+    analysis_status: str = 'completed',
+    meta: Optional[Dict] = None,
 ) -> Dict[str, Analysis]:
     """
     Query the DB to find the last completed analysis for the type and samples,
@@ -95,19 +109,27 @@ def find_analyses_by_sid(
     sample (e.g. cram, gvcf)
     """
     analysis_per_sid: Dict[str, Analysis] = dict()
-    datas = aapi.get_latest_analysis_for_samples_and_type(
-        project=analysis_project,
-        analysis_type=analysis_type,
-        request_body=sample_ids,
+
+    datas = aapi.query_analyses(
+        AnalysisQueryModel(
+            projects=[project],
+            type=AnalysisType(analysis_type),
+            status=AnalysisStatus(analysis_status),
+            sample_ids=sample_ids,
+            meta=meta or {},
+        )
     )
+
     for data in datas:
         a = _parse_analysis(data)
         if not a:
             continue
         assert a.type == analysis_type, data
-        assert a.status == 'completed', data
+        assert a.status == analysis_status, data
         assert len(a.sample_ids) == 1, data
-        analysis_per_sid[list(a.sample_ids)[0]] = a
+        sid = list(a.sample_ids)[0]
+        analysis_per_sid[sid] = a
+
     return analysis_per_sid
 
 
@@ -217,6 +239,7 @@ default_entry = {
     's': None,
     'external_id': None,
     'project': None,
+    'source': '-',
     'continental_pop': '-',
     'subpop': '-',
     'topostproc_gvcf': '-',
@@ -249,10 +272,14 @@ def find_inputs_from_db(
     input_projects: List[str],
     skip_samples: Optional[Collection[str]] = None,
     check_existence: bool = True,
+    source_tag: Optional[str] = None,
 ) -> pd.DataFrame:
     """
-    Determine input samples and pull input files and metadata from
-    the CPG sample-metadata server database.
+    Determine input samples and pull input files and metadata from the CPG
+    sample-metadata server database.
+
+    To specify a subset of GVCFs to search, set `source_tag`, which should
+    match the meta.source value analysis entries.
     """
     inputs = []
 
@@ -284,37 +311,70 @@ def find_inputs_from_db(
                 continue
 
         logger.info('Checking GVCF analyses for samples')
-        gvcf_analysis_per_sid = find_analyses_by_sid(
+
+        meta = {}
+        if source_tag:
+            meta['source'] = source_tag
+
+        reblocked_gvcf_analysis_per_sid = find_analyses_by_sid(
             sample_ids=[s['id'] for s in samples],
-            analysis_type='gvcf',
-            analysis_project=proj,
+            analysis_type=AnalysisType('gvcf'),
+            project=proj,
+            meta=dict(staging=False, **meta),
         )
-        gvcf_by_sid = dict()
+
+        staging_gvcf_analysis_per_sid = dict()
+        if source_tag is not None:
+            staging_gvcf_analysis_per_sid = find_analyses_by_sid(
+                sample_ids=[s['id'] for s in samples],
+                project=proj,
+                analysis_type=AnalysisType('gvcf'),
+                meta=dict(staging=True, **meta),
+            )
+
+        reblocked_gvcf_by_sid = dict()
+        staging_gvcf_by_sid = dict()
         sids_without_gvcf = []
         for s in samples:
-            a = gvcf_analysis_per_sid.get(s['id'])
-            if not a:
+            reblocked_gvcf_analysis = reblocked_gvcf_analysis_per_sid.get(s['id'])
+            staging_gvcf_analysis = staging_gvcf_analysis_per_sid.get(s['id'])
+            if not reblocked_gvcf_analysis and not staging_gvcf_analysis:
                 sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
                 continue
-            gvcf_path = a.output
-            if not gvcf_path:
-                logger.error(
-                    f'"output" is not defined for the latest gvcf analysis, '
-                    f'skipping sample {s["id"]}'
-                )
-                sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
-                continue
-            gvcf_by_sid[s['id']] = gvcf_path
+
+            if reblocked_gvcf_analysis:
+                if not reblocked_gvcf_analysis.output:
+                    logger.error(
+                        f'"output" is not defined for the latest reblocked gvcf analysis, '
+                        f'skipping sample {s["id"]}'
+                    )
+                    sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
+                    continue
+                reblocked_gvcf_by_sid[s['id']] = reblocked_gvcf_analysis.output
+
+            if staging_gvcf_analysis:
+                if not staging_gvcf_analysis.output:
+                    logger.error(
+                        f'"output" is not defined for the latest staging gvcf analysis, '
+                        f'skipping sample {s["id"]}'
+                    )
+                    sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
+                    continue
+                staging_gvcf_by_sid[s['id']] = staging_gvcf_analysis.output
 
         if sids_without_gvcf:
             logger.warning(
                 f'No gvcf found for {len(sids_without_gvcf)}/{len(samples)} samples: '
                 f'{", ".join(sids_without_gvcf)}'
             )
-            samples = [s for s in samples if s['id'] in gvcf_by_sid]
-            if not samples:
-                logger.info(f'No samples to process, skipping project {proj}')
-                continue
+        samples = [
+            s
+            for s in samples
+            if s['id'] in reblocked_gvcf_by_sid or s['id'] in staging_gvcf_by_sid
+        ]
+        if not samples:
+            logger.info(f'No samples to process, skipping project {proj}')
+            continue
 
         logger.info('Checking sequencing info for samples')
         try:
@@ -324,7 +384,6 @@ def find_inputs_from_db(
         except exceptions.ApiException:
             logger.critical(f'Not for all samples sequencing data was found')
             raise
-
         seq_meta_by_sid: Dict = dict()
         sids_without_meta = []
         for si in seq_infos:
@@ -333,10 +392,12 @@ def find_inputs_from_db(
             else:
                 seq_meta_by_sid[si['sample_id']] = si['meta']
         if sids_without_meta:
-            logger.error(
+            logger.warning(
                 f'Found {len(sids_without_meta)} samples without "meta" in '
                 f'sequencing info: {", ".join(sids_without_meta)}'
             )
+        logger.info(f'Found {len(seq_meta_by_sid)} sequences')
+
         samples = [s for s in samples if s['id'] in seq_meta_by_sid]
         if not samples:
             logger.info(f'No samples to process, skipping project {proj}')
@@ -352,34 +413,43 @@ def find_inputs_from_db(
             if '-' in external_id:
                 external_id, resequencing_label = external_id.split('-', maxsplit=1)
             seq_meta = seq_meta_by_sid[sample_id]
-            gvcf_path = gvcf_by_sid[s['id']]
+            reblocked_gvcf_path = reblocked_gvcf_by_sid.get(s['id'])
+            staging_gvcf_path = staging_gvcf_by_sid.get(s['id'])
 
-            if not gvcf_path.endswith('.g.vcf.gz'):
-                logger.warning(
-                    f'GVCF analysis for sample ID {sample_id} "output" field '
-                    f'is not a GVCF'
-                )
+            def _check_gvcf(gvcf_path):
+                if not gvcf_path.endswith('.g.vcf.gz'):
+                    logger.warning(
+                        f'GVCF analysis for sample ID {sample_id} "output" field '
+                        f'is not a GVCF'
+                    )
+                    return False
+                if check_existence and not utils.file_exists(gvcf_path):
+                    logger.warning(
+                        f'GVCF analysis for sample ID {sample_id} "output" file '
+                        f'does not exist: {gvcf_path}'
+                    )
+                    return False
+                if check_existence and not utils.file_exists(gvcf_path + '.tbi'):
+                    logger.warning(
+                        f'GVCF analysis for sample ID {sample_id} "output" field '
+                        f'does not have a corresponding tbi index: {gvcf_path}.tbi'
+                    )
+                    return False
+                return True
+
+            if not _check_gvcf(reblocked_gvcf_path or staging_gvcf_path):
                 continue
-            if check_existence and not utils.file_exists(gvcf_path):
-                logger.warning(
-                    f'GVCF analysis for sample ID {sample_id} "output" file '
-                    f'does not exist: {gvcf_path}'
-                )
-                continue
-            if check_existence and not utils.file_exists(gvcf_path + '.tbi'):
-                logger.warning(
-                    f'GVCF analysis for sample ID {sample_id} "output" field '
-                    f'does not have a corresponding tbi index: {gvcf_path}.tbi'
-                )
-                continue
+
             entry = default_entry.copy()
             entry.update(
                 {
                     's': sample_id,
                     'external_id': external_id,
                     'fam_id': external_id,
-                    'project': proj,
-                    'topostproc_gvcf': gvcf_path,
+                    'project': proj.replace('-test', ''),
+                    'source': source_tag or '-',
+                    'gvcf': reblocked_gvcf_path,
+                    'topostproc_gvcf': staging_gvcf_path,
                     'batch': seq_meta.get('batch', '-'),
                     'flowcell_lane': seq_meta.get(
                         'sample.flowcell_lane', seq_meta.get('flowcell_lane', '-')
