@@ -26,6 +26,7 @@ def add_variant_qc_jobs(
     hard_filter_ht_path: str,
     meta_ht_path: str,
     out_filtered_combined_mt_path: str,
+    out_filtered_vcf_ptrn_path: str,
     sample_count: int,
     ped_file: Optional[str],
     overwrite: bool,
@@ -34,7 +35,7 @@ def add_variant_qc_jobs(
     is_test: bool,
     depends_on: Optional[List[Job]] = None,
     run_rf: bool = False,
-) -> Job:
+) -> List[Job]:
     """
     Add variant QC Hail-query jobs
     """
@@ -243,7 +244,30 @@ def add_variant_qc_jobs(
         final_mt_j.depends_on(eval_job)
     else:
         final_mt_j = b.new_job(f'{job_name} [reuse]')
-    return final_mt_j
+
+    jobs = []
+    for chrom in list(map(str, range(1, 22 + 1))) + ['X', 'Y']:
+        job_name = f'Making final VCF for chr{chrom}'
+        print(job_name)
+        vcf_path = out_filtered_vcf_ptrn_path.format(CHROM=chrom)
+        if not utils.can_reuse([vcf_path], overwrite):
+            j = cluster.add_job(
+                f'{utils.SCRIPTS_DIR}/prepare_vcf_data_release.py '
+                f'--overwrite '
+                f'--mt_path {out_filtered_combined_mt_path} '
+                f'--export_vcf '
+                f'--export_chromosome {chrom} '
+                f'--prepare_vcf_header_dict '
+                f'--prepare_vcf_ht '
+                f'--out_vcf_path {vcf_path} '
+                f'--work_dir {work_bucket} ',
+                job_name=job_name,
+            )
+        else:
+            j = b.new_job(f'{job_name} [reuse]')
+        jobs.append(j)
+        j.depends_on(final_mt_j)
+    return jobs
 
 
 def add_rf_eval_jobs(

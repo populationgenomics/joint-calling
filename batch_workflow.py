@@ -12,7 +12,7 @@ import os
 import subprocess
 import tempfile
 import traceback
-from os.path import join, basename
+from os.path import join
 from typing import List, Optional, Collection
 import logging
 import click
@@ -231,12 +231,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     combiner_bucket = f'{tmp_bucket}/combiner'
     raw_combined_mt_path = f'{combiner_bucket}/{output_version}-raw.mt'
-    mt_output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}/mt'
-    filtered_combined_mt_path = f'{mt_output_bucket}/{output_version}.mt'
+    output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}'
+    filtered_combined_mt_path = f'{output_bucket}/mt/{output_version}.mt'
+    filtered_vcf_ptrn_path = f'{output_bucket}/vcf/{output_version}.chr{{CHROM}}.vcf.gz'
     _create_mt_readme(
         raw_combined_mt_path,
         filtered_combined_mt_path,
-        mt_output_bucket,
+        output_bucket,
+        filtered_vcf_ptrn_path,
     )
 
     # Initialize Hail Batch
@@ -367,7 +369,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         somalier_job=somalier_j,
     )
 
-    var_qc_job = add_variant_qc_jobs(
+    var_qc_jobs = add_variant_qc_jobs(
         b=b,
         work_bucket=join(analysis_bucket, 'variant_qc'),
         web_bucket=join(web_bucket, 'variant_qc'),
@@ -375,6 +377,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         hard_filter_ht_path=hard_filter_ht_path,
         meta_ht_path=meta_ht_path,
         out_filtered_combined_mt_path=filtered_combined_mt_path,
+        out_filtered_vcf_ptrn_path=filtered_vcf_ptrn_path,
         sample_count=len(samples_df),
         ped_file=ped_fpath,
         overwrite=overwrite,
@@ -407,7 +410,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         combiner_job.depends_on(sm_in_progress_j)
         if pre_combiner_jobs:
             sm_in_progress_j.depends_on(*pre_combiner_jobs)
-        sm_completed_j.depends_on(var_qc_job)
+        sm_completed_j.depends_on(*var_qc_jobs)
         logger.info(f'Queueing {am.type} with analysis ID: {aid}')
     except Exception:  # pylint: disable=broad-except
         print(traceback.format_exc())
@@ -418,17 +421,21 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 def _create_mt_readme(
     raw_combined_mt_path: str,
     filtered_combined_mt_path: str,
-    mt_output_bucket: str,
+    output_bucket: str,
+    filtered_vcf_ptrn_path: str,
 ):
     local_tmp_dir = tempfile.mkdtemp()
     readme_local_fpath = join(local_tmp_dir, 'README.txt')
-    readme_gcs_fpath = join(mt_output_bucket, 'README.txt')
+    readme_gcs_fpath = join(output_bucket, 'README.txt')
     with open(readme_local_fpath, 'w') as f:
-        f.write(f'Unfiltered:\n{raw_combined_mt_path}')
-        f.write(
-            f'AS-VQSR soft-filtered\n(use `mt.filter_rows(hl.is_missing(mt.filters)` '
-            f'to hard-filter):\n {basename(filtered_combined_mt_path)}'
-        )
+        f.write(f"""\
+Unfiltered:
+{raw_combined_mt_path}
+Soft-filtered matrix table (use `mt.filter_rows(hl.is_missing(mt.filters)` to hard-filter):
+{filtered_combined_mt_path}
+Hard-filtered per-chromosome VCFs:
+{filtered_vcf_ptrn_path}
+""")
     subprocess.run(['gsutil', 'cp', readme_local_fpath, readme_gcs_fpath], check=False)
 
 
