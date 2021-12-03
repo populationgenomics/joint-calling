@@ -125,6 +125,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         meta_ht=hl.read_table(meta_ht),
         add_meta=True,
         release_only=True,
+        # Filtering relateds that can skew frequencies calculation
+        unrelated_only=True,
     )
 
     if test:
@@ -246,15 +248,7 @@ def _calc_inbreeding_coeff(mt: hl.MatrixTable) -> hl.MatrixTable:
     # to avoid another densify
     logger.info('Calculating InbreedingCoeff...')
     # the algorithm assumes all samples are unrelated:
-    unrelated_mt = mt.filter_cols(~mt.meta.related)
-    logger.info(
-        f'Using {unrelated_mt.count_cols()}/{mt.count_cols()} unrelated samples'
-    )
-    unrelated_mt = unrelated_mt.annotate_rows(
-        InbreedingCoeff=bi_allelic_site_inbreeding_expr(unrelated_mt.GT)
-    )
-    mt = mt.annotate_rows(InbreedingCoeff=unrelated_mt[mt.row_key].InbreedingCoeff)
-    return mt
+    return mt.annotate_rows(InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT))
 
 
 def _compute_filtering_af_and_popmax(mt: hl.MatrixTable) -> hl.Table:

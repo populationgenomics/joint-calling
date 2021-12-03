@@ -312,6 +312,7 @@ def get_mt(
     add_meta: bool = False,
     release_only: bool = False,
     passing_sites_only: bool = False,
+    unrelated_only: bool = False,
 ) -> hl.MatrixTable:
     """
     Wrapper function to get data with desired filtering and metadata annotations
@@ -329,6 +330,7 @@ def get_mt(
         release (can only be used with)
     :param passing_sites_only: whether to filter the MT to only variants with
         nothing in the filter field (e.g. passing soft filters)
+    :param unrelated_only: remove related samples (keep one sample from a family)
     :return: MatrixTable with chosen annotations and filters
     """
     mt = hl.read_matrix_table(mt_path)
@@ -351,9 +353,17 @@ def get_mt(
         if release_only:
             mt = mt.filter_cols(mt.meta.release)
 
-    elif release_only:
-        assert meta_ht is not None
-        mt = mt.filter_cols(meta_ht[mt.col_key].release)
+        if unrelated_only:
+            mt = mt.filter_cols(~mt.meta.related)
+
+    else:
+        if release_only:
+            assert meta_ht is not None
+            mt = mt.filter_cols(meta_ht[mt.col_key].release)
+
+        if unrelated_only:
+            assert meta_ht is not None
+            mt = mt.filter_cols(~meta_ht[mt.col_key].related)
 
     if split:
         mt = mt.annotate_rows(
