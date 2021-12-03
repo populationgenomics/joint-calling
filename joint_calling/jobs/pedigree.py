@@ -30,6 +30,7 @@ def pedigree_checks(
     tmp_bucket: str,
     ped_fpath: Optional[str] = None,
     depends_on: Optional[List[Job]] = None,
+    assume_files_exist: bool = False,
 ) -> Tuple[Job, str, str, str]:
     """
     Add somalier and peddy based jobs that infer relatedness and sex, compare that
@@ -67,7 +68,9 @@ def pedigree_checks(
     for sn, proj, gvcf_path in zip(samples_df.s, samples_df.project, samples_df.gvcf):
         proj_bucket = get_project_bucket(proj)
         fp_file_by_sample[sn] = join(proj_bucket, 'fingerprints', f'{sn}.somalier')
-        if not utils.can_reuse(fp_file_by_sample[sn], overwrite):
+        if not assume_files_exist and not utils.can_reuse(
+            fp_file_by_sample[sn], overwrite
+        ):
             j = b.new_job(f'Somalier extract, {sn}')
             j.image(utils.SOMALIER_IMAGE)
             j.memory('standard')

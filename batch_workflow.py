@@ -306,6 +306,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         web_url=f'https://{output_namespace}-web.populationgenomics.org.au/{analysis_project}',
         tmp_bucket=join(tmp_bucket, 'somalier'),
         depends_on=pre_combiner_jobs,
+        assume_files_exist=assume_gvcfs_are_ready,
     )
 
     if use_gnarly_genotyper:
