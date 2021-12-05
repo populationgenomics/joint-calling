@@ -248,12 +248,11 @@ def add_variant_qc_jobs(
     jobs = []
     for chrom in list(map(str, range(1, 22 + 1))) + ['X', 'Y']:
         job_name = f'Making final VCF for chr{chrom}'
-        print(job_name)
+        logger.info(job_name)
         vcf_path = out_filtered_vcf_ptrn_path.format(CHROM=chrom)
         if not utils.can_reuse([vcf_path], overwrite):
             j = cluster.add_job(
                 f'{utils.SCRIPTS_DIR}/prepare_vcf_data_release.py '
-                f'--overwrite '
                 f'--mt_path {out_filtered_combined_mt_path} '
                 f'--export_vcf '
                 f'--export_chromosome {chrom} '
