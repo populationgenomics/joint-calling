@@ -183,7 +183,7 @@ def add_variant_qc_jobs(
         )
 
     else:
-        vqsred_vcf_path = join(vqsr_bucket, 'output.vcf.gz')
+        vqsred_vcf_path = join(vqsr_bucket, 'output.vcf.bgz')
         if overwrite or not utils.file_exists(vqsred_vcf_path):
             vqsr_vcf_job = add_vqsr_jobs(
                 b,
@@ -270,12 +270,12 @@ def add_variant_qc_jobs(
         vcf_path = out_filtered_vcf_ptrn_path.format(CHROM=chrom)
         if not utils.can_reuse([vcf_path], overwrite):
             j = cluster.add_job(
-                f'{utils.SCRIPTS_DIR}/prepare_vcf_export_chrom.py '
+                f'{utils.SCRIPTS_DIR}/release_vcf_export_chrom.py '
                 f'--ht {export_ht_path} '
                 f'--vcf-header-txt {export_vcf_header_txt} '
+                f'--out-vcf {vcf_path} '
                 f'--name {project_name} '
-                f'--chromosome {chrom} '
-                f'--out-vcf {vcf_path}',
+                f'--chromosome chr{chrom}',
                 job_name=job_name,
             )
         else:

@@ -143,7 +143,7 @@ HGDP_TGP_VCF_INFO_REORDER = [
     '--out-vcf',
     'out_vcf_path',
     required=True,
-    callback=get_validation_callback(ext='vcf.gz'),
+    callback=get_validation_callback(ext='vcf.bgz'),
 )
 @click.option(
     '--name',
@@ -154,7 +154,6 @@ HGDP_TGP_VCF_INFO_REORDER = [
 @click.option(
     '--chromosome',
     'chromosome',
-    is_flag=True,
     help='write a VCF for a chromosome',
 )
 @click.option(
@@ -167,7 +166,7 @@ def main(
     vcf_header_txt_path: str,
     out_vcf_path: str,
     name: str,
-    chromosome: bool,
+    chromosome: str,
     local_tmp_dir: str,
 ):  # pylint: disable=missing-function-docstring
     utils.init_hail(__file__, local_tmp_dir)
