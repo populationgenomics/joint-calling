@@ -183,7 +183,7 @@ def add_variant_qc_jobs(
         )
 
     else:
-        vqsred_vcf_path = join(vqsr_bucket, 'output.vcf.bgz')
+        vqsred_vcf_path = join(vqsr_bucket, 'output.vcf.gz')
         if overwrite or not utils.file_exists(vqsred_vcf_path):
             vqsr_vcf_job = add_vqsr_jobs(
                 b,
