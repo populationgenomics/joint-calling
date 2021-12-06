@@ -233,7 +233,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     raw_combined_mt_path = f'{combiner_bucket}/{output_version}-raw.mt'
     output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}'
     filtered_combined_mt_path = f'{output_bucket}/mt/{output_version}.mt'
-    filtered_vcf_ptrn_path = f'{output_bucket}/vcf/{output_version}.chr{{CHROM}}.vcf.gz'
+    filtered_vcf_ptrn_path = f'{output_bucket}/vcf/{output_version}.chr{{CHROM}}.vcf.bgz'
     _create_mt_readme(
         raw_combined_mt_path,
         filtered_combined_mt_path,
