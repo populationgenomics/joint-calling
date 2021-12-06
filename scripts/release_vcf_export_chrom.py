@@ -143,7 +143,7 @@ HGDP_TGP_VCF_INFO_REORDER = [
     '--out-vcf',
     'out_vcf_path',
     required=True,
-    callback=get_validation_callback(ext='vcf.bgz'),
+    callback=get_validation_callback(ext='vcf.gz'),
 )
 @click.option(
     '--name',
