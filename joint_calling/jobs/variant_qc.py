@@ -33,6 +33,7 @@ def add_variant_qc_jobs(
     vqsr_params_d: Dict,
     scatter_count: int,
     is_test: bool,
+    project_name: str,
     depends_on: Optional[List[Job]] = None,
     run_rf: bool = False,
 ) -> List[Job]:
@@ -237,6 +238,7 @@ def add_variant_qc_jobs(
             f'--mt {raw_combined_mt_path} '
             f'--final-filter-ht {final_filter_ht_path} '
             f'--freq-ht {freq_ht_path} '
+            f'--info-ht {info_split_ht_path} '
             f'--out-mt {out_filtered_combined_mt_path} '
             f'--meta-ht {meta_ht_path} ',
             job_name=job_name,
@@ -245,27 +247,41 @@ def add_variant_qc_jobs(
     else:
         final_mt_j = b.new_job(f'{job_name} [reuse]')
 
+    job_name = f'Making final VCF: prepare HT'
+    logger.info(job_name)
+    export_ht_path = join(work_bucket, 'export_vcf.ht')
+    export_vcf_header_txt = join(work_bucket, 'export_vcf_header.txt')
+    if not utils.can_reuse([export_ht_path, export_vcf_header_txt], overwrite):
+        final_ht_j = cluster.add_job(
+            f'{utils.SCRIPTS_DIR}/release_vcf_prepare_ht.py '
+            f'--mt {out_filtered_combined_mt_path} '
+            f'--out-ht {export_ht_path} '
+            f'--out-vcf-header-txt {export_vcf_header_txt}',
+            job_name=job_name,
+        )
+    else:
+        final_ht_j = b.new_job(f'{job_name} [reuse]')
+    final_ht_j.depends_on(final_mt_j)
+
     jobs = []
     for chrom in list(map(str, range(1, 22 + 1))) + ['X', 'Y']:
-        job_name = f'Making final VCF for chr{chrom}'
+        job_name = f'Making final VCF: HT to VCF for chr{chrom}'
         logger.info(job_name)
         vcf_path = out_filtered_vcf_ptrn_path.format(CHROM=chrom)
         if not utils.can_reuse([vcf_path], overwrite):
             j = cluster.add_job(
-                f'{utils.SCRIPTS_DIR}/prepare_vcf_data_release.py '
-                f'--mt_path {out_filtered_combined_mt_path} '
-                f'--export_vcf '
-                f'--export_chromosome {chrom} '
-                f'--prepare_vcf_header_dict '
-                f'--prepare_vcf_ht '
-                f'--out_vcf_path {vcf_path} '
-                f'--work_dir {work_bucket} ',
+                f'{utils.SCRIPTS_DIR}/prepare_vcf_export_chrom.py '
+                f'--ht {export_ht_path} '
+                f'--vcf-header-txt {export_vcf_header_txt} '
+                f'--name {project_name} '
+                f'--chromosome {chrom} '
+                f'--out-vcf {vcf_path}',
                 job_name=job_name,
             )
         else:
             j = b.new_job(f'{job_name} [reuse]')
         jobs.append(j)
-        j.depends_on(final_mt_j)
+        j.depends_on(final_ht_j)
     return jobs
 
 

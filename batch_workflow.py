@@ -385,6 +385,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         scatter_count=scatter_count,
         is_test=output_namespace in ['test', 'tmp'],
         depends_on=[combiner_job, sample_qc_job],
+        project_name=analysis_project,
     )
 
     # Interacting with the sample metadata server.

@@ -52,6 +52,12 @@ logger.setLevel('INFO')
     help='Table with frequencies',
 )
 @click.option(
+    '--info-ht',
+    'info_ht_path',
+    required=True,
+    help='Table with "info" row field',
+)
+@click.option(
     '--final-filter-ht',
     'vqsr_final_filter_ht_path',
     required=True,
@@ -80,6 +86,7 @@ def main(
     out_nonref_mt_path: Optional[str],
     meta_ht_path: str,
     freq_ht_path: str,
+    info_ht_path: str,
     vqsr_final_filter_ht_path: str,
     local_tmp_dir: str,
     overwrite: bool,  # pylint: disable=unused-argument
@@ -101,12 +108,17 @@ def main(
         mt_path, split=True, add_meta=True, meta_ht=hl.read_table(meta_ht_path)
     )
 
-    freq_ht = hl.read_table(freq_ht_path)
     vqsr_ht = hl.read_table(vqsr_final_filter_ht_path)
+    freq_ht = hl.read_table(freq_ht_path)
+    info_ht = hl.read_table(info_ht_path)
+    
     mt = mt.annotate_rows(**vqsr_ht[mt.row_key])
     mt = mt.annotate_rows(**freq_ht[mt.row_key])
-    mt = mt.annotate_globals(**freq_ht.index_globals())
+    mt = mt.annotate_rows(info=info_ht[mt.row_key].info)
+    
     mt = mt.annotate_globals(**vqsr_ht.index_globals())
+    mt = mt.annotate_globals(**freq_ht.index_globals())
+
     mt.write(out_mt_path, overwrite=True)
 
     if out_nonref_mt_path:
