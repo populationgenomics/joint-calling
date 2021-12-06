@@ -176,10 +176,6 @@ def main(
     if is_test:
         ht = filter_to_test(ht)
 
-    info_ht_path = 'gs://cpg-nagim-test-analysis/joint-calling/v0-7/variant_qc/info-split.ht'
-    info_ht = hl.read_table(info_ht_path)
-    ht = ht.annotate(info=info_ht[ht.key].info)
-    
     # Setup of parameters and Table/MatrixTable
     parameter_dict = _build_parameter_dict(ht, is_public_subset)
 
