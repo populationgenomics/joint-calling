@@ -604,24 +604,9 @@ def add_indels_variant_recalibrator_step(
       --max-gaussians {max_gaussians} \\
       -resource:mills,known=false,training=true,truth=true,prior=12 {mills_resource_vcf.base} \\
       -resource:axiomPoly,known=false,training=true,truth=false,prior=10 {axiom_poly_resource_vcf.base} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf.base} \\
-      --rscript-file {j.indel_rscript_file}
-      
-      ls $(dirname {j.indel_rscript_file})
-
-      ln {j.indel_rscript_file}.pdf {j.indel_features_pdf}
+      -resource:dbsnp,known=true,training=false,truth=false,prior=2 {dbsnp_resource_vcf.base}
       """
     )
-    if work_bucket:
-        b.write_output(
-            j.indel_rscript_file,
-            os.path.join(work_bucket, 'recalibration-indels-features.Rscript'),
-        )
-    if web_bucket:
-        b.write_output(
-            j.indel_features_pdf,
-            os.path.join(web_bucket, 'recalibration-indels-features.pdf'),
-        )
     return j
 
 
@@ -690,29 +675,9 @@ def add_snps_variant_recalibrator_create_model_step(
       -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
       -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
       -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base} \\
-      --rscript-file {j.snp_rscript}
-
-      ls $(dirname {j.snp_rscript})
-
-      ln {j.snp_rscript}.pdf {j.snp_rscript_pdf}
-      ln {j.tranches}.pdf {j.tranches_pdf}
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base}
       """
     )
-    if work_bucket:
-        b.write_output(
-            j.snp_rscript,
-            os.path.join(work_bucket, 'recalibration-snps-features.RScript'),
-        )
-    if web_bucket:
-        b.write_output(
-            j.snp_rscript_pdf,
-            os.path.join(web_bucket, 'recalibration-snps-features.pdf'),
-        )
-        b.write_output(
-            j.tranches_pdf,
-            os.path.join(web_bucket, 'recalibration-snps-tranches.pdf'),
-        )
     return j
 
 
@@ -830,28 +795,9 @@ def add_snps_variant_recalibrator_step(
       -resource:hapmap,known=false,training=true,truth=true,prior=15 {hapmap_resource_vcf.base} \\
       -resource:omni,known=false,training=true,truth=true,prior=12 {omni_resource_vcf.base} \\
       -resource:1000G,known=false,training=true,truth=false,prior=10 {one_thousand_genomes_resource_vcf.base} \\
-      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base} \\
-      --rscript-file {j.snp_rscript}
-
-      ln {j.snp_rscript}.pdf {j.snp_rscript_pdf}
-      ln {j.tranches}.pdf {j.tranches_pdf}
+      -resource:dbsnp,known=true,training=false,truth=false,prior=7 {dbsnp_resource_vcf.base}
       """
     )
-
-    if work_bucket:
-        b.write_output(
-            j.snp_rscript,
-            os.path.join(work_bucket, 'recalibration-snps-features.RScript'),
-        )
-    if web_bucket:
-        b.write_output(
-            j.snp_rscript_pdf,
-            os.path.join(web_bucket, 'recalibration-snps-features.pdf'),
-        )
-        b.write_output(
-            j.tranches_pdf,
-            os.path.join(web_bucket, 'recalibration-snps-tranches.pdf'),
-        )
     return j
 
 
