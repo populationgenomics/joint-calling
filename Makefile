@@ -135,15 +135,10 @@ nagim_test:
 	--no-add-validation-samples \
 	--keep-scratch \
 	--output-version $(NAGIM_TEST_VERSION) \
-	$(REUSE_ARG)
+	--overwrite
 
 .PHONY: nagim_main
 nagim_main:
-	analysis-runner \
-	--dataset nagim \
-	--output-dir "joint-calling/main" \
-	--description "Joint calling main" \
-	--access-level full \
 	python batch_workflow.py \
 	--scatter-count $(SCATTER_COUNT_PROD) \
 	--namespace main \
@@ -157,7 +152,8 @@ nagim_main:
 	--input-project acute-care \
 	--source-tag nagim \
 	--release-related \
+	--skip-somalier \
 	--no-add-validation-samples \
 	--keep-scratch \
 	--output-version $(NAGIM_VERSION) \
-	$(REUSE_ARG)
+	--overwrite

@@ -122,6 +122,7 @@ logger.setLevel(logging.INFO)
     '--overwrite/--reuse',
     'overwrite',
     is_flag=True,
+    default=False,
     help='if an intermediate or a final file exists, skip running the code '
     'that generates it.',
 )
@@ -179,6 +180,13 @@ logger.setLevel(logging.INFO)
     is_flag=True,
     help='Whether to keep or remove related samples from the release',
 )
+@click.option(
+    '--skip-somalier',
+    'skip_somalier',
+    default=False,
+    is_flag=True,
+    help='Do not generate somaleir fingerprints. Use pc_relate',
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -204,6 +212,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     add_validation_samples: bool,
     assume_gvcfs_are_ready: bool,
     release_related: bool,
+    skip_somalier: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -271,7 +280,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     samples_df = find_inputs(
         tmp_bucket=tmp_bucket,
-        overwrite=overwrite,
+        overwrite=False,
         input_projects=input_sm_projects,
         source_tag=source_tag,
         input_tsv_path=input_tsv_path,
@@ -297,54 +306,40 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     )
 
     relatedness_bucket = join(analysis_bucket, 'relatedness')
-    somalier_j, ped_fpath, _, somalier_pairs_path = pedigree.pedigree_checks(
-        b,
-        samples_df=samples_df,
-        overwrite=overwrite,
-        ped_fpath=ped_fpath,
-        output_suffix=project_output_suffix,
-        relatedness_bucket=relatedness_bucket,
-        web_bucket=join(web_bucket, 'somalier'),
-        web_url=f'https://{output_namespace}-web.populationgenomics.org.au/{analysis_project}',
-        tmp_bucket=join(tmp_bucket, 'somalier'),
-        depends_on=pre_combiner_jobs,
-        assume_files_exist=assume_gvcfs_are_ready,
-    )
+    somalier_j = None
+    somalier_pairs_path = None
+    if not skip_somalier:
+        somalier_j, ped_fpath, _, somalier_pairs_path = pedigree.pedigree_checks(
+            b,
+            samples_df=samples_df,
+            overwrite=overwrite,
+            ped_fpath=ped_fpath,
+            output_suffix=project_output_suffix,
+            relatedness_bucket=relatedness_bucket,
+            web_bucket=join(web_bucket, 'somalier'),
+            web_url=f'https://{output_namespace}-web.populationgenomics.org.au/{analysis_project}',
+            tmp_bucket=join(tmp_bucket, 'somalier'),
+            depends_on=pre_combiner_jobs,
+            assume_files_exist=assume_gvcfs_are_ready,
+        )
 
-    if use_gnarly_genotyper:
-        combiner_job = b.new_job('Not implemented')
-        # combiner_job, vcf_path = make_joint_genotype_jobs(
-        #     b=b,
-        #     genomicsdb_bucket=join(work_bucket, 'genomicsdbs'),
-        #     samples_df=samples_df,
-        #     reference=reference,
-        #     dbsnp=utils.DBSNP_VCF,
-        #     out_bucket=out_bucket,
-        #     tmp_bucket=out_bucket,
-        #     local_tmp_dir=local_tmp_dir,
-        #     overwrite=overwrite,
-        #     analysis_project=analysis_project,
-        #     completed_analysis=jc_analysis,
-        #     depends_on=gvcf_jobs,
-        # )
+    if not utils.can_reuse(raw_combined_mt_path, overwrite):
+        combiner_job = dataproc.hail_dataproc_job(
+            b,
+            f'{utils.SCRIPTS_DIR}/combine_gvcfs.py '
+            f'--meta-csv {samples_tsv_path} '
+            f'--out-mt {raw_combined_mt_path} '
+            f'--bucket {combiner_bucket}/work '
+            f'--hail-billing {billing_project} '
+            f'--n-partitions {scatter_count * 25}',
+            max_age='8h',
+            packages=utils.DATAPROC_PACKAGES,
+            num_secondary_workers=scatter_count,
+            depends_on=pre_combiner_jobs,
+            job_name='Combine GVCFs',
+        )
     else:
-        if not utils.can_reuse(raw_combined_mt_path, overwrite):
-            combiner_job = dataproc.hail_dataproc_job(
-                b,
-                f'{utils.SCRIPTS_DIR}/combine_gvcfs.py '
-                f'--meta-csv {samples_tsv_path} '
-                f'--out-mt {raw_combined_mt_path} '
-                f'--bucket {combiner_bucket}/work '
-                f'--hail-billing {billing_project} '
-                f'--n-partitions {scatter_count * 25}',
-                max_age='8h',
-                packages=utils.DATAPROC_PACKAGES,
-                num_secondary_workers=scatter_count,
-                depends_on=pre_combiner_jobs,
-                job_name='Combine GVCFs',
-            )
-        else:
-            combiner_job = b.new_job('Combine GVCFs [reuse]')
+        combiner_job = b.new_job('Combine GVCFs [reuse]')
 
     sample_qc_job, hard_filter_ht_path, meta_ht_path = add_sample_qc_jobs(
         b=b,
