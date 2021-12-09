@@ -136,8 +136,6 @@ Here we give a brief overview of the sample QC steps:
    
    1. Run Gnarly Genotyper to perform "quick and dirty" joint genotyping.
    
-   1. Filter variants in a large callset (>1000) with the ExcessHet > 54.69.
-
    1. Create SNP and indel recalibration models using the allele-specific version of GATK Variant Quality Score Recalibration [VQSR](https://gatkforums.broadinstitute.org/gatk/discussion/9622/allele-specific-annotation-and-filtering), using the standard GATK training resources (HapMap, Omni, 1000 Genomes, Mills indels), with the following features:
    
       * SNVs:   `AS_FS`, `AS_SOR`, `AS_ReadPosRankSum`, `AS_MQRankSum`, `AS_QD`, `AS_MQ`

@@ -67,6 +67,13 @@ logger.setLevel(logging.INFO)
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
+    '--release-related/--release-unrelated',
+    'release_related',
+    default=False,
+    is_flag=True,
+    help='Whether to keep or remove related samples from the release',
+)
+@click.option(
     '--pop-ht',
     'pop_ht_path',
     required=True,
@@ -83,10 +90,7 @@ logger.setLevel(logging.INFO)
     required=True,
     callback=utils.get_validation_callback(ext='ht', must_exist=False),
 )
-@click.option(
-    '--out-meta-tsv',
-    'out_meta_tsv_path',
-)
+@click.option('--out-meta-tsv', 'out_meta_tsv_path', help='Also write a TSV')
 @click.option(
     '--tmp-bucket',
     'tmp_bucket',
@@ -114,6 +118,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     custom_qc_ht_path: str,
     regressed_metrics_ht_path: str,
     relatedness_ht_path: str,
+    release_related: bool,
     pop_ht_path: str,
     filter_cutoffs_path: str,
     out_meta_ht_path: str,
@@ -160,6 +165,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         regressed_metrics_ht=regressed_metrics_ht,
         pop_ht=pop_ht,
         related_samples_to_drop_after_qc_ht=related_samples_to_drop_ht,
+        release_related=release_related,
         out_ht_path=out_meta_ht_path,
         out_tsv_path=out_meta_tsv_path,
         overwrite=overwrite,
@@ -175,6 +181,7 @@ def _generate_metadata(
     regressed_metrics_ht: hl.Table,
     pop_ht: hl.Table,
     related_samples_to_drop_after_qc_ht: hl.Table,
+    release_related: bool,
     out_ht_path: str,
     out_tsv_path: str,
     overwrite: bool = False,
@@ -199,6 +206,8 @@ def _generate_metadata(
     :param related_samples_to_drop_after_qc_ht:
         table with related samples, after re-ranking them based
         on population-stratified QC
+    :param release_related: whether the "release" filter should only have unrelated
+        samples
     :param overwrite: overwrite checkpoints if they exist
     :return: table with relevant fields from input tables,
         annotated with the following row fields:
@@ -228,7 +237,7 @@ def _generate_metadata(
 
         meta_ht = meta_ht.annotate(
             sample_qc=sample_qc_ht[meta_ht.key].bi_allelic_sample_qc,
-            nongnomad_snps=custom_qc_ht[meta_ht.key].nongnomad_snps,
+            custom_qc=custom_qc_ht[meta_ht.key],
             **hard_filtered_samples_ht[meta_ht.key],
             **regressed_metrics_ht[meta_ht.key],
             **pop_ht[meta_ht.key],
@@ -238,11 +247,18 @@ def _generate_metadata(
 
         meta_ht = meta_ht.annotate(
             hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
-            release_filters=add_filters_expr(
-                filters={'related': meta_ht.related},
-                current_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters),
-            ),
         )
+        if release_related:
+            meta_ht = meta_ht.annotate(
+                release_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters),
+            )
+        else:
+            meta_ht = meta_ht.annotate(
+                release_filters=add_filters_expr(
+                    filters={'related': meta_ht.related},
+                    current_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters),
+                ),
+            )
 
         meta_ht = meta_ht.annotate(
             high_quality=(hl.len(meta_ht.hard_filters) == 0),

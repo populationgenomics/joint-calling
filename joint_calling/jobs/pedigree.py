@@ -5,7 +5,6 @@ Adds Batch job that drive Somalier for ancestry/pedigree
 """
 
 import logging
-import subprocess
 from os.path import join
 from typing import Optional, List, Tuple
 import pandas as pd
@@ -31,6 +30,7 @@ def pedigree_checks(
     tmp_bucket: str,
     ped_fpath: Optional[str] = None,
     depends_on: Optional[List[Job]] = None,
+    assume_files_exist: bool = False,
 ) -> Tuple[Job, str, str, str]:
     """
     Add somalier and peddy based jobs that infer relatedness and sex, compare that
@@ -68,7 +68,9 @@ def pedigree_checks(
     for sn, proj, gvcf_path in zip(samples_df.s, samples_df.project, samples_df.gvcf):
         proj_bucket = get_project_bucket(proj)
         fp_file_by_sample[sn] = join(proj_bucket, 'fingerprints', f'{sn}.somalier')
-        if not utils.can_reuse(fp_file_by_sample[sn], overwrite):
+        if not assume_files_exist and not utils.can_reuse(
+            fp_file_by_sample[sn], overwrite
+        ):
             j = b.new_job(f'Somalier extract, {sn}')
             j.image(utils.SOMALIER_IMAGE)
             j.memory('standard')
@@ -125,18 +127,26 @@ def pedigree_checks(
     else:
         ped_fpath = join(tmp_bucket, 'samples.ped')
         samples_df['Family.ID'] = np.where(
-            pd.notna(samples_df['fam_id']),
-            samples_df['fam_id'],
+            pd.isna(samples_df['fam_id']) | (samples_df['fam_id'] == '-'),
             samples_df['external_id'],
+            samples_df['fam_id'],
         )
         samples_df['Individual.ID'] = samples_df['s']
         samples_df['Father.ID'] = np.where(
-            samples_df['pat_id'] != '-', samples_df['pat_id'], '0'
+            pd.isna(samples_df['pat_id']) | (samples_df['pat_id'] == '-'),
+            '0',
+            samples_df['pat_id'],
         )
         samples_df['Mother.ID'] = np.where(
-            samples_df['mat_id'] != '-', samples_df['mat_id'], '0'
+            pd.isna(samples_df['mat_id']) | (samples_df['mat_id'] == '-'),
+            '0',
+            samples_df['mat_id'],
         )
-        samples_df['Sex'] = np.where(samples_df['sex'] != '-', samples_df['sex'], '0')
+        samples_df['Sex'] = np.where(
+            pd.isna(samples_df['sex']) | (samples_df['sex'] == '-'),
+            '0',
+            samples_df['sex'],
+        )
         samples_df['Phenotype'] = '0'
         samples_df[
             ['Family.ID', 'Individual.ID', 'Father.ID', 'Mother.ID', 'Sex', 'Phenotype']
@@ -186,13 +196,7 @@ def pedigree_checks(
     check_j.memory('standard')  # ~ 4G/core ~ 4G
 
     script_name = 'check_pedigree.py'
-    try:
-        script_path = (
-            subprocess.check_output(f'which {script_name}', shell=True).decode().strip()
-        )
-    except subprocess.CalledProcessError:
-        script_path = join(utils.SCRIPTS_DIR, script_name)
-
+    script_path = join(utils.SCRIPTS_DIR, script_name)
     with open(script_path) as f:
         script = f.read()
     check_j.command(

@@ -90,6 +90,9 @@ def compute_info(
     overwrite: bool = False,
 ) -> hl.Table:
     """
+    Computes a HT with the typical GATK AS and site-level info fields as well as ACs
+    and lowqual fields.
+
     :param mt: full matrix table
     :param out_ht_path: where to write the info Table
     :param out_split_ht_path: if provided, in the info Table multiallelics will be split

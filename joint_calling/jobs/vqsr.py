@@ -171,16 +171,17 @@ def add_vqsr_jobs(
     dbsnp_resource_vcf = dbsnp_vcf
 
     is_small_callset = gvcf_count < 1000
-    # 1. For small callsets, we don't apply the ExcessHet filtering.
-    # 2. For small callsets, we gather the VCF shards and collect QC metrics directly.
+    # For small callsets, we gather the VCF shards and collect QC metrics directly.
     # For anything larger, we need to keep the VCF sharded and gather metrics
     # collected from them.
     is_huge_callset = gvcf_count >= 100000
     # For huge callsets, we allocate more memory for the SNPs Create Model step
 
-    small_disk = 30 if is_small_callset else (50 if not is_huge_callset else 100)
-    medium_disk = 50 if is_small_callset else (100 if not is_huge_callset else 200)
-    huge_disk = 100 if is_small_callset else (500 if not is_huge_callset else 2000)
+    # To fit only a site-only VCF
+    small_disk = 50 if is_small_callset else (100 if not is_huge_callset else 200)
+    # To fit a joint-called VCF
+    medium_disk = 100 if is_small_callset else (200 if not is_huge_callset else 500)
+    huge_disk = 200 if is_small_callset else (500 if not is_huge_callset else 2000)
 
     job_name = 'AS-VQSR: MT to VCF'
     combined_vcf_path = join(work_bucket, 'input.vcf.gz')
@@ -219,30 +220,6 @@ def add_vqsr_jobs(
 
     gathered_vcf = tabix_job.combined_vcf
     scattered_vcfs = [gathered_vcf for _ in range(scatter_count)]
-
-    if not is_small_callset:
-        # ExcessHet filtering applies only to callsets with a large number of samples,
-        # e.g. hundreds of unrelated samples. Small cohorts should not trigger ExcessHet
-        # filtering as values should remain small. Note cohorts of consanguinous samples
-        # will inflate ExcessHet, and it is possible to limit the annotation to founders
-        # for such cohorts by providing a pedigree file during variant calling.
-        hard_filtered_vcfs = [
-            add_hard_filter_step(
-                b,
-                input_vcf=gathered_vcf,
-                interval=intervals[f'interval_{idx}'],
-                excess_het_threshold=vqsr_params_d['min_excess_het'],
-                disk_size=medium_disk,
-            ).output_vcf
-            for idx in range(scatter_count)
-        ]
-        scattered_vcfs = hard_filtered_vcfs
-
-        gathered_vcf = add_sites_only_gather_vcf_step(
-            b,
-            input_vcfs=scattered_vcfs,
-            disk_size=medium_disk,
-        ).output_vcf
 
     indels_variant_recalibrator_job = add_indels_variant_recalibrator_step(
         b,
@@ -488,60 +465,13 @@ def add_gnarly_genotyper_on_vcf_step(
     return j
 
 
-def add_hard_filter_step(
-    b: hb.Batch,
-    input_vcf: hb.ResourceGroup,
-    excess_het_threshold: float,
-    disk_size: int,
-    interval: Optional[hb.ResourceGroup] = None,
-) -> Job:
-    """
-    Hard-filter a large cohort callset on Excess Heterozygosity.
-
-    Applies only to large callsets (`not is_small_callset`)
-
-    Requires all samples to be unrelated.
-
-    ExcessHet estimates the probability of the called samples exhibiting excess
-    heterozygosity with respect to the null hypothesis that the samples are unrelated.
-    The higher the score, the higher the chance that the variant is a technical artifact
-    or that there is consanguinuity among the samples. In contrast to Inbreeding
-    Coefficient, there is no minimal number of samples for this annotation.
-
-    Returns: a Job object with a single output j.output_vcf of type ResourceGroup
-    """
-    j = b.new_job('AS-VQSR: HardFilter')
-    j.image(utils.GATK_IMAGE)
-    j.memory('8G')
-    j.storage(f'{disk_size}G')
-    j.declare_resource_group(
-        output_vcf={'vcf.gz': '{root}.vcf.gz', 'vcf.gz.tbi': '{root}.vcf.gz.tbi'}
-    )
-
-    j.command(
-        f"""set -euo pipefail
-
-    # Captring stderr to avoid Batch pod from crashing with OOM from millions of
-    # warning messages from VariantFiltration, e.g.:
-    # > JexlEngine - ![0,9]: 'ExcessHet > 54.69;' undefined variable ExcessHet
-    gatk --java-options -Xms3g \\
-      VariantFiltration \\
-      --filter-expression 'ExcessHet > {excess_het_threshold}' \\
-      --filter-name ExcessHet \\
-      {f'-L {interval} ' if interval else ''} \\
-      -O {j.output_vcf['vcf.gz']} \\
-      -V {input_vcf['vcf.gz']} \\
-      2> {j.stderr}
-    """
-    )
-    return j
-
-
 def add_make_sites_only_vcf_step(
     b: hb.Batch,
     input_vcf: hb.ResourceGroup,
     disk_size: int,
     interval: Optional[hb.ResourceGroup] = None,
+    output_vcf_path: Optional[str] = None,
+    overwrite: bool = False,
 ) -> Job:
     """
     Create sites-only VCF with only site-level annotations.
@@ -550,6 +480,10 @@ def add_make_sites_only_vcf_step(
     Returns: a Job object with a single output j.sites_only_vcf of type ResourceGroup
     """
     j = b.new_job('AS-VQSR: MakeSitesOnlyVcf')
+    if output_vcf_path and utils.can_reuse(output_vcf_path, overwrite):
+        j.name += ' [reuse]'
+        return j
+
     j.image(utils.GATK_IMAGE)
     j.memory('8G')
     j.storage(f'{disk_size}G')
@@ -566,6 +500,8 @@ def add_make_sites_only_vcf_step(
       -O {j.sites_only_vcf['vcf.gz']} \\
       {f'-L {interval} ' if interval else ''}"""
     )
+    if output_vcf_path:
+        b.write_output(j.output_vcf, output_vcf_path.replace('.vcf.gz', ''))
     return j
 
 
@@ -573,6 +509,8 @@ def add_sites_only_gather_vcf_step(
     b: hb.Batch,
     input_vcfs: List[hb.ResourceFile],
     disk_size: int,
+    output_vcf_path: Optional[str] = None,
+    overwrite: bool = False,
 ) -> Job:
     """
     Gathers VCF files from scattered operations into a single VCF file
@@ -580,6 +518,10 @@ def add_sites_only_gather_vcf_step(
     Returns: a Job object with a single output j.output_vcf of type ResourceGroup
     """
     j = b.new_job('AS-VQSR: SitesOnlyGatherVcf')
+    if output_vcf_path and utils.can_reuse(output_vcf_path, overwrite):
+        j.name += ' [reuse]'
+        return j
+
     j.image(utils.GATK_IMAGE)
     j.memory('8G')
     j.storage(f'{disk_size}G')
@@ -605,6 +547,8 @@ def add_sites_only_gather_vcf_step(
 
     tabix {j.output_vcf['vcf.gz']}"""
     )
+    if output_vcf_path:
+        b.write_output(j.output_vcf, output_vcf_path.replace('.vcf.gz', ''))
     return j
 
 
@@ -998,10 +942,11 @@ def add_apply_recalibration_step(
     TMP_DIR=$(dirname {j.recalibrated_vcf['vcf.gz']})/tmp
     mkdir $TMP_DIR
 
+    TMP_INDEL_RECALIBRATED=/io/batch/tmp.indel.recalibrated.vcf.gz
     gatk --java-options -Xms5g \\
       ApplyVQSR \\
       --tmp-dir $TMP_DIR \\
-      -O tmp.indel.recalibrated.vcf.gz \\
+      -O $TMP_INDEL_RECALIBRATED \\
       -V {input_vcf['vcf.gz']} \\
       --recal-file {indels_recalibration} \\
       --tranches-file {indels_tranches} \\
@@ -1023,7 +968,7 @@ def add_apply_recalibration_step(
       ApplyVQSR \\
       --tmp-dir $TMP_DIR \\
       -O {j.recalibrated_vcf['vcf.gz']} \\
-      -V tmp.indel.recalibrated.vcf.gz \\
+      -V $TMP_INDEL_RECALIBRATED \\
       --recal-file {snps_recalibration} \\
       --tranches-file {snps_tranches} \\
       --truth-sensitivity-filter-level {snp_filter_level} \\

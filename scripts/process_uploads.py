@@ -11,13 +11,8 @@ from os.path import join
 from typing import List, Optional, Tuple
 import hailtop.batch as hb
 
-# Import SampleAPI
-from sample_metadata.api import SampleApi
-from sample_metadata.api import AnalysisApi
-from sample_metadata.api import SequenceApi
-from sample_metadata.models.analysis_type import AnalysisType
-from sample_metadata.models.analysis_status import AnalysisStatus
-from sample_metadata.models.analysis_model import AnalysisModel
+from sample_metadata.apis import SampleApi, AnalysisApi, SequenceApi
+from sample_metadata.models import AnalysisType, AnalysisStatus, AnalysisModel
 
 from joint_calling.upload_processor import batch_move_files, SampleGroup, FileGroup
 
@@ -139,8 +134,8 @@ def create_analysis_in_sm_db(
 
     new_analysis = AnalysisModel(
         sample_ids=[internal_id],
-        type=analysis_type,
-        status=AnalysisStatus.COMPLETED,
+        type=AnalysisType(analysis_type),
+        status=AnalysisStatus('completed'),
         output=output_path,
     )
 

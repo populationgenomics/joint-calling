@@ -12,14 +12,15 @@ import os
 import subprocess
 import tempfile
 import traceback
-from os.path import join, basename
+from os.path import join
 from typing import List, Optional, Collection
 import logging
 import click
 import pandas as pd
 import hailtop.batch as hb
 from analysis_runner import dataproc
-from sample_metadata import AnalysisApi, AnalysisModel
+from sample_metadata.apis import AnalysisApi
+from sample_metadata.models import AnalysisModel, AnalysisStatus, AnalysisType
 
 from joint_calling import utils
 from joint_calling import sm_utils
@@ -52,6 +53,16 @@ logger.setLevel(logging.INFO)
     multiple=True,
     help='Only read samples that belong to these project(s). Can be multiple.',
 )
+@click.option(
+    '--source-tag',
+    'source_tag',
+    help='Filter analysis entries by this tag to get GVCF inputs',
+)
+@click.option(
+    '--input-tsv',
+    'input_tsv_path',
+    help='Instead of pulling samples from the sample-metadata, use this TSV directly',
+)
 @click.option('--output-version', 'output_version', type=str, required=True)
 @click.option(
     '--output-project',
@@ -75,14 +86,16 @@ logger.setLevel(logging.INFO)
 )
 @click.option(
     '--age-file',
-    'age_data',
+    'age_datas',
+    multiple=True,
     help='format: --age-file <tsv-or-csv-path>::<sample-col>::<age-col>. '
     'E.g.: --age-file gs://path_to/age.csv::1::2',
     callback=utils.ColumnInFile.callback,
 )
 @click.option(
     '--reported-sex-file',
-    'reported_sex_data',
+    'reported_sex_datas',
+    multiple=True,
     help='format: --reported-sex-file <tsv-or-csv-path>::<sample-col>::<sex-col>. '
     'E.g.: --reported-sex-file gs://path_to/reported_sex.tsv::0::1',
     callback=utils.ColumnInFile.callback,
@@ -94,7 +107,12 @@ logger.setLevel(logging.INFO)
     help=f'YAML file with filtering cutoffs. '
     f'Default is the file within the package: {utils.get_filter_cutoffs()}',
 )
-@click.option('--keep-scratch', 'keep_scratch', is_flag=True)
+@click.option(
+    '--keep-scratch/--remove-scratch',
+    'keep_scratch',
+    default=True,
+    is_flag=True,
+)
 @click.option(
     '--reuse-scratch-run-id',
     'reuse_scratch_run_id',
@@ -141,16 +159,38 @@ logger.setLevel(logging.INFO)
     default=False,
     is_flag=True,
 )
+@click.option(
+    '--add-validation-samples/--no-add-validation-samples',
+    'add_validation_samples',
+    default=True,
+    is_flag=True,
+)
+@click.option(
+    '--assume-gvcfs-are-ready',
+    '--validate-smdb',
+    'assume_gvcfs_are_ready',
+    is_flag=True,
+    help='Do not validate the existence of `analysis.output` of SMDB GVCF records',
+)
+@click.option(
+    '--release-related/--release-unrelated',
+    'release_related',
+    default=False,
+    is_flag=True,
+    help='Whether to keep or remove related samples from the release',
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
     input_projects: List[str],  # pylint: disable=unused-argument
+    source_tag: Optional[str],
+    input_tsv_path: Optional[str],  # pylint: disable=unused-argument
     output_version: str,
     output_projects: Optional[List[str]],  # pylint: disable=unused-argument
     use_gnarly_genotyper: bool,
     ped_fpath: Optional[str],
-    age_data: Optional[utils.ColumnInFile],
-    reported_sex_data: Optional[utils.ColumnInFile],
+    age_datas: Optional[List[utils.ColumnInFile]],
+    reported_sex_datas: Optional[List[utils.ColumnInFile]],
     filter_cutoffs_path: str,
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
@@ -161,14 +201,19 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     num_ancestry_pcs: int,
     dry_run: bool,
     check_existence: bool,
+    add_validation_samples: bool,
+    assume_gvcfs_are_ready: bool,
+    release_related: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
         tmp_bucket_suffix = 'test-tmp'
         project_output_suffix = 'test'  # from crams and gvcfs
+        input_sm_projects = [p + '-test' for p in input_projects]
     else:
         tmp_bucket_suffix = 'main-tmp'
         project_output_suffix = 'main'
+        input_sm_projects = input_projects
 
     if output_namespace in ['test', 'main']:
         output_suffix = output_namespace
@@ -186,12 +231,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     combiner_bucket = f'{tmp_bucket}/combiner'
     raw_combined_mt_path = f'{combiner_bucket}/{output_version}-raw.mt'
-    mt_output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}/mt'
-    filtered_combined_mt_path = f'{mt_output_bucket}/{output_version}.mt'
+    output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}'
+    filtered_combined_mt_path = f'{output_bucket}/mt/{output_version}.mt'
+    filtered_vcf_ptrn_path = f'{output_bucket}/vcf/{output_version}.chr{{CHROM}}.vcf.bgz'
     _create_mt_readme(
         raw_combined_mt_path,
         filtered_combined_mt_path,
-        mt_output_bucket,
+        output_bucket,
+        filtered_vcf_ptrn_path,
     )
 
     # Initialize Hail Batch
@@ -212,7 +259,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     b = hb.Batch(
         f'Joint calling: {analysis_project}'
         f', version: {output_version}'
-        f', projects: {", ".join(input_projects)}'
+        f', data from: {input_tsv_path or ", ".join(input_projects)}'
         + (
             f', limit output projects to {", ".join(output_projects)}'
             if output_projects
@@ -225,11 +272,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     samples_df = find_inputs(
         tmp_bucket=tmp_bucket,
         overwrite=overwrite,
-        input_projects=input_projects,
+        input_projects=input_sm_projects,
+        source_tag=source_tag,
+        input_tsv_path=input_tsv_path,
         skip_samples=skip_samples,
         check_existence=check_existence,
-        age_data=age_data,
-        reported_sex_data=reported_sex_data,
+        age_datas=age_datas,
+        reported_sex_datas=reported_sex_datas,
+        add_validation_samples=add_validation_samples,
     )
 
     (
@@ -243,6 +293,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         output_suffix=project_output_suffix,
         overwrite=overwrite,
         analysis_project=analysis_project,
+        assume_gvcfs_are_ready=assume_gvcfs_are_ready,
     )
 
     relatedness_bucket = join(analysis_bucket, 'relatedness')
@@ -257,6 +308,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         web_url=f'https://{output_namespace}-web.populationgenomics.org.au/{analysis_project}',
         tmp_bucket=join(tmp_bucket, 'somalier'),
         depends_on=pre_combiner_jobs,
+        assume_files_exist=assume_gvcfs_are_ready,
     )
 
     if use_gnarly_genotyper:
@@ -303,13 +355,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         tmp_bucket=tmp_bucket,
         analysis_bucket=analysis_bucket,
         relatedness_bucket=relatedness_bucket,
+        release_related=release_related,
         web_bucket=web_bucket,
         filter_cutoffs_path=filter_cutoffs_path,
         overwrite=overwrite,
         scatter_count=scatter_count,
         combiner_job=combiner_job,
         billing_project=billing_project,
-        sample_count=len(samples_df),
         num_ancestry_pcs=num_ancestry_pcs,
         pca_pop=pca_pop,
         is_test=output_namespace in ['test', 'tmp'],
@@ -317,14 +369,15 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         somalier_job=somalier_j,
     )
 
-    var_qc_job = add_variant_qc_jobs(
+    var_qc_jobs = add_variant_qc_jobs(
         b=b,
-        work_bucket=join(tmp_bucket, 'variant_qc'),
+        work_bucket=join(analysis_bucket, 'variant_qc'),
         web_bucket=join(web_bucket, 'variant_qc'),
         raw_combined_mt_path=raw_combined_mt_path,
         hard_filter_ht_path=hard_filter_ht_path,
         meta_ht_path=meta_ht_path,
         out_filtered_combined_mt_path=filtered_combined_mt_path,
+        out_filtered_vcf_ptrn_path=filtered_vcf_ptrn_path,
         sample_count=len(samples_df),
         ped_file=ped_fpath,
         overwrite=overwrite,
@@ -332,16 +385,17 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         scatter_count=scatter_count,
         is_test=output_namespace in ['test', 'tmp'],
         depends_on=[combiner_job, sample_qc_job],
+        project_name=analysis_project,
     )
 
     # Interacting with the sample metadata server.
     aapi = AnalysisApi()
     # 1. Create a "queued" analysis
     am = AnalysisModel(
-        type='joint-calling',
+        type=AnalysisType('joint-calling'),
+        status=AnalysisStatus('queued'),
         output=filtered_combined_mt_path,
-        status='queued',
-        sample_ids=samples_df.s,
+        sample_ids=list(samples_df.s),
     )
     try:
         aid = aapi.create_new_analysis(project=analysis_project, analysis_model=am)
@@ -357,7 +411,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         combiner_job.depends_on(sm_in_progress_j)
         if pre_combiner_jobs:
             sm_in_progress_j.depends_on(*pre_combiner_jobs)
-        sm_completed_j.depends_on(var_qc_job)
+        sm_completed_j.depends_on(*var_qc_jobs)
         logger.info(f'Queueing {am.type} with analysis ID: {aid}')
     except Exception:  # pylint: disable=broad-except
         print(traceback.format_exc())
@@ -368,17 +422,21 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 def _create_mt_readme(
     raw_combined_mt_path: str,
     filtered_combined_mt_path: str,
-    mt_output_bucket: str,
+    output_bucket: str,
+    filtered_vcf_ptrn_path: str,
 ):
     local_tmp_dir = tempfile.mkdtemp()
     readme_local_fpath = join(local_tmp_dir, 'README.txt')
-    readme_gcs_fpath = join(mt_output_bucket, 'README.txt')
+    readme_gcs_fpath = join(output_bucket, 'README.txt')
     with open(readme_local_fpath, 'w') as f:
-        f.write(f'Unfiltered:\n{raw_combined_mt_path}')
-        f.write(
-            f'AS-VQSR soft-filtered\n(use `mt.filter_rows(hl.is_missing(mt.filters)` '
-            f'to hard-filter):\n {basename(filtered_combined_mt_path)}'
-        )
+        f.write(f"""\
+Unfiltered:
+{raw_combined_mt_path}
+Soft-filtered matrix table (use `mt.filter_rows(hl.is_missing(mt.filters)` to hard-filter):
+{filtered_combined_mt_path}
+Hard-filtered per-chromosome VCFs:
+{filtered_vcf_ptrn_path}
+""")
     subprocess.run(['gsutil', 'cp', readme_local_fpath, readme_gcs_fpath], check=False)
 
 
@@ -386,15 +444,21 @@ def find_inputs(
     tmp_bucket: str,
     overwrite: bool,
     input_projects: List[str],
+    source_tag: Optional[str] = None,
+    input_tsv_path: Optional[str] = None,
     skip_samples: Optional[Collection[str]] = None,
     check_existence: bool = True,
-    age_data: Optional[utils.ColumnInFile] = None,
-    reported_sex_data: Optional[utils.ColumnInFile] = None,
+    age_datas: Optional[List[utils.ColumnInFile]] = None,
+    reported_sex_datas: Optional[List[utils.ColumnInFile]] = None,
+    add_validation_samples: bool = True,
 ) -> pd.DataFrame:
     """
-    Find inputs, make a sample data DataFrame, save to a TSV file
+    Find inputs, make a sample data DataFrame, save to a TSV file.
+
+    To specify where to search raw GVCFs, specify `raw_gvcf_source_tag` which
+    corresponds with meta.source value in 'in-progress 'analysis entries
     """
-    output_tsv_path = join(tmp_bucket, 'samples.tsv')
+    output_tsv_path = input_tsv_path or join(tmp_bucket, 'samples.tsv')
 
     if utils.can_reuse(output_tsv_path, overwrite):
         logger.info(f'Reading already found DB inputs from {output_tsv_path}')
@@ -410,27 +474,34 @@ def find_inputs(
             input_projects,
             skip_samples=skip_samples,
             check_existence=check_existence,
+            source_tag=source_tag,
         )
-    if age_data:
-        samples_df = _add_sex(samples_df, age_data)
-    if reported_sex_data:
-        samples_df = _add_reported_sex(samples_df, reported_sex_data)
-    samples_df = sm_utils.add_validation_samples(samples_df)
+    if age_datas:
+        for age_data in age_datas:
+            samples_df = _add_age(samples_df, age_data)
+    if reported_sex_datas:
+        for reported_sex_data in reported_sex_datas:
+            samples_df = _add_reported_sex(samples_df, reported_sex_data)
+    if add_validation_samples:
+        samples_df = sm_utils.add_validation_samples(samples_df)
     samples_df.to_csv(output_tsv_path, index=False, sep='\t', na_rep='NA')
     samples_df = samples_df[pd.notnull(samples_df.s)]
     return samples_df
 
 
-def _add_sex(samples_df: pd.DataFrame, data: utils.ColumnInFile) -> pd.DataFrame:
+def _add_age(samples_df: pd.DataFrame, data: utils.ColumnInFile) -> pd.DataFrame:
     data_by_external_id = data.parse(list(samples_df['external_id']))
     for external_id, value in data_by_external_id.items():
         try:
-            age = int(value)
+            age = float(value)
         except ValueError:
             pass
         else:
             samples_df = samples_df.set_index('external_id', drop=False)
-            samples_df.loc[external_id, ['age']] = age
+            try:
+                samples_df.loc[external_id, ['age']] = int(age)
+            except ValueError:
+                pass
             samples_df = samples_df.set_index('s', drop=False)
     return samples_df
 
@@ -440,9 +511,9 @@ def _add_reported_sex(
 ) -> pd.DataFrame:
     data_by_external_id = data.parse(list(samples_df['external_id']))
     for external_id, value in data_by_external_id.items():
-        if value == 'M':
+        if value in ['M', 'Male', '1']:
             sex = '1'
-        elif value == 'F':
+        elif value in ['F', 'Female', '2']:
             sex = '2'
         else:
             sex = '0'

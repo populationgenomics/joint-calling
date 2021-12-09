@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 
 """
-Generates input for random_forest.py:
-- frequencies.ht
+Generate frequency annotations (AF, AC, AN, InbreedingCoeff)
 """
 
 import logging
@@ -126,6 +125,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         meta_ht=hl.read_table(meta_ht),
         add_meta=True,
         release_only=True,
+        # Filtering relateds that can skew frequencies calculation
+        unrelated_only=True,
     )
 
     if test:
@@ -243,11 +244,11 @@ def _compute_age_hists(mt: hl.MatrixTable) -> hl.Table:
 
 
 def _calc_inbreeding_coeff(mt: hl.MatrixTable) -> hl.MatrixTable:
-    logger.info('Calculating InbreedingCoeff...')
     # NOTE: This is not the ideal location to calculate this, but added here
     # to avoid another densify
-    mt = mt.annotate_rows(InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT))
-    return mt
+    logger.info('Calculating InbreedingCoeff...')
+    # the algorithm assumes all samples are unrelated:
+    return mt.annotate_rows(InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT))
 
 
 def _compute_filtering_af_and_popmax(mt: hl.MatrixTable) -> hl.Table:

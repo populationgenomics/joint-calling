@@ -82,44 +82,71 @@ def compute_hail_sample_qc(
             for x in sample_qc_ht.row_value
         }
     )
+
     sample_qc_ht = sample_qc_ht.repartition(100)
     return sample_qc_ht.checkpoint(out_ht_path, overwrite=True)
 
 
-def snps_not_in_gnomad(
-    mt: hl.MatrixTable,
+def cpg_custom_metrics(
+    split_mt: hl.MatrixTable,
     tmp_bucket: str,
     out_ht_path: Optional[str] = None,
     overwrite: bool = False,
     gnomad_path: str = resources.GNOMAD_HT,
 ) -> hl.Table:
     """
-    Count the number of variants per sample that do not occur in gnomAD
-    :param mt: MatrixTable, with multiallelics split, GT field for genotype
+    Extra metrics for CPG reports.
+
+    Resulting table fields:
+        nongnomad_snps: int
+        chrX_r_het_hom_var: float
+
+    :param split_mt: MatrixTable, with multiallelics split, GT field for genotype
     :param tmp_bucket: bucket path to write checkpoints
     :param out_ht_path: location to write the result to
     :param overwrite: overwrite checkpoints if they exist
     :param gnomad_path: path to GnomAD Hail Table
-    :return: per-sample Table, with the only int field "nongnomad_snps"
+    :return: per-sample Table.
     """
-    # Filter to SNPs
-    logger.info('Countings SNPs not in gnomAD')
-    out_ht_path = out_ht_path or join(tmp_bucket, 'notingnomad.ht')
+    out_ht_path = out_ht_path or join(tmp_bucket, 'custom_qc.ht')
     if utils.can_reuse(out_ht_path, overwrite):
         return hl.read_table(out_ht_path)
 
-    mt = mt.filter_rows(hl.len(mt.alleles) > 1)
-    mt = mt.filter_rows(hl.is_snp(mt.alleles[0], mt.alleles[1]))
+    def _count_gnomad_snps(mt, ht):
+        logger.info(
+            'Count the number of variants per sample that do not occur in gnomAD'
+        )
 
-    # Get entries (table annotated with locus, allele, sample)
-    ht = mt.entries()
+        mt = mt.filter_rows(hl.len(mt.alleles) > 1)
+        mt = mt.filter_rows(hl.is_snp(mt.alleles[0], mt.alleles[1]))
 
-    # Filter to those variants that are not in gnomad
-    gnomad = hl.read_table(gnomad_path)
-    ht = ht.key_by('locus', 'alleles').anti_join(gnomad)
-    # Count non-gnomad variants for each sample
-    stats_ht = ht.group_by(ht.s).aggregate(nongnomad_snps=hl.agg.count())
-    return stats_ht.checkpoint(out_ht_path, overwrite=True)
+        # Get entries (table annotated with locus, allele, sample)
+        entries_ht = mt.entries()
+
+        # Filter to those variants that are not in gnomad
+        gnomad_ht = hl.read_table(gnomad_path)
+        entries_ht = entries_ht.key_by('locus', 'alleles').anti_join(gnomad_ht)
+
+        # Count non-gnomad variants for each sample
+        cols_ht = entries_ht.group_by(entries_ht.s).aggregate(
+            nongnomad_snps=hl.agg.count()
+        )
+        ht = ht.annotate(nongnomad_snps=cols_ht[ht.key].nongnomad_snps)
+        return ht
+
+    def _chrx_het_hom(mt, ht):
+        logger.info('Counting het/hom ratio on chrX as an extra sex check')
+        # Number of hom/hem on chrX, as an extra sex check measure
+        chrx_mt = hl.filter_intervals(mt, [hl.parse_locus_interval('chrX')])
+        chrx_ht = hl.sample_qc(mt).cols()
+        ht = ht.annotate(chrX_sample_qc=chrx_ht[ht.key].sample_qc)
+        ht = ht.annotate(chrX_r_het_hom_var=ht.chrX_sample_qc.r_het_hom_var)
+        return ht
+
+    ht = split_mt.cols()
+    ht = _count_gnomad_snps(split_mt, ht)
+    ht = _chrx_het_hom(split_mt, ht)
+    return ht.checkpoint(out_ht_path, overwrite=True)
 
 
 def infer_sex(
@@ -162,7 +189,6 @@ def infer_sex(
         included_intervals=target_regions,
         gt_expr='LGT',
     )
-
     return ht.checkpoint(out_ht_path, overwrite=True)
 
 
@@ -679,28 +705,28 @@ def compute_hard_filters(
 
     ht = add_filter(
         ht,
-        hl.is_missing(picard_metrics_ht[ht.key].r_contamination)
-        | (
+        hl.is_defined(picard_metrics_ht[ht.key].r_contamination)
+        & (
             picard_metrics_ht[ht.key].r_contamination > cutoffs_d['max_r_contamination']
         ),
         'contamination',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(picard_metrics_ht[ht.key].r_chimera)
-        | (picard_metrics_ht[ht.key].r_chimera > cutoffs_d['max_r_chimera']),
+        hl.is_defined(picard_metrics_ht[ht.key].r_chimera)
+        & (picard_metrics_ht[ht.key].r_chimera > cutoffs_d['max_r_chimera']),
         'chimera',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(picard_metrics_ht[ht.key].r_duplication)
-        | (picard_metrics_ht[ht.key].r_duplication > cutoffs_d['max_r_duplication']),
+        hl.is_defined(picard_metrics_ht[ht.key].r_duplication)
+        & (picard_metrics_ht[ht.key].r_duplication > cutoffs_d['max_r_duplication']),
         'dup_rate',
     )
     ht = add_filter(
         ht,
-        hl.is_missing(picard_metrics_ht[ht.key].median_insert_size)
-        | (
+        hl.is_defined(picard_metrics_ht[ht.key].median_insert_size)
+        & (
             picard_metrics_ht[ht.key].median_insert_size
             < cutoffs_d['min_median_insert_size']
         ),

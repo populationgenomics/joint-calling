@@ -27,6 +27,7 @@ def add_pre_combiner_jobs(
     output_suffix: str,
     overwrite: bool,
     analysis_project: str,  # pylint: disable=unused-argument
+    assume_gvcfs_are_ready: bool = False,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
@@ -38,12 +39,6 @@ def add_pre_combiner_jobs(
 
     logger.info(f'Samples DF:\n{samples_df}')
     jobs_by_sample = defaultdict(list)
-    gvcfs_tsv_path = join(pre_combiner_bucket, 'gvcfs.tsv')
-    if utils.can_reuse(gvcfs_tsv_path, overwrite):
-        samples_df = pd.read_csv(gvcfs_tsv_path, sep='\t', na_values='NA').set_index(
-            's', drop=False
-        )
-        return samples_df, gvcfs_tsv_path, []
 
     def get_project_bucket(_proj):
         if _proj in ['syndip', 'giab']:
@@ -52,15 +47,24 @@ def add_pre_combiner_jobs(
             proj_bucket = f'gs://cpg-{_proj}-{output_suffix}'
         return proj_bucket
 
-    # Samples for which a GVCF is provided as input:
-    gvcf_df = samples_df[samples_df.gvcf != '-']
-    for sn, proj, external_id, gvcf_path in zip(
-        gvcf_df.s, gvcf_df.project, gvcf_df.external_id, gvcf_df.gvcf
+    # Samples for which a raw GVCF is provided as input:
+    gvcf_df = samples_df[samples_df.topostproc_gvcf != '-']
+    for sn, proj, source, external_id, gvcf_path in zip(
+        gvcf_df.s,
+        gvcf_df.project,
+        gvcf_df.source,
+        gvcf_df.external_id,
+        gvcf_df.topostproc_gvcf,
     ):
         proj_bucket = get_project_bucket(proj)
+        gvcf_bucket = join(proj_bucket, 'gvcf')
+        if source != '-':
+            gvcf_bucket = join(gvcf_bucket, source)
+        output_gvcf_path = join(gvcf_bucket, f'{sn}.g.vcf.gz')
 
-        output_gvcf_path = join(proj_bucket, 'gvcf', f'{sn}.g.vcf.gz')
-        if not utils.can_reuse(output_gvcf_path, overwrite):
+        if not assume_gvcfs_are_ready and not utils.can_reuse(
+            output_gvcf_path, overwrite
+        ):
             j = _add_postproc_gvcf_jobs(
                 b=b,
                 gvcf_path=gvcf_path,
@@ -76,17 +80,22 @@ def add_pre_combiner_jobs(
 
     # Samples for which a CRAM/BAM is provided as input for realignment:
     realign_df = samples_df[samples_df.realign_cram != '-']
-    for sn, proj, input_cram, input_crai in zip(
+    for sn, proj, source, input_cram, input_crai in zip(
         realign_df.s,
         realign_df.project,
+        realign_df.source,
         realign_df.realign_cram,
         realign_df.realign_crai,
     ):
         assert isinstance(input_crai, str), (sn, input_crai)
 
         proj_bucket = get_project_bucket(proj)
-        output_cram_fpath = join(proj_bucket, 'cram', f'{sn}.cram')
-        output_crai_fpath = join(proj_bucket, 'cram', f'{sn}.cram.crai')
+        cram_bucket = join(proj_bucket, 'cram')
+        if source != '-':
+            cram_bucket = join(cram_bucket, source)
+        output_cram_fpath = join(cram_bucket, f'{sn}.cram')
+        output_crai_fpath = join(cram_bucket, f'{sn}.cram.crai')
+
         if not utils.can_reuse(output_cram_fpath, overwrite):
             alignment_input = sm_utils.AlignmentInput(
                 bam_or_cram_path=input_cram,
@@ -106,13 +115,22 @@ def add_pre_combiner_jobs(
     # Samples for which a CRAM is provided as input for variant calling:
     hc_intervals_j = None
     cram_df = samples_df[samples_df.cram != '-']
-    for sn, external_id, proj, input_cram, input_crai in zip(
-        cram_df.s, cram_df.external_id, cram_df.project, cram_df.cram, cram_df.crai
+    for sn, external_id, proj, source, input_cram, input_crai in zip(
+        cram_df.s,
+        cram_df.external_id,
+        cram_df.project,
+        cram_df.source,
+        cram_df.cram,
+        cram_df.crai,
     ):
         assert isinstance(input_crai, str), (sn, input_crai)
 
         proj_bucket = get_project_bucket(proj)
-        output_gvcf_path = join(proj_bucket, 'gvcf', f'{sn}.g.vcf.gz')
+        gvcf_bucket = join(proj_bucket, 'gvcf')
+        if source != '-':
+            gvcf_bucket = join(gvcf_bucket, source)
+        output_gvcf_path = join(gvcf_bucket, f'{sn}.g.vcf.gz')
+
         if not utils.can_reuse(output_gvcf_path, overwrite):
             if hc_intervals_j is None:
                 hc_intervals_j = _add_split_intervals_job(
@@ -143,6 +161,7 @@ def add_pre_combiner_jobs(
         jobs.extend(js)
 
     # Saving the resulting DataFrame as a TSV file
+    gvcfs_tsv_path = join(pre_combiner_bucket, 'gvcfs.tsv')
     samples_df.to_csv(gvcfs_tsv_path, index=False, sep='\t', na_rep='NA')
     logger.info(f'Saved combiner-ready GVCF data to {gvcfs_tsv_path}')
     return samples_df, gvcfs_tsv_path, jobs
@@ -460,7 +479,7 @@ def _add_haplotype_caller_job(
     """
     )
     if output_gvcf_path:
-        b.write_output(j.output_gvcf, output_gvcf_path)
+        b.write_output(j.output_gvcf, output_gvcf_path.replace('.g.vcf.gz', ''))
     return j
 
 
