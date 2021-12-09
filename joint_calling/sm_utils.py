@@ -260,6 +260,9 @@ default_entry = {
     'r_chimera': None,
     'r_duplication': None,
     'median_insert_size': None,
+    'median_coverage': None,
+    'r_30x': None,
+    'r_aligned_in_pairs': None,
     'fam_id': '-',
     'mat_id': '-',
     'pat_id': '-',
@@ -331,6 +334,13 @@ def find_inputs_from_db(
                 analysis_type='gvcf',
                 meta=dict(staging=True, **meta),
             )
+            
+        qc_analysis_per_sid = find_analyses_by_sid(
+            sample_ids=[s['id'] for s in samples],
+            analysis_type='qc',
+            project=proj,
+            meta=dict(**meta),
+        )
 
         reblocked_gvcf_by_sid = dict()
         staging_gvcf_by_sid = dict()
@@ -345,8 +355,8 @@ def find_inputs_from_db(
             if reblocked_gvcf_analysis:
                 if not reblocked_gvcf_analysis.output:
                     logger.error(
-                        f'"output" is not defined for the latest reblocked gvcf analysis, '
-                        f'skipping sample {s["id"]}'
+                        f'"output" is not defined for the latest reblocked gvcf '
+                        f' analysis, skipping sample {s["id"]}'
                     )
                     sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
                     continue
@@ -377,34 +387,29 @@ def find_inputs_from_db(
             continue
 
         logger.info('Checking sequencing info for samples')
+        seq_meta_by_sid = dict()
         try:
             seq_infos: List[Dict] = seqapi.get_sequences_by_sample_ids(
                 request_body=[s['id'] for s in samples]
             )
         except exceptions.ApiException:
-            logger.critical(f'Not for all samples sequencing data was found')
-            raise
-        seq_meta_by_sid: Dict = dict()
-        sids_without_meta = []
-        for si in seq_infos:
-            if 'meta' not in si:
-                sids_without_meta.append(si['sample_id'])
-            else:
-                seq_meta_by_sid[si['sample_id']] = si['meta']
-        if sids_without_meta:
-            logger.warning(
-                f'Found {len(sids_without_meta)} samples without "meta" in '
-                f'sequencing info: {", ".join(sids_without_meta)}'
-            )
-        logger.info(f'Found {len(seq_meta_by_sid)} sequences')
-
-        samples = [s for s in samples if s['id'] in seq_meta_by_sid]
-        if not samples:
-            logger.info(f'No samples to process, skipping project {proj}')
-            continue
+            logger.warning(f'Sequencing data was not found for some samples')
+        else:
+            sids_without_meta = []
+            for si in seq_infos:
+                if 'meta' not in si:
+                    sids_without_meta.append(si['sample_id'])
+                else:
+                    seq_meta_by_sid[si['sample_id']] = si['meta']
+            if sids_without_meta:
+                logger.warning(
+                    f'Found {len(sids_without_meta)} samples without "meta" in '
+                    f'sequencing info: {", ".join(sids_without_meta)}'
+                )
+            logger.info(f'Found {len(seq_meta_by_sid)} sequences')
 
         logger.info(
-            'Checking GVCFs for samples and collecting pipeline input data frame'
+            'Checking GVCFs for samples and collecting pipeline input DataFrame'
         )
         for s in samples:
             sample_id = s['id']
@@ -412,9 +417,15 @@ def find_inputs_from_db(
             resequencing_label = '-'
             if '-' in external_id:
                 external_id, resequencing_label = external_id.split('-', maxsplit=1)
-            seq_meta = seq_meta_by_sid[sample_id]
+            seq_meta = seq_meta_by_sid.get(sample_id, {})
             reblocked_gvcf_path = reblocked_gvcf_by_sid.get(s['id'])
             staging_gvcf_path = staging_gvcf_by_sid.get(s['id'])
+
+            qc_analysis = qc_analysis_per_sid.get(sample_id)
+            if qc_analysis:
+                qc_metrics = qc_analysis.meta.get('metrics', {})
+            else:
+                qc_metrics = {} 
 
             def _check_gvcf(gvcf_path):
                 if not gvcf_path.endswith('.g.vcf.gz'):
@@ -465,20 +476,14 @@ def find_inputs_from_db(
                     ),
                     'primary_study': seq_meta.get('Primary study', 'TOB'),
                     'resequencing_label': resequencing_label,
-                    'r_contamination': seq_meta.get(
-                        'raw_data.FREEMIX', seq_meta.get('freemix')
-                    ),
-                    'r_chimera': seq_meta.get(
-                        'raw_data.PCT_CHIMERAS', seq_meta.get('pct_chimeras')
-                    ),
-                    'r_duplication': seq_meta.get(
-                        'raw_data.PERCENT_DUPLICATION',
-                        seq_meta.get('percent_duplication'),
-                    ),
-                    'median_insert_size': seq_meta.get(
-                        'raw_data.MEDIAN_INSERT_SIZE',
-                        seq_meta.get('median_insert_size'),
-                    ),
+                    # QC metrics:
+                    'r_contamination': qc_metrics.get('freemix'),
+                    'r_chimera': seq_meta.get('pct_chimeras'),
+                    'r_duplication': seq_meta.get('percent_duplication'),
+                    'median_insert_size': seq_meta.get('median_insert_size'),
+                    'median_coverage': seq_meta.get('median_coverage'),
+                    'r_30x': seq_meta.get('pct_30x'),
+                    'r_aligned_in_pairs': seq_meta.get('pct_reads_aligned_in_pairs'),
                 }
             )
             inputs.append(entry)
