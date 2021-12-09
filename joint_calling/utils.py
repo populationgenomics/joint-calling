@@ -44,7 +44,7 @@ DATAPROC_PACKAGES = [
 DRIVER_IMAGE = 'australia-southeast1-docker.pkg.dev/analysis-runner/images/driver'
 
 AR_REPO = 'australia-southeast1-docker.pkg.dev/cpg-common/images'
-GATK_VERSION = '4.2.1.0'
+GATK_VERSION = '4.2.3.0'
 GATK_IMAGE = f'{AR_REPO}/gatk:{GATK_VERSION}'
 # GnarlyGenotyper is in Beta and crashes with NullPointerException when using the
 # official GATK docker, that's why we're using a separate image for it:
@@ -207,6 +207,7 @@ def file_exists(path: str) -> bool:
     :return: True if the object exists
     """
     if path.startswith('gs://'):
+        logger.info(f'Checking {path} existence')
         bucket = path.replace('gs://', '').split('/')[0]
         path = path.replace('gs://', '').split('/', maxsplit=1)[1]
         path = path.rstrip('/')  # ".mt/" -> ".mt"
@@ -228,6 +229,9 @@ def can_reuse(
 
     If `fpath` is a collection, it requires all files in it to exist.
     """
+    if overwrite:
+        return False
+        
     if not fpath:
         return False
 
@@ -237,14 +241,9 @@ def can_reuse(
     if not file_exists(fpath):
         return False
 
-    if overwrite:
-        if not silent:
-            logger.info(f'File {fpath} exists and will be overwritten')
-        return False
-    else:
-        if not silent:
-            logger.info(f'Reusing existing {fpath}. Use --overwrite to overwrite')
-        return True
+    if not silent:
+        logger.info(f'Reusing existing {fpath}. Use --overwrite to overwrite')
+    return True
 
 
 def gs_cache_file(fpath: str, local_tmp_dir: str) -> str:
