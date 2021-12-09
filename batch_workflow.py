@@ -187,6 +187,11 @@ logger.setLevel(logging.INFO)
     is_flag=True,
     help='Do not generate somaleir fingerprints. Use pc_relate',
 )
+@click.option(
+    '--force-sample', '-S',
+    'force_samples',
+    multiple=True,
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -213,6 +218,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     assume_gvcfs_are_ready: bool,
     release_related: bool,
     skip_somalier: bool,
+    force_samples: Optional[List[str]],
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -302,6 +308,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         output_suffix=project_output_suffix,
         overwrite=overwrite,
         analysis_project=analysis_project,
+        force_samples=force_samples or [],
         assume_gvcfs_are_ready=assume_gvcfs_are_ready,
     )
 

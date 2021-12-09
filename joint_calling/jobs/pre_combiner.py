@@ -27,6 +27,7 @@ def add_pre_combiner_jobs(
     output_suffix: str,
     overwrite: bool,
     analysis_project: str,  # pylint: disable=unused-argument
+    force_samples: List[str],
     assume_gvcfs_are_ready: bool = False,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
@@ -62,7 +63,7 @@ def add_pre_combiner_jobs(
             gvcf_bucket = join(gvcf_bucket, source)
         output_gvcf_path = join(gvcf_bucket, f'{sn}.g.vcf.gz')
 
-        if (
+        if sn in force_samples or (
             not assume_gvcfs_are_ready and 
             not utils.can_reuse(output_gvcf_path, overwrite)
         ):
@@ -73,7 +74,6 @@ def add_pre_combiner_jobs(
                 sample_name=sn,
                 project_name=proj,
                 external_id=external_id,
-                overwrite=True,
             )
             jobs_by_sample[sn].append(j)
         samples_df.loc[sn, ['gvcf']] = output_gvcf_path
@@ -374,7 +374,6 @@ def _add_produce_gvcf_jobs(
         sample_name=sample_name,
         project_name=project_name,
         external_id=external_id,
-        overwrite=overwrite,
         depends_on=[merge_j],
     )
     return j
@@ -534,7 +533,6 @@ def _add_postproc_gvcf_jobs(
     sample_name: str,
     project_name: str,
     external_id: str,
-    overwrite: bool,
     depends_on: Optional[List[Job]] = None,
 ) -> Job:
     """
@@ -552,12 +550,18 @@ def _add_postproc_gvcf_jobs(
     j.image(utils.GATK_IMAGE)
     mem_gb = 8
     j.memory(f'{mem_gb}G')
-    j.storage(f'30G')
+    j.storage(f'50G')
     j.declare_resource_group(
         output_gvcf={
             'g.vcf.gz': '{root}.g.vcf.gz',
             'g.vcf.gz.tbi': '{root}.g.vcf.gz.tbi',
         }
+    )
+
+    ref_fasta = resources.REF_FASTA
+    ref_fai = resources.REF_FASTA + '.fai'
+    ref_dict = (
+        ref_fasta.replace('.fasta', '').replace('.fna', '').replace('.fa', '') + '.dict'
     )
 
     j.command(f"""
@@ -587,19 +591,27 @@ def _add_postproc_gvcf_jobs(
     }}
 
     # Retrying copying to avoid google bandwidth limits
-    retry gsutil cp {gvcf_path} /io/batch/input.g.vcf.gz
-    retry gsutil cp {gvcf_path}.tbi /io/batch/input.g.vcf.gz.tbi
-    retry gsutil cp {resources.NOALT_REGIONS} regions.bed
+    retry gsutil cp {gvcf_path} /io/batch/{sample_name}.g.vcf.gz
+    retry gsutil cp {resources.NOALT_REGIONS} noalt-regions.bed
+
+    # Copying reference data as well to avoid crazy logging costs 
+    # for region requests
+    retry gsutil cp {ref_fasta} /io/batch/{basename(ref_fasta)}
+    retry gsutil cp {ref_fai}   /io/batch/{basename(ref_fai)}
+    retry gsutil cp {ref_dict}  /io/batch/{basename(ref_dict)}
+
+    # Reindexing just to make sure the index is not corrupted
+    bcftools index --tbi /io/batch/{sample_name}.g.vcf.gz
 
     gatk --java-options "-Xms{mem_gb - 1}g" \\
     ReblockGVCF \\
-    --reference {resources.REF_FASTA} \\
-    -V /io/batch/input.g.vcf.gz \\
+    --reference /io/batch/{basename(ref_fasta)} \\
+    -V /io/batch/{sample_name}.g.vcf.gz \\
     -do-qual-approx \\
-    -O /io/batch/input-reblocked.g.vcf.gz \\
+    -O /io/batch/{sample_name}-reblocked.g.vcf.gz \\
     --create-output-variant-index true
 
-    bcftools view /io/batch/input-reblocked.g.vcf.gz -T regions.bed \\
+    bcftools view /io/batch/{sample_name}-reblocked.g.vcf.gz -T noalt-regions.bed \\
     | bcftools annotate -x INFO/DS \\
     | bcftools reheader -s <(echo "{external_id} {sample_name}") \\
     | bcftools view -Oz -o {j.output_gvcf['g.vcf.gz']}
@@ -609,56 +621,4 @@ def _add_postproc_gvcf_jobs(
     b.write_output(j.output_gvcf, output_path.replace('.g.vcf.gz', ''))
     if depends_on:
         j.depends_on(*depends_on)
-    return j
-
-
-def _add_subset_noalt_step(
-    b: hb.Batch,
-    sample_name: str,
-    project_name: str,
-    input_gvcf: hb.ResourceGroup,
-    output_gvcf_path: str,
-    noalt_regions: hb.ResourceFile,
-    external_sample_id: str,
-    internal_sample_id: str,
-    overwrite: bool,
-    depends_on: Optional[List[Job]] = None,
-) -> Job:
-    """
-    1. Subset GVCF to main chromosomes to avoid downstream errors
-    2. Removes the DS INFO field that is added to some HGDP GVCFs to avoid errors
-       from Hail about mismatched INFO annotations
-    3. Renames sample name from external_sample_id to internal_sample_id
-    """
-    job_name = f'{project_name}/{sample_name}: SubsetToNoalt'
-    if utils.can_reuse(output_gvcf_path, overwrite):
-        return b.new_job(job_name + ' [reuse]')
-
-    j = b.new_job(job_name)
-    j.image(utils.BCFTOOLS_IMAGE)
-    mem_gb = 8
-    j.memory(f'{mem_gb}G')
-    j.storage(f'30G')
-    j.declare_resource_group(
-        output_gvcf={
-            'g.vcf.gz': '{root}.g.vcf.gz',
-            'g.vcf.gz.tbi': '{root}.g.vcf.gz.tbi',
-        }
-    )
-    if depends_on:
-        j.depends_on(*depends_on)
-    j.command(
-        f"""set -e
-    export GOOGLE_APPLICATION_CREDENTIALS=/gsa-key/key.json
-    gcloud -q auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
-    
-    bcftools view {input_gvcf['g.vcf.gz']} -T {noalt_regions} \\
-        | bcftools annotate -x INFO/DS \\
-        | bcftools reheader -s <(echo "{external_sample_id} {internal_sample_id}") \\
-        | bcftools view -Oz -o {j.output_gvcf['g.vcf.gz']}
-
-    bcftools index --tbi {j.output_gvcf['g.vcf.gz']}
-        """
-    )
-    b.write_output(j.output_gvcf, output_gvcf_path.replace('.g.vcf.gz', ''))
     return j
