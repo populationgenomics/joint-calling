@@ -62,8 +62,9 @@ def add_pre_combiner_jobs(
             gvcf_bucket = join(gvcf_bucket, source)
         output_gvcf_path = join(gvcf_bucket, f'{sn}.g.vcf.gz')
 
-        if not assume_gvcfs_are_ready and not utils.can_reuse(
-            output_gvcf_path, overwrite
+        if (
+            not assume_gvcfs_are_ready and 
+            not utils.can_reuse(output_gvcf_path, overwrite)
         ):
             j = _add_postproc_gvcf_jobs(
                 b=b,
@@ -72,7 +73,7 @@ def add_pre_combiner_jobs(
                 sample_name=sn,
                 project_name=proj,
                 external_id=external_id,
-                overwrite=overwrite,
+                overwrite=True,
             )
             jobs_by_sample[sn].append(j)
         samples_df.loc[sn, ['gvcf']] = output_gvcf_path
@@ -536,55 +537,18 @@ def _add_postproc_gvcf_jobs(
     overwrite: bool,
     depends_on: Optional[List[Job]] = None,
 ) -> Job:
-    if utils.can_reuse(output_path, overwrite):
-        return output_path
-    logger.info(
-        f'Adding reblock and subset jobs for sample {sample_name}, gvcf {gvcf_path}'
-    )
-    gvcf = b.read_input_group(
-        **{'g.vcf.gz': gvcf_path, 'g.vcf.gz.tbi': gvcf_path + '.tbi'}
-    )
-    reblock_j = _add_reblock_gvcf_job(
-        b=b,
-        sample_name=sample_name,
-        project_name=project_name,
-        input_gvcf=gvcf,
-        overwrite=overwrite,
-    )
-    if depends_on:
-        reblock_j.depends_on(*depends_on)
-    j = _add_subset_noalt_step(
-        b=b,
-        sample_name=sample_name,
-        project_name=project_name,
-        input_gvcf=reblock_j.output_gvcf,
-        output_gvcf_path=output_path,
-        noalt_regions=b.read_input(resources.NOALT_REGIONS),
-        external_sample_id=external_id,
-        internal_sample_id=sample_name,
-        depends_on=depends_on,
-        overwrite=overwrite,
-    )
-    return j
-
-
-def _add_reblock_gvcf_job(
-    b: hb.Batch,
-    sample_name: str,
-    project_name: str,
-    input_gvcf: hb.ResourceGroup,
-    overwrite: bool,
-    output_gvcf_path: Optional[str] = None,
-) -> Job:
     """
     Runs ReblockGVCF to annotate with allele-specific VCF INFO fields
-    required for recalibration
-    """
-    job_name = f'{project_name}/{sample_name}: ReblockGVCF'
-    if utils.can_reuse(output_gvcf_path, overwrite):
-        return b.new_job(job_name + ' [reuse]')
+    required for recalibration.
 
-    j = b.new_job(job_name)
+    1. Subset GVCF to main chromosomes to avoid downstream errors
+    2. Removes the DS INFO field that is added to some HGDP GVCFs to avoid errors
+       from Hail about mismatched INFO annotations
+    3. Renames sample name from external_sample_id to internal_sample_id
+    """
+    logger.info(f'Adding GVCF postproc job for sample {sample_name}, gvcf {gvcf_path}')
+
+    j = b.new_job(f'{project_name}/{sample_name}: ReblockGVCF')
     j.image(utils.GATK_IMAGE)
     mem_gb = 8
     j.memory(f'{mem_gb}G')
@@ -596,17 +560,55 @@ def _add_reblock_gvcf_job(
         }
     )
 
-    j.command(
-        f"""
+    j.command(f"""
+    export GOOGLE_APPLICATION_CREDENTIALS=/gsa-key/key.json
+    gcloud -q auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
+
+    function fail {{
+      echo $1 >&2
+      exit 1
+    }}
+
+    function retry {{
+      local n=1
+      local max=10
+      local delay=30
+      while true; do
+        "$@" && break || {{
+          if [[ $n -lt $max ]]; then
+            ((n++))
+            echo "Command failed. Attempt $n/$max:"
+            sleep $delay;
+          else
+            fail "The command has failed after $n attempts."
+          fi
+        }}
+      done
+    }}
+
+    # Retrying copying to avoid google bandwidth limits
+    retry gsutil cp {gvcf_path} /io/batch/input.g.vcf.gz
+    retry gsutil cp {gvcf_path}.tbi /io/batch/input.g.vcf.gz.tbi
+    retry gsutil cp {resources.NOALT_REGIONS} regions.bed
+
     gatk --java-options "-Xms{mem_gb - 1}g" \\
-        ReblockGVCF \\
-        -V {input_gvcf['g.vcf.gz']} \\
-        -do-qual-approx \\
-        -O {j.output_gvcf['g.vcf.gz']} \\
-        --create-output-variant-index true"""
-    )
-    if output_gvcf_path:
-        b.write_output(j.output_gvcf, output_gvcf_path.replace('.g.vcf.gz', ''))
+    ReblockGVCF \\
+    --reference {resources.REF_FASTA} \\
+    -V /io/batch/input.g.vcf.gz \\
+    -do-qual-approx \\
+    -O /io/batch/input-reblocked.g.vcf.gz \\
+    --create-output-variant-index true
+
+    bcftools view /io/batch/input-reblocked.g.vcf.gz -T regions.bed \\
+    | bcftools annotate -x INFO/DS \\
+    | bcftools reheader -s <(echo "{external_id} {sample_name}") \\
+    | bcftools view -Oz -o {j.output_gvcf['g.vcf.gz']}
+
+    bcftools index --tbi {j.output_gvcf['g.vcf.gz']}
+    """)
+    b.write_output(j.output_gvcf, output_path.replace('.g.vcf.gz', ''))
+    if depends_on:
+        j.depends_on(*depends_on)
     return j
 
 
@@ -647,7 +649,9 @@ def _add_subset_noalt_step(
         j.depends_on(*depends_on)
     j.command(
         f"""set -e
-
+    export GOOGLE_APPLICATION_CREDENTIALS=/gsa-key/key.json
+    gcloud -q auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
+    
     bcftools view {input_gvcf['g.vcf.gz']} -T {noalt_regions} \\
         | bcftools annotate -x INFO/DS \\
         | bcftools reheader -s <(echo "{external_sample_id} {internal_sample_id}") \\
