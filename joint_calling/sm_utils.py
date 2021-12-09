@@ -478,12 +478,12 @@ def find_inputs_from_db(
                     'resequencing_label': resequencing_label,
                     # QC metrics:
                     'r_contamination': qc_metrics.get('freemix'),
-                    'r_chimera': seq_meta.get('pct_chimeras'),
-                    'r_duplication': seq_meta.get('percent_duplication'),
-                    'median_insert_size': seq_meta.get('median_insert_size'),
-                    'median_coverage': seq_meta.get('median_coverage'),
-                    'r_30x': seq_meta.get('pct_30x'),
-                    'r_aligned_in_pairs': seq_meta.get('pct_reads_aligned_in_pairs'),
+                    'r_chimera': qc_metrics.get('pct_chimeras'),
+                    'r_duplication': qc_metrics.get('percent_duplication'),
+                    'median_insert_size': qc_metrics.get('median_insert_size'),
+                    'median_coverage': qc_metrics.get('median_coverage'),
+                    'r_30x': qc_metrics.get('pct_30x'),
+                    'r_aligned_in_pairs': qc_metrics.get('pct_reads_aligned_in_pairs'),
                 }
             )
             inputs.append(entry)
