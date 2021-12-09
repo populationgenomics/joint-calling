@@ -19,7 +19,7 @@ def get_cluster(
     is_test: bool = False,
     phantomjs: bool = False,
     preemptible: bool = True,
-    depends_on: Optional[List[Job]] = None,
+    depends_on: Optional[List[Optional[Job]]] = None,
 ) -> dataproc.DataprocCluster:
     """
     Get or create a Dataproc cluster by name
@@ -27,6 +27,9 @@ def get_cluster(
     max_age = '1h' if is_test else '8h'
     if long:
         max_age = '3h' if is_test else '24h'
+    
+    depends_on = depends_on or []
+    depends_on = [j for j in depends_on if j is not None]
 
     return dataproc.setup_dataproc(
         b,
