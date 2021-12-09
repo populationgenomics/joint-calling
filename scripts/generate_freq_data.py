@@ -5,7 +5,7 @@ Generate frequency annotations (AF, AC, AN, InbreedingCoeff)
 """
 
 import logging
-from typing import Dict, List
+from typing import List
 import click
 import hail as hl
 
@@ -13,8 +13,6 @@ from gnomad.resources.grch38.gnomad import (
     DOWNSAMPLINGS,
     POPS,
     POPS_TO_REMOVE_FOR_POPMAX,
-    SEXES,
-    SUBSETS,
 )
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
@@ -25,15 +23,28 @@ from gnomad.utils.annotations import (
     get_adj_expr,
     pop_max_expr,
     qual_hist_expr,
+    set_female_y_metrics_to_na_expr,
 )
 from gnomad.utils.file_utils import file_exists
-from gnomad.utils.vcf import index_globals
+from gnomad.utils.release import make_freq_index_dict, make_faf_index_dict
 
 from joint_calling import utils, _version
 
 
 logger = logging.getLogger('generate_freq_data')
 logger.setLevel(logging.INFO)
+
+
+COHORTS_WITH_POP_STORED_AS_SUBPOP = [
+    'thousand-genomes',
+    'hgdp',
+    'mgrb',
+    'tob-wgs',
+]
+
+# SUBSETS can contain "non_cancer", "non_neuro", etc in the future,
+# and we want to keep this one to cohorts only:
+SUBSETS = COHORTS_WITH_POP_STORED_AS_SUBPOP
 
 
 @click.command()
@@ -65,19 +76,15 @@ logger.setLevel(logging.INFO)
     help='',
 )
 @click.option(
-    '--existing-frequencies',
-    'existing_frequencies_ht_path',
-    help='Load allele frequencies from the previous version '
-    'to avoid an extra frequency calculation',
-)
-@click.option(
     '--test',
     help='Runs a test on two partitions of chr20',
     is_flag=True,
 )
 @click.option(
     '--subset',
+    'subsets',
     help='Name of subset for which to generate frequency data',
+    multiple=True,
     type=click.Choice(SUBSETS),
 )
 @click.option(
@@ -104,17 +111,39 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     mt_path: str,
     hard_filtered_samples_ht: str,
     meta_ht: str,
-    existing_frequencies_ht_path: str,
     test: bool,
-    subset: str,
+    subsets: List[str],
     work_bucket: str,  # pylint: disable=unused-argument
     local_tmp_dir: str,
     overwrite: bool,
 ):
-    local_tmp_dir = utils.init_hail(
-        f'generate_frequency_data {("for " + subset) if subset else ""}', local_tmp_dir
-    )
+    name = 'generate_frequency_data'
+    if subsets:
+        name += f'({"|".join(subsets)})'
 
+    if subsets:
+        invalid_subsets = []
+        n_subsets_use_subpops = 0
+        for s in subsets:
+            if s not in SUBSETS:
+                invalid_subsets.append(s)
+            if s in COHORTS_WITH_POP_STORED_AS_SUBPOP:
+                n_subsets_use_subpops += 1
+
+        if invalid_subsets:
+            raise ValueError(
+                f'{", ".join(invalid_subsets)} subset(s) are not one of the following '
+                f'official subsets: {SUBSETS}'
+            )
+        if n_subsets_use_subpops & (n_subsets_use_subpops != len(subsets)):
+            raise ValueError(
+                f'Cannot combine cohorts that use subpops in frequency calculations '
+                f'{COHORTS_WITH_POP_STORED_AS_SUBPOP} '
+                f'with cohorts that use pops in frequency calculations '
+                f'{[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}.'
+            )
+
+    utils.init_hail(name, local_tmp_dir)
     if not overwrite and file_exists(out_ht_path):
         logger.info(f'{out_ht_path} exists, reusing')
 
@@ -136,11 +165,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
-    if subset:
-        mt = mt.filter_cols(mt.meta.subsets[subset])
+    if subsets:
+        mt = mt.filter_cols(hl.any([mt.meta.project == s for s in subsets]))
         logger.info(
-            f'Running frequency generation pipeline on {mt.count_cols()} '
-            f'samples in {subset} subset...'
+            f'Running frequency generation pipeline on {mt.count_cols()} samples in '
+            f'{", ".join(subsets)} subset(s)...'
         )
     else:
         logger.info(
@@ -161,37 +190,37 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     mt = hl.experimental.densify(mt)
     mt = mt.filter_rows(hl.len(mt.alleles) > 1)
 
-    # Temporary hotfix for depletion of homozygous alternate genotypes
-    logger.info(
-        'Setting het genotypes at sites with >1% AF (using v3.0 frequencies) '
-        'and > 0.9 AB to homalt...'
-    )
-    if existing_frequencies_ht_path:
-        freq_ht = hl.read_table(existing_frequencies_ht_path)
-        freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
-        mt = mt.annotate_entries(
-            GT=hl.cond(
-                (freq_ht[mt.row_key].AF > 0.01)
-                & mt.GT.is_het()
-                & (mt.AD[1] / mt.DP > 0.9),
-                hl.call(1, 1),
-                mt.GT,
-            )
-        )
-
     logger.info('Generating frequency data...')
-    if subset:
+    if subsets:
         mt = annotate_freq(
             mt,
             sex_expr=mt.meta.sex_karyotype,
-            pop_expr=mt.meta.pop,
+            pop_expr=mt.meta.pop
         )
+        freq_meta = [
+            {**x, **{'subset': '|'.join(subsets)}} for x in hl.eval(mt.freq_meta)
+        ]
+        mt = mt.annotate_globals(freq_meta=freq_meta)
 
         # NOTE: no FAFs or popmax needed for subsets
         mt = mt.select_rows('freq')
+        pops = POPS
 
-        logger.info(f'Writing out frequency data for {subset} subset...')
-        mt.rows().write(out_ht_path, overwrite=True)
+        mt = mt.annotate_globals(
+            freq_index_dict=make_freq_index_dict(
+                freq_meta=freq_meta,
+                pops=pops,
+                label_delimiter='-',
+                subsets=['|'.join(subsets)],
+            )
+        )
+        mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
+        freq_ht = mt.rows()
+
+        logger.info(
+            f'Writing out frequency data for {", ".join(subsets)} subset(s)...'
+        )
+        freq_ht.write(out_ht_path, overwrite=True)    
 
     else:
         mt = _compute_age_hists(mt)
@@ -204,6 +233,15 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         )
         # Remove all loci with raw AC=0
         mt = mt.filter_rows(mt.freq[1].AC > 0)
+
+        mt = mt.annotate_globals(
+            freq_index_dict=make_freq_index_dict(
+                freq_meta=hl.eval(mt.freq_meta),
+                downsamplings=hl.eval(mt.downsamplings),
+                label_delimiter='-',
+            )
+        )
+        mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
 
         mt = _calc_inbreeding_coeff(mt)
 
@@ -292,23 +330,6 @@ def _annotate_quality_merics_hist(mt: hl.MatrixTable) -> hl.Table:
         ),
     )
     return ht
-
-
-def make_faf_index_dict(faf_meta: List[Dict[str, str]]) -> Dict[str, int]:
-    """
-    Create a look-up Dictionary for entries contained in the filter allele frequency annotation array
-    :param List of Dict faf_meta: Global annotation containing the set of groupings for each element of the faf array (e.g., [{'group': 'adj'}, {'group': 'adj', 'pop': 'nfe'}])
-    :return: Dictionary of faf annotation population groupings, where values are the corresponding 0-based indices for the
-        groupings in the faf_meta array
-    :rtype: Dict of str: int
-    """
-
-    index_dict = index_globals(faf_meta, dict(group=['adj']))
-    index_dict.update(index_globals(faf_meta, dict(group=['adj'], pop=POPS)))
-    index_dict.update(index_globals(faf_meta, dict(group=['adj'], sex=SEXES)))
-    index_dict.update(index_globals(faf_meta, dict(group=['adj'], pop=POPS, sex=SEXES)))
-
-    return index_dict
 
 
 if __name__ == '__main__':
