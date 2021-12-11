@@ -72,13 +72,6 @@ logger.setLevel(logging.INFO)
     'The name will be suffixed with the dataset version (set by --version)',
 )
 @click.option(
-    '--use-gnarly-genotyper',
-    'use_gnarly_genotyper',
-    is_flag=True,
-    help='Whether to use a GenomicsDB and Gnarly genotyper to merge GVCFs instead of '
-    'the Hail combiner',
-)
-@click.option(
     '--ped-file',
     'ped_fpath',
     help='PED file with family information',
@@ -128,7 +121,6 @@ logger.setLevel(logging.INFO)
 )
 @click.option(
     '--skip-sample',
-    '-S',
     'skip_samples',
     multiple=True,
     help='Don\'t process specified samples. Can be set multiple times.',
@@ -182,7 +174,7 @@ logger.setLevel(logging.INFO)
     help='Do not generate somaleir fingerprints. Use pc_relate',
 )
 @click.option(
-    '--force-sample', '-S',
+    '--force-sample',
     'force_samples',
     multiple=True,
 )
@@ -194,7 +186,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     input_tsv_path: Optional[str],  # pylint: disable=unused-argument
     output_version: str,
     output_projects: Optional[List[str]],  # pylint: disable=unused-argument
-    use_gnarly_genotyper: bool,
     ped_fpath: Optional[str],
     age_datas: Optional[List[utils.ColumnInFile]],
     reported_sex_datas: Optional[List[utils.ColumnInFile]],
