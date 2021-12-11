@@ -29,22 +29,10 @@ from gnomad.utils.file_utils import file_exists
 from gnomad.utils.release import make_freq_index_dict, make_faf_index_dict
 
 from joint_calling import utils, _version
-
+from joint_calling.resources import SUBSETS, COHORTS_WITH_POP_STORED_AS_SUBPOP
 
 logger = logging.getLogger('generate_freq_data')
 logger.setLevel(logging.INFO)
-
-
-COHORTS_WITH_POP_STORED_AS_SUBPOP = [
-    'thousand-genomes',
-    'hgdp',
-    'mgrb',
-    'tob-wgs',
-]
-
-# SUBSETS can contain "non_cancer", "non_neuro", etc in the future,
-# and we want to keep this one to cohorts only:
-SUBSETS = COHORTS_WITH_POP_STORED_AS_SUBPOP
 
 
 @click.command()
@@ -206,6 +194,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         mt = mt.select_rows('freq')
         pops = POPS
 
+        # Create a look-up Dictionary for entries contained 
+        # in the frequency annotation array
         mt = mt.annotate_globals(
             freq_index_dict=make_freq_index_dict(
                 freq_meta=freq_meta,
@@ -214,7 +204,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
                 subsets=['|'.join(subsets)],
             )
         )
+
+        # Unset Y-variant AF/AC/AN for female-specific metrics
         mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
+
         freq_ht = mt.rows()
 
         logger.info(
@@ -231,9 +224,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
             pop_expr=mt.meta.pop,
             downsamplings=DOWNSAMPLINGS,
         )
+
         # Remove all loci with raw AC=0
         mt = mt.filter_rows(mt.freq[1].AC > 0)
 
+        # Create a look-up Dictionary for entries contained 
+        # in the frequency annotation array
         mt = mt.annotate_globals(
             freq_index_dict=make_freq_index_dict(
                 freq_meta=hl.eval(mt.freq_meta),
@@ -241,16 +237,18 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
                 label_delimiter='-',
             )
         )
+
+        # Unset Y-variant AF/AC/AN for female-specific metrics
         mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
 
         mt = _calc_inbreeding_coeff(mt)
 
         mt = _compute_filtering_af_and_popmax(mt)
 
-        ht = _annotate_quality_merics_hist(mt)
+        freq_ht = _annotate_quality_merics_hist(mt)
 
         logger.info('Writing out frequency data...')
-        ht.write(out_ht_path, overwrite=True)
+        freq_ht.write(out_ht_path, overwrite=True)
 
 
 def _compute_age_hists(mt: hl.MatrixTable) -> hl.Table:
