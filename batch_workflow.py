@@ -147,12 +147,6 @@ logger.setLevel(logging.INFO)
     type=int,
     default=20,
 )
-@click.option(
-    '--pca-pop',
-    'pca_pop',
-    help='if specified, a separate PCA will be produced with samples trained only'
-    'on this population',
-)
 @click.option('--dry-run', 'dry_run', is_flag=True)
 @click.option(
     '--check-existence/--no-check-existence',
@@ -210,7 +204,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     overwrite: bool,
     skip_samples: Collection[str],
     scatter_count: int,
-    pca_pop: Optional[str],
     num_ancestry_pcs: int,
     dry_run: bool,
     check_existence: bool,
@@ -365,7 +358,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         combiner_job=combiner_job,
         billing_project=billing_project,
         num_ancestry_pcs=num_ancestry_pcs,
-        pca_pop=pca_pop,
         is_test=output_namespace in ['test', 'tmp'],
         somalier_pairs_path=somalier_pairs_path,
         somalier_job=somalier_j,
