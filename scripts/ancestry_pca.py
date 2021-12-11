@@ -23,8 +23,8 @@ logger.setLevel(logging.INFO)
 @click.command()
 @click.version_option(_version.__version__)
 @click.option(
-    '--hgdp-union-mt',
-    'hgdp_union_mt_path',
+    '--mt-for-pca',
+    'mt_for_pca',
     required=True,
     callback=utils.get_validation_callback(ext='mt', must_exist=True),
     help='path to Matrix Table generated with sample_qc_subset_mt_for_pca.py',
@@ -78,7 +78,7 @@ logger.setLevel(logging.INFO)
     help='Hail billing account ID.',
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
-    hgdp_union_mt_path: str,
+    mt_for_pca: str,
     n_pcs: int,
     related_samples_to_drop_ht_path: Optional[str],
     pop: Optional[str],
@@ -97,7 +97,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     ):
         return
 
-    mt = hl.read_matrix_table(hgdp_union_mt_path)
+    mt = hl.read_matrix_table(mt_for_pca)
 
     if pop:
         # Get samples from the specified population only

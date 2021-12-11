@@ -49,22 +49,16 @@ logger.setLevel(logging.INFO)
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
-    '--provided-pop-ht',
-    'provided_pop_ht_path',
+    '--meta-tsv',
+    'meta_tsv_path',
+    callback=utils.get_validation_callback(ext='tsv', must_exist=True),
     required=True,
-    callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
     '--inferred-pop-ht',
     'inferred_pop_ht_path',
     required=True,
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
-)
-@click.option(
-    '--meta-tsv',
-    'meta_tsv_path',
-    required=True,
-    callback=utils.get_validation_callback(ext='tsv', must_exist=True),
 )
 @click.option('--out-path-pattern', 'out_path_pattern')
 @click.option(
@@ -91,7 +85,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         eigenvalues_path=eigenvalues_path,
         scores_ht_path=scores_ht_path,
         loadings_ht_path=loadings_ht_path,
-        provided_pop_ht_path=provided_pop_ht_path,
         inferred_pop_ht_path=inferred_pop_ht_path,
         meta_ht=meta_ht,
         out_path_pattern=out_path_pattern,
@@ -121,7 +114,6 @@ def produce_plots(
     eigenvalues_path: str,
     scores_ht_path: str,
     loadings_ht_path: str,
-    provided_pop_ht_path: str,
     inferred_pop_ht_path: str,
     meta_ht: hl.Table,
     out_path_pattern: Optional[str] = None,
@@ -133,12 +125,11 @@ def produce_plots(
     file paths defined by `out_path_pattern`.
     """
     scores_ht = hl.read_table(scores_ht_path)
-    provided_pop_ht = hl.read_table(provided_pop_ht_path)
     inferred_pop_ht = hl.read_table(inferred_pop_ht_path)
 
     sample_map_ht = meta_ht.select('external_id')
     scores_ht = key_by_external_id(scores_ht, sample_map_ht).cache()
-    provided_pop_ht = key_by_external_id(provided_pop_ht, sample_map_ht).cache()
+    provided_pop_ht = key_by_external_id(meta_ht, sample_map_ht).cache()
     inferred_pop_ht = key_by_external_id(inferred_pop_ht, sample_map_ht).cache()
 
     scores_ht = scores_ht.annotate(

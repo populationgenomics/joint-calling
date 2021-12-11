@@ -27,9 +27,9 @@ logger.setLevel(logging.INFO)
     required=True,
 )
 @click.option(
-    '--provided-pop-ht',
-    'provided_pop_ht_path',
-    callback=utils.get_validation_callback(ext='ht', must_exist=True),
+    '--meta-tsv',
+    'meta_tsv_path',
+    callback=utils.get_validation_callback(ext='tsv', must_exist=True),
     required=True,
 )
 @click.option(
@@ -80,7 +80,7 @@ logger.setLevel(logging.INFO)
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     pca_scores_ht_path: str,
-    provided_pop_ht_path: str,
+    meta_tsv_path: str,
     hail_sample_qc_ht_path: str,
     filter_cutoffs_path: str,
     out_regressed_metrics_ht_path: str,
@@ -90,15 +90,17 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     n_pcs: int,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
-    utils.init_hail(__file__)
+    local_tmp_dir = utils.init_hail(__file__)
 
     cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
+    
+    meta_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
 
     # Using calculated PCA scores as well as training samples with known
     # `population` tag, to assign population tags to remaining samples
     sqc.infer_pop_labels(
         pop_pca_scores_ht=hl.read_table(pca_scores_ht_path),
-        provided_pop_ht=hl.read_table(provided_pop_ht_path),
+        provided_pop_ht=meta_ht,
         tmp_bucket=tmp_bucket,
         min_prob=cutoffs_d['pca']['min_pop_prob'],
         n_pcs=n_pcs,

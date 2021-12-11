@@ -14,13 +14,13 @@ This script will produce two matrix tables:
 """
 
 import logging
-from os.path import join
 from typing import Optional
 
 import click
 import hail as hl
-from joint_calling import utils, resources
+from joint_calling import utils
 from joint_calling import _version
+from joint_calling.resources import ANCESTRY_SITES
 
 
 logger = logging.getLogger(__file__)
@@ -42,14 +42,6 @@ logger.setLevel(logging.INFO)
     'meta_tsv_path',
     required=True,
     help='path to a CSV with QC and population metadata for the samples',
-)
-@click.option(
-    '--out-hgdp-union-mt',
-    'out_hgdp_union_mt_path',
-    required=True,
-    callback=utils.get_validation_callback(ext='mt'),
-    help='path to write the combined Matrix Table with HGDP-1KG. '
-    'The difference with `--out-mt` is that it also contains HGDP-1KG samples',
 )
 @click.option(
     '--pop',
@@ -95,7 +87,6 @@ logger.setLevel(logging.INFO)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_path: str,
     meta_tsv_path: str,
-    out_hgdp_union_mt_path: str,
     pop: Optional[str],
     out_provided_pop_ht_path: Optional[str],
     out_mt_path: Optional[str],
@@ -108,20 +99,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
     input_metadata_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
 
-    if pop and pop in resources.ANCESTRY_HGDP_SUBSET_MTS:
-        if is_test:
-            hgdp_mt = hl.read_matrix_table(
-                resources.ANCESTRY_HGDP_SUBSET_MTS[f'test_{pop}']
-            )
-        else:
-            hgdp_mt = hl.read_matrix_table(resources.ANCESTRY_HGDP_SUBSET_MTS[pop])
-    else:
-        if is_test:
-            hgdp_mt = hl.read_matrix_table(resources.ANCESTRY_HGDP_SUBSET_MTS['test'])
-        else:
-            hgdp_mt = hl.read_matrix_table(resources.ANCESTRY_HGDP_SUBSET_MTS['all'])
-
-    sites_ht = hl.read_table(resources.ANCESTRY_SITES)
+    sites_ht = hl.read_table(ANCESTRY_SITES).key_by('locus')
 
     mt = utils.get_mt(mt_path, passing_sites_only=True)
     mt = hl.experimental.densify(mt)
@@ -133,170 +111,41 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         & hl.is_defined(sites_ht[mt.locus])
     )
     mt = mt.naive_coalesce(5000)
-
-    checkpoint_mt_path = join(tmp_bucket, 'mt_densified_on_sites.mt')
-    if not utils.can_reuse(checkpoint_mt_path, overwrite):
-        mt.write(checkpoint_mt_path, overwrite=True)
-    mt = hl.read_matrix_table(checkpoint_mt_path)
-
-    hgdp_union_mt = get_sites_shared_with_hgdp(
-        mt=mt,
-        hgdp_mt=hgdp_mt,
-        overwrite=overwrite,
-        out_mt_path=out_hgdp_union_mt_path,
-    )
+    mt.checkpoint(out_mt_path, overwrite=True)
 
     if out_provided_pop_ht_path:
         _make_provided_pop_ht(
-            hgdp_union_mt=hgdp_union_mt,
-            input_metadata_ht=input_metadata_ht,
-            hgdp_ht=hgdp_mt.cols(),
-            out_provided_pop_ht_path=out_provided_pop_ht_path,
-            overwrite=overwrite,
-        )
-
-    if out_mt_path:
-        generate_subset_mt(
             mt=mt,
-            hgdp_union_hq_sites_mt=hgdp_union_mt,
-            out_mt_path=out_mt_path,
+            input_metadata_ht=input_metadata_ht,
+            out_provided_pop_ht_path=out_provided_pop_ht_path,
             overwrite=overwrite,
         )
 
 
 def _make_provided_pop_ht(
-    hgdp_union_mt: hl.MatrixTable,
+    mt: hl.MatrixTable,
     input_metadata_ht: hl.Table,
-    hgdp_ht: hl.Table,
     out_provided_pop_ht_path: str,
     overwrite: bool,
 ) -> hl.Table:
     if utils.can_reuse(out_provided_pop_ht_path, overwrite):
         return hl.read_table(out_provided_pop_ht_path)
-    ht = hgdp_union_mt.cols().select_globals().select()
-    logger.info(f'178: {ht.count()}')
+    ht = mt.cols().select_globals().select()
     ht = ht.annotate(
-        project=hl.case()
-        .when(hl.is_defined(hgdp_ht[ht.s]), 'gnomad')
-        .default(input_metadata_ht[ht.s].project),
         continental_pop=hl.case()
-        .when(hl.is_defined(hgdp_ht[ht.s]), hgdp_ht[ht.s].population_inference.pop)
         .when(
             input_metadata_ht[ht.s].continental_pop != '-',
             input_metadata_ht[ht.s].continental_pop,
         )
         .default(''),
         subpop=hl.case()
-        .when(hl.is_defined(hgdp_ht[ht.s]), hgdp_ht[ht.s].labeled_subpop)
+        .when(
+            input_metadata_ht[ht.s].subpop != '-',
+            input_metadata_ht[ht.s].subpop,
+        )
         .default(''),
     )
-    logger.info(f'194: {ht.count()}')
     return ht.checkpoint(out_provided_pop_ht_path, overwrite=overwrite)
-
-
-def get_sites_shared_with_hgdp(
-    mt: hl.MatrixTable,
-    hgdp_mt: hl.MatrixTable,
-    out_mt_path: Optional[str] = None,
-    overwrite: bool = False,
-) -> hl.MatrixTable:
-    """
-    Input `mt` must be dense and annotated with GT.
-
-    Assuming `hgdp_mt` is a gnomAD HGDP+1KG subset MatrixTable, which is already
-    dense and annotated with GT.
-
-    1. Strip off column- and entry-level annotations
-    2. Combine the dataset with HGDP/1kG (`hgdp_mt`) and keep only shared rows
-    3. Add back HGDP column annotations as a `hgdp_1kg_metadata` column
-    """
-    if utils.can_reuse(out_mt_path, overwrite):
-        return hl.read_matrix_table(out_mt_path)
-
-    # Entries and columns must be identical, so stripping all column-level data,
-    # and all entry-level data except GT.
-    logger.info(f'219 mt cols: {mt.count_cols()}')
-    mt = mt.select_entries('GT')
-    logger.info(f'221 mt cols: {mt.count_cols()}')
-    hgdp_cols_ht = hgdp_mt.cols()  # saving the column data to re-add later
-    logger.info(f'223 hgdp_cols_ht cols: {hgdp_cols_ht.count()}')
-    hgdp_mt = hgdp_mt.select_entries(hgdp_mt.GT).select_cols()
-    logger.info(f'225 hgdp_mt cols: {hgdp_mt.count_cols()}')
-
-    # Join samples between two datasets. It will also subset rows to the rows
-    # shared between datasets.
-    mt = hgdp_mt.union_cols(mt)
-    logger.info(f'230 mt cols: {mt.count_cols()}')
-
-    # Add in back the sample-level metadata
-    mt = mt.annotate_cols(hgdp_1kg_metadata=hgdp_cols_ht[mt.s])
-    logger.info(f'234 mt cols: {mt.count_cols()}')
-
-    if out_mt_path:
-        mt.write(out_mt_path, overwrite=True)
-        mt = hl.read_matrix_table(out_mt_path)
-
-    return mt
-
-
-def generate_subset_mt(
-    mt: hl.MatrixTable,
-    hgdp_union_hq_sites_mt: hl.MatrixTable,
-    out_mt_path: Optional[str] = None,
-    overwrite: bool = False,
-) -> hl.MatrixTable:
-    """
-    Subset the matrix table `mt` down to sites in `hgdp_union_hq_sites_mt`
-    """
-    if utils.can_reuse(out_mt_path, overwrite):
-        return hl.read_matrix_table(out_mt_path)
-
-    # Filter `mt` down to the loci in `hgdp_union_hq_sites_mt`
-    mt = mt.semi_join_rows(hgdp_union_hq_sites_mt.rows())
-    mt = mt.cache()
-    logger.info(f'Number of rows: {mt.count_rows()}')
-    mt = mt.repartition(1000, shuffle=False)
-
-    if out_mt_path:
-        mt.write(out_mt_path, overwrite=True)
-        mt = hl.read_matrix_table(out_mt_path)
-    return mt
-
-
-def _create_last_end_positions(
-    mt: hl.MatrixTable,
-    tmp_bucket: str,
-    overwrite: bool,
-) -> hl.Table:
-    ht_path = join(tmp_bucket, 'last_end_positions.ht')
-    if not utils.can_reuse(ht_path, overwrite=overwrite):
-        mt = mt.select_entries('END')
-        t = mt._localize_entries(  # pylint: disable=protected-access
-            '__entries', '__cols'
-        )
-        t = t.select(
-            last_END_position=hl.or_else(
-                hl.min(
-                    hl.scan.array_agg(
-                        lambda entry: hl.scan._prev_nonnull(  # pylint: disable=protected-access
-                            hl.or_missing(
-                                hl.is_defined(entry.END), hl.tuple([t.locus, entry.END])
-                            )
-                        ),
-                        t.__entries,  # pylint: disable=protected-access
-                    ).map(
-                        lambda x: hl.or_missing(
-                            (x[1] >= t.locus.position)
-                            & (x[0].contig == t.locus.contig),
-                            x[0].position,
-                        )
-                    )
-                ),
-                t.locus.position,
-            )
-        )
-        t.write(ht_path)
-    return hl.read_table(ht_path)
 
 
 if __name__ == '__main__':

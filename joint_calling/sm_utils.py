@@ -267,6 +267,7 @@ default_entry = {
     'mat_id': '-',
     'pat_id': '-',
     'sex': '-',
+    'sex_karyotype': '-',
     'age': None,
 }
 
@@ -526,6 +527,7 @@ def add_validation_samples(df: pd.DataFrame) -> pd.DataFrame:
                     'external_id': sn,
                     'fam_id': 'CEPH',
                     'sex': '1' if sn == 'NA12891' else '2',
+                    'sex_karyotype': 'XY' if sn == 'NA12891' else 'XX',
                     'pat_id': 'NA12891' if sn == 'NA12878' else '-',
                     'mat_id': 'NA12892' if sn == 'NA12878' else '-',
                     'project': 'giab',

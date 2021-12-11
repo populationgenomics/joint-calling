@@ -45,14 +45,18 @@ GNOMAD_HT = (
     'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht'
 )
 
-ANCESTRY_BUCKET = f'{REF_BUCKET}/hg38/ancestry/v3-90k'
-ANCESTRY_HGDP_SUBSET_MTS = {
-    'all': f'{ANCESTRY_BUCKET}/gnomad_subset.mt',
-    'nfe': f'{ANCESTRY_BUCKET}/gnomad_subset_nfe.mt',
-    'test': f'{ANCESTRY_BUCKET}/gnomad_subset_test.mt',
-    'test_nfe': f'{ANCESTRY_BUCKET}/gnomad_subset_test_nfe.mt',
-}
-ANCESTRY_SITES = f'{ANCESTRY_BUCKET}/pca_sites.ht'
+ANCESTRY_SITES = 'gs://cpg-reference/hg38/ancestry/v3/pca_sites_90k.ht'
+
+COHORT = 'az'
+
+"""
+Subsets in gnomAD v3.1 that are broken down by their known subpops instead
+of global pops in the frequency struct.
+"""
+COHORTS_WITH_POP_STORED_AS_SUBPOP = ['thousand-genomes', 'hgdp']
+
+# SUBSETS can potentially contain "non_cancer", "non_neuro", etc
+SUBSETS = COHORTS_WITH_POP_STORED_AS_SUBPOP
 
 
 def filter_low_conf_regions(

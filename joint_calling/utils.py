@@ -435,7 +435,7 @@ def parse_input_metadata(
     """
     local_csv_path = join(local_tmp_dir, basename(meta_tsv_path))
     gsutil_cp(meta_tsv_path, local_csv_path)
-    df = pd.read_table(local_csv_path)
+    df = pd.read_table(local_csv_path, na_values=['-'])
     ht = hl.Table.from_pandas(df).key_by('s')
     if out_ht_path:
         ht = ht.checkpoint(out_ht_path, overwrite=True)
