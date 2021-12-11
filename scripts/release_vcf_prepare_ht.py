@@ -710,8 +710,8 @@ def _prepare_vcf_ht(
     else:
         rsid_expr = ht.rsid
 
-    logger.info('Reformatting VEP annotation...')
-    vep_expr = vep_struct_to_csq(ht.vep)
+    # logger.info('Reformatting VEP annotation...')
+    # vep_expr = vep_struct_to_csq(ht.vep)
 
     logger.info('Constructing INFO field')
     ht = ht.annotate(
@@ -726,7 +726,7 @@ def _prepare_vcf_ht(
         release_ht_info=ht.info,
         info=info_struct,
         rsid=rsid_expr,
-        vep=vep_expr,
+        # vep=vep_expr,
     )
     
     if is_subset:
