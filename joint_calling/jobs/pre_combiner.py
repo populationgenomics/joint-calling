@@ -38,6 +38,13 @@ def add_pre_combiner_jobs(
     corresponding to that dataframe, and a list of jobs to wait for before
     submitting the combiner job
     """
+    gvcfs_tsv_path = join(pre_combiner_bucket, 'gvcfs.tsv')
+    if utils.can_reuse(gvcfs_tsv_path, overwrite):
+        logger.info(f'Reading already found DB inputs from {gvcfs_tsv_path}')
+        samples_df = pd.read_csv(gvcfs_tsv_path, sep='\t', na_values='NA').set_index(
+            's', drop=False
+        )
+        return samples_df, gvcfs_tsv_path, []
 
     logger.info(f'Samples DF:\n{samples_df}')
     jobs_by_sample = defaultdict(list)
