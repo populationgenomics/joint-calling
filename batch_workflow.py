@@ -11,7 +11,6 @@ batch names and the output version.
 import os
 import subprocess
 import tempfile
-import traceback
 from os.path import join
 from typing import List, Optional, Collection
 import logging
@@ -126,6 +125,11 @@ logger.setLevel(logging.INFO)
     help='Don\'t process specified samples. Can be set multiple times.',
 )
 @click.option(
+    '--force-sample',
+    'force_samples',
+    multiple=True,
+)
+@click.option(
     '--scatter-count',
     'scatter_count',
     type=int,
@@ -173,11 +177,6 @@ logger.setLevel(logging.INFO)
     is_flag=True,
     help='Do not generate somaleir fingerprints. Use pc_relate',
 )
-@click.option(
-    '--force-sample',
-    'force_samples',
-    multiple=True,
-)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -193,7 +192,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     keep_scratch: bool,
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
     overwrite: bool,
-    skip_samples: Collection[str],
+    skip_samples: Optional[Collection[str]],
+    force_samples: Optional[Collection[str]],
     scatter_count: int,
     num_ancestry_pcs: int,
     dry_run: bool,
@@ -202,7 +202,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     assume_gvcfs_are_ready: bool,
     release_related: bool,
     skip_somalier: bool,
-    force_samples: Optional[List[str]],
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -293,6 +292,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         overwrite=overwrite,
         analysis_project=analysis_project,
         force_samples=force_samples or [],
+        skip_samples=skip_samples or [],
         assume_gvcfs_are_ready=assume_gvcfs_are_ready,
     )
 
@@ -314,6 +314,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             assume_files_exist=assume_gvcfs_are_ready,
         )
 
+    if scatter_count > 100:
+        autoscaling_workers = '200'
+    elif scatter_count > 50:
+        autoscaling_workers = '100'
+    else:
+        autoscaling_workers = '50'
+
     if not utils.can_reuse(raw_combined_mt_path, overwrite):
         combiner_job = dataproc.hail_dataproc_job(
             b,
@@ -325,7 +332,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--n-partitions {scatter_count * 25}',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
-            num_secondary_workers=scatter_count,
+            autoscaling_policy=f'vcf-combiner-{autoscaling_workers}',
             depends_on=pre_combiner_jobs,
             job_name='Combine GVCFs',
         )
@@ -382,25 +389,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         output=filtered_combined_mt_path,
         sample_ids=list(samples_df.s),
     )
-    try:
-        aid = aapi.create_new_analysis(project=analysis_project, analysis_model=am)
-        # 2. Queue a job that updates the status to "in-progress"
-        sm_in_progress_j = sm_utils.make_sm_in_progress_job(
-            b, 'joint-calling', analysis_project, aid
-        )
-        # 2. Queue a job that updates the status to "completed"
-        sm_completed_j = sm_utils.make_sm_completed_job(
-            b, 'joint-calling', analysis_project, aid
-        )
-        # Set up dependencies
-        combiner_job.depends_on(sm_in_progress_j)
-        if pre_combiner_jobs:
-            sm_in_progress_j.depends_on(*pre_combiner_jobs)
-        sm_completed_j.depends_on(*var_qc_jobs)
-        logger.info(f'Queueing {am.type} with analysis ID: {aid}')
-    except Exception:  # pylint: disable=broad-except
-        print(traceback.format_exc())
-
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch, wait=False)
 
 

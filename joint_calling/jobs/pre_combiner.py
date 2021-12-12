@@ -7,7 +7,7 @@ Functions that craete Batch jobs that get from raw data to a combiner-ready GVCF
 import logging
 from collections import defaultdict
 from os.path import join, dirname, splitext, basename
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Collection
 
 import pandas as pd
 import hailtop.batch as hb
@@ -27,7 +27,8 @@ def add_pre_combiner_jobs(
     output_suffix: str,
     overwrite: bool,
     analysis_project: str,  # pylint: disable=unused-argument
-    force_samples: List[str],
+    force_samples: Collection[str],
+    skip_samples: Collection[str],
     assume_gvcfs_are_ready: bool = False,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
@@ -47,6 +48,9 @@ def add_pre_combiner_jobs(
         else:
             proj_bucket = f'gs://cpg-{_proj}-{output_suffix}'
         return proj_bucket
+
+    if skip_samples:
+        samples_df = samples_df[~samples_df.s.isin(skip_samples)]
 
     # Samples for which a raw GVCF is provided as input:
     gvcf_df = samples_df[samples_df.topostproc_gvcf != '-']
