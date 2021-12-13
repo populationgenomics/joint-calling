@@ -15,6 +15,7 @@ import pandas as pd
 import click
 import hail as hl
 from hail.experimental.vcf_combiner import vcf_combiner
+from hail.experimental.vcf_combiner.vcf_combiner import CombinerConfig
 
 from joint_calling.utils import get_validation_callback
 from joint_calling import utils
@@ -42,6 +43,14 @@ TARGET_RECORDS = 25_000
     required=True,
     callback=get_validation_callback(ext='mt'),
     help='path to write the combined MatrixTable',
+)
+@click.option(
+    '--branch-factor',
+    'branch_factor',
+    required=False,
+    type=click.INT,
+    default=CombinerConfig.default_branch_factor,
+    help='Combiner branching factor. Ideally matches the scatter count',
 )
 @click.option(
     '--existing-mt',
@@ -86,6 +95,7 @@ TARGET_RECORDS = 25_000
 def main(
     meta_csv_path: str,
     out_mt_path: str,
+    branch_factor: int,
     existing_mt_path: str,
     work_bucket: str,
     local_tmp_dir: str,
@@ -110,6 +120,7 @@ def main(
         sample_names=list(new_samples_df.s),
         out_mt_path=new_mt_path,
         work_bucket=work_bucket,
+        branch_factor=branch_factor,
         overwrite=True,
     )
     new_mt = hl.read_matrix_table(new_mt_path)
@@ -168,6 +179,7 @@ def combine_gvcfs(
     sample_names: List[str],
     out_mt_path: str,
     work_bucket: str,
+    branch_factor: int,
     overwrite: bool = True,
 ):
     """
@@ -182,6 +194,7 @@ def combine_gvcfs(
         tmp_path=os.path.join(work_bucket, 'tmp'),
         overwrite=overwrite,
         key_by_locus_and_alleles=True,
+        branch_factor=branch_factor,
     )
 
 

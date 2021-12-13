@@ -314,6 +314,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             assume_files_exist=assume_gvcfs_are_ready,
         )
 
+    # Combiner takes advantage of autoscaling cluster policies
+    # to reduce costs for the work that uses only the driver machine:
+    # https://hail.is/docs/0.2/experimental/vcf_combiner.html#pain-points
     if scatter_count > 100:
         autoscaling_workers = '200'
     elif scatter_count > 50:
@@ -329,10 +332,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--out-mt {raw_combined_mt_path} '
             f'--bucket {combiner_bucket}/work '
             f'--hail-billing {billing_project} '
+            f'--branch-factor {scatter_count} '
             f'--n-partitions {scatter_count * 25}',
             max_age='8h',
             packages=utils.DATAPROC_PACKAGES,
             autoscaling_policy=f'vcf-combiner-{autoscaling_workers}',
+            worker_machine_type='n1-highmem-8',
             depends_on=pre_combiner_jobs,
             job_name='Combine GVCFs',
         )
