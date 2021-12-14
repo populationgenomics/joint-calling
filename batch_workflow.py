@@ -18,8 +18,6 @@ import click
 import pandas as pd
 import hailtop.batch as hb
 from analysis_runner import dataproc
-from sample_metadata.apis import AnalysisApi
-from sample_metadata.models import AnalysisModel, AnalysisStatus, AnalysisType
 
 from joint_calling import utils
 from joint_calling import sm_utils
@@ -278,6 +276,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         age_datas=age_datas,
         reported_sex_datas=reported_sex_datas,
         add_validation_samples=add_validation_samples,
+        assume_gvcfs_are_ready=assume_gvcfs_are_ready,
     )
 
     (
@@ -332,9 +331,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--out-mt {raw_combined_mt_path} '
             f'--bucket {combiner_bucket}/work '
             f'--hail-billing {billing_project} '
-            f'--branch-factor {scatter_count} '
+            f'--branch-factor 100 '  # 13893 / 100 = 138.93 batches
+            f'--batch-size 140 '     # processing each batch in one job
             f'--n-partitions {scatter_count * 25}',
-            max_age='8h',
+            max_age='48h',
             packages=utils.DATAPROC_PACKAGES,
             autoscaling_policy=f'vcf-combiner-{autoscaling_workers}',
             worker_machine_type='n1-highmem-8',
@@ -366,7 +366,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         somalier_job=somalier_j,
     )
 
-    var_qc_jobs = add_variant_qc_jobs(
+    add_variant_qc_jobs(
         b=b,
         work_bucket=join(analysis_bucket, 'variant_qc'),
         web_bucket=join(web_bucket, 'variant_qc'),
@@ -385,15 +385,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         project_name=analysis_project,
     )
 
-    # Interacting with the sample metadata server.
-    aapi = AnalysisApi()
-    # 1. Create a "queued" analysis
-    am = AnalysisModel(
-        type=AnalysisType('joint-calling'),
-        status=AnalysisStatus('queued'),
-        output=filtered_combined_mt_path,
-        sample_ids=list(samples_df.s),
-    )
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch, wait=False)
 
 
@@ -429,6 +420,7 @@ def find_inputs(
     age_datas: Optional[List[utils.ColumnInFile]] = None,
     reported_sex_datas: Optional[List[utils.ColumnInFile]] = None,
     add_validation_samples: bool = True,
+    assume_gvcfs_are_ready: bool = False,
 ) -> pd.DataFrame:
     """
     Find inputs, make a sample data DataFrame, save to a TSV file.
@@ -453,6 +445,7 @@ def find_inputs(
             skip_samples=skip_samples,
             check_existence=check_existence,
             source_tag=source_tag,
+            assume_gvcfs_are_ready=assume_gvcfs_are_ready,
         )
     if age_datas:
         for age_data in age_datas:

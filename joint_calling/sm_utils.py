@@ -5,6 +5,7 @@ Functions to find the pipeline inputs and communicate with the SM server
 import logging
 import sys
 from dataclasses import dataclass
+from os.path import join
 from typing import List, Dict, Optional, Set, Collection
 
 import pandas as pd
@@ -238,6 +239,7 @@ def replace_paths_to_test(s: Dict) -> Optional[Dict]:
 default_entry = {
     's': None,
     'external_id': None,
+    'stack': None,
     'project': None,
     'source': '-',
     'continental_pop': '-',
@@ -277,6 +279,7 @@ def find_inputs_from_db(
     skip_samples: Optional[Collection[str]] = None,
     check_existence: bool = True,
     source_tag: Optional[str] = None,
+    assume_gvcfs_are_ready: bool = False,
 ) -> pd.DataFrame:
     """
     Determine input samples and pull input files and metadata from the CPG
@@ -320,22 +323,6 @@ def find_inputs_from_db(
         if source_tag:
             meta['source'] = source_tag
 
-        reblocked_gvcf_analysis_per_sid = find_analyses_by_sid(
-            sample_ids=[s['id'] for s in samples],
-            analysis_type='gvcf',
-            project=proj,
-            meta=dict(staging=False, **meta),
-        )
-
-        staging_gvcf_analysis_per_sid = dict()
-        if source_tag is not None:
-            staging_gvcf_analysis_per_sid = find_analyses_by_sid(
-                sample_ids=[s['id'] for s in samples],
-                project=proj,
-                analysis_type='gvcf',
-                meta=dict(staging=True, **meta),
-            )
-            
         qc_analysis_per_sid = find_analyses_by_sid(
             sample_ids=[s['id'] for s in samples],
             analysis_type='qc',
@@ -343,49 +330,79 @@ def find_inputs_from_db(
             meta=dict(**meta),
         )
 
-        reblocked_gvcf_by_sid = dict()
-        staging_gvcf_by_sid = dict()
-        sids_without_gvcf = []
-        for s in samples:
-            reblocked_gvcf_analysis = reblocked_gvcf_analysis_per_sid.get(s['id'])
-            staging_gvcf_analysis = staging_gvcf_analysis_per_sid.get(s['id'])
-            if not reblocked_gvcf_analysis and not staging_gvcf_analysis:
-                sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
-                continue
-
-            if reblocked_gvcf_analysis:
-                if not reblocked_gvcf_analysis.output:
-                    logger.error(
-                        f'"output" is not defined for the latest reblocked gvcf '
-                        f' analysis, skipping sample {s["id"]}'
-                    )
-                    sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
-                    continue
-                reblocked_gvcf_by_sid[s['id']] = reblocked_gvcf_analysis.output
-
-            if staging_gvcf_analysis:
-                if not staging_gvcf_analysis.output:
-                    logger.error(
-                        f'"output" is not defined for the latest staging gvcf analysis, '
-                        f'skipping sample {s["id"]}'
-                    )
-                    sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
-                    continue
-                staging_gvcf_by_sid[s['id']] = staging_gvcf_analysis.output
-
-        if sids_without_gvcf:
-            logger.warning(
-                f'No gvcf found for {len(sids_without_gvcf)}/{len(samples)} samples: '
-                f'{", ".join(sids_without_gvcf)}'
+        reblocked_gvcf_by_sid: Dict[str, str] = {}
+        staging_gvcf_by_sid: Dict[str, str] = {}
+        if assume_gvcfs_are_ready:
+            if proj.endswith('-test'):
+                stack = proj.replace('-test', '')
+                namespace = 'test'
+            else:
+                stack = proj
+                namespace = 'main'
+            proj_bucket = f'gs://cpg-{stack}-{namespace}/gvcf'
+            if source_tag:
+                proj_bucket = join(proj_bucket, source_tag)
+            reblocked_gvcf_by_sid = {
+                s['id']: join(proj_bucket, f'{s["id"]}.g.vcf.gz')
+                for s in samples
+            }
+        else:
+            reblocked_gvcf_analysis_per_sid = find_analyses_by_sid(
+                sample_ids=[s['id'] for s in samples],
+                analysis_type='gvcf',
+                project=proj,
+                meta=dict(staging=False, **meta),
             )
-        samples = [
-            s
-            for s in samples
-            if s['id'] in reblocked_gvcf_by_sid or s['id'] in staging_gvcf_by_sid
-        ]
-        if not samples:
-            logger.info(f'No samples to process, skipping project {proj}')
-            continue
+            staging_gvcf_analysis_per_sid = dict()
+            if source_tag is not None:
+                staging_gvcf_analysis_per_sid = find_analyses_by_sid(
+                    sample_ids=[s['id'] for s in samples],
+                    project=proj,
+                    analysis_type='gvcf',
+                    meta=dict(staging=True, **meta),
+                )
+
+            sids_without_gvcf = []
+            for s in samples:
+                reblocked_gvcf_analysis = reblocked_gvcf_analysis_per_sid.get(s['id'])
+                staging_gvcf_analysis = staging_gvcf_analysis_per_sid.get(s['id'])
+                if not reblocked_gvcf_analysis and not staging_gvcf_analysis:
+                    sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
+                    continue
+    
+                if reblocked_gvcf_analysis:
+                    if not reblocked_gvcf_analysis.output:
+                        logger.error(
+                            f'"output" is not defined for the latest reblocked gvcf '
+                            f' analysis, skipping sample {s["id"]}'
+                        )
+                        sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
+                        continue
+                    reblocked_gvcf_by_sid[s['id']] = reblocked_gvcf_analysis.output
+    
+                if staging_gvcf_analysis:
+                    if not staging_gvcf_analysis.output:
+                        logger.error(
+                            f'"output" is not defined for the latest staging gvcf analysis, '
+                            f'skipping sample {s["id"]}'
+                        )
+                        sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
+                        continue
+                    staging_gvcf_by_sid[s['id']] = staging_gvcf_analysis.output
+    
+            if sids_without_gvcf:
+                logger.warning(
+                    f'No gvcf found for {len(sids_without_gvcf)}/{len(samples)} samples: '
+                    f'{", ".join(sids_without_gvcf)}'
+                )
+            samples = [
+                s
+                for s in samples
+                if s['id'] in reblocked_gvcf_by_sid or s['id'] in staging_gvcf_by_sid
+            ]
+            if not samples:
+                logger.info(f'No samples to process, skipping project {proj}')
+                continue
 
         logger.info('Checking sequencing info for samples')
         seq_meta_by_sid = dict()
@@ -415,9 +432,6 @@ def find_inputs_from_db(
         for s in samples:
             sample_id = s['id']
             external_id = s['external_id']
-            resequencing_label = '-'
-            if '-' in external_id:
-                external_id, resequencing_label = external_id.split('-', maxsplit=1)
             seq_meta = seq_meta_by_sid.get(sample_id, {})
             reblocked_gvcf_path = reblocked_gvcf_by_sid.get(s['id'])
             staging_gvcf_path = staging_gvcf_by_sid.get(s['id'])
@@ -458,10 +472,11 @@ def find_inputs_from_db(
                     's': sample_id,
                     'external_id': external_id,
                     'fam_id': external_id,
-                    'project': proj.replace('-test', ''),
+                    'stack': proj.replace('-test', ''),
+                    'project': s['meta'].get('project', proj.replace('-test', '')),
                     'source': source_tag or '-',
-                    'gvcf': reblocked_gvcf_path,
-                    'topostproc_gvcf': staging_gvcf_path,
+                    'gvcf': reblocked_gvcf_path or '-',
+                    'topostproc_gvcf': staging_gvcf_path or '-',
                     'batch': seq_meta.get('batch', '-'),
                     'flowcell_lane': seq_meta.get(
                         'sample.flowcell_lane', seq_meta.get('flowcell_lane', '-')
@@ -475,8 +490,7 @@ def find_inputs_from_db(
                     'centre': seq_meta.get(
                         'sample.centre', seq_meta.get('centre', '-')
                     ),
-                    'primary_study': seq_meta.get('Primary study', 'TOB'),
-                    'resequencing_label': resequencing_label,
+                    'primary_study': seq_meta.get('Primary study', '-'),
                     # QC metrics:
                     'r_contamination': qc_metrics.get('freemix'),
                     'r_chimera': qc_metrics.get('pct_chimeras'),
@@ -485,6 +499,8 @@ def find_inputs_from_db(
                     'median_coverage': qc_metrics.get('median_coverage'),
                     'r_30x': qc_metrics.get('pct_30x'),
                     'r_aligned_in_pairs': qc_metrics.get('pct_reads_aligned_in_pairs'),
+                    'continental_pop': s['meta'].get('continental_pop', '-'),
+                    'subpop': s['meta'].get('subpop', '-'),
                 }
             )
             inputs.append(entry)

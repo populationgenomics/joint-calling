@@ -61,14 +61,14 @@ def add_pre_combiner_jobs(
 
     # Samples for which a raw GVCF is provided as input:
     gvcf_df = samples_df[samples_df.topostproc_gvcf != '-']
-    for sn, proj, source, external_id, gvcf_path in zip(
-        gvcf_df.s,
-        gvcf_df.project,
-        gvcf_df.source,
-        gvcf_df.external_id,
-        gvcf_df.topostproc_gvcf,
+    for sn, stack, source, external_id, gvcf_path in zip(
+        gvcf_df['s'],
+        gvcf_df['stack'],
+        gvcf_df['source'],
+        gvcf_df['external_id'],
+        gvcf_df['topostproc_gvcf'],
     ):
-        proj_bucket = get_project_bucket(proj)
+        proj_bucket = get_project_bucket(stack)
         gvcf_bucket = join(proj_bucket, 'gvcf')
         if source != '-':
             gvcf_bucket = join(gvcf_bucket, source)
@@ -83,7 +83,7 @@ def add_pre_combiner_jobs(
                 gvcf_path=gvcf_path,
                 output_path=output_gvcf_path,
                 sample_name=sn,
-                project_name=proj,
+                project_name=stack,
                 external_id=external_id,
             )
             jobs_by_sample[sn].append(j)
@@ -92,16 +92,16 @@ def add_pre_combiner_jobs(
 
     # Samples for which a CRAM/BAM is provided as input for realignment:
     realign_df = samples_df[samples_df.realign_cram != '-']
-    for sn, proj, source, input_cram, input_crai in zip(
-        realign_df.s,
-        realign_df.project,
-        realign_df.source,
-        realign_df.realign_cram,
-        realign_df.realign_crai,
+    for sn, stack, source, input_cram, input_crai in zip(
+        realign_df['s'],
+        realign_df['stack'],
+        realign_df['source'],
+        realign_df['realign_cram'],
+        realign_df['realign_crai'],
     ):
         assert isinstance(input_crai, str), (sn, input_crai)
 
-        proj_bucket = get_project_bucket(proj)
+        proj_bucket = get_project_bucket(stack)
         cram_bucket = join(proj_bucket, 'cram')
         if source != '-':
             cram_bucket = join(cram_bucket, source)
@@ -117,7 +117,7 @@ def add_pre_combiner_jobs(
                 b=b,
                 output_path=output_cram_fpath,
                 sample_name=sn,
-                project_name=proj,
+                project_name=stack,
                 alignment_input=alignment_input,
             )
             jobs_by_sample[sn].append(cram_j)
@@ -127,17 +127,17 @@ def add_pre_combiner_jobs(
     # Samples for which a CRAM is provided as input for variant calling:
     hc_intervals_j = None
     cram_df = samples_df[samples_df.cram != '-']
-    for sn, external_id, proj, source, input_cram, input_crai in zip(
-        cram_df.s,
-        cram_df.external_id,
-        cram_df.project,
-        cram_df.source,
-        cram_df.cram,
-        cram_df.crai,
+    for sn, external_id, stack, source, input_cram, input_crai in zip(
+        cram_df['s'],
+        cram_df['external_id'],
+        cram_df['stack'],
+        cram_df['source'],
+        cram_df['cram'],
+        cram_df['crai'],
     ):
         assert isinstance(input_crai, str), (sn, input_crai)
 
-        proj_bucket = get_project_bucket(proj)
+        proj_bucket = get_project_bucket(stack)
         gvcf_bucket = join(proj_bucket, 'gvcf')
         if source != '-':
             gvcf_bucket = join(gvcf_bucket, source)
@@ -155,7 +155,7 @@ def add_pre_combiner_jobs(
                 b=b,
                 output_path=output_gvcf_path,
                 sample_name=sn,
-                project_name=proj,
+                project_name=stack,
                 external_id=external_id,
                 cram_fpath=input_cram,
                 crai_fpath=input_crai,

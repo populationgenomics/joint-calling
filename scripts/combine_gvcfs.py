@@ -50,7 +50,16 @@ TARGET_RECORDS = 25_000
     required=False,
     type=click.INT,
     default=CombinerConfig.default_branch_factor,
-    help='Combiner branching factor. Ideally matches the scatter count',
+    help='Combiner branch factor (gvcfs will be split into ~branch_factor batches)',
+)
+@click.option(
+    '--batch-size',
+    'batch_size',
+    required=False,
+    type=click.INT,
+    default=CombinerConfig.default_phase1_batch_size,
+    help='Combiner batch size for phase1 (size of each batch of gvcfs to process '
+         'in 1 job)',
 )
 @click.option(
     '--existing-mt',
@@ -96,6 +105,7 @@ def main(
     meta_csv_path: str,
     out_mt_path: str,
     branch_factor: int,
+    batch_size: int,
     existing_mt_path: str,
     work_bucket: str,
     local_tmp_dir: str,
@@ -121,6 +131,7 @@ def main(
         out_mt_path=new_mt_path,
         work_bucket=work_bucket,
         branch_factor=branch_factor,
+        batch_size=batch_size,
         overwrite=True,
     )
     new_mt = hl.read_matrix_table(new_mt_path)
@@ -180,6 +191,7 @@ def combine_gvcfs(
     out_mt_path: str,
     work_bucket: str,
     branch_factor: int,
+    batch_size: int,
     overwrite: bool = True,
 ):
     """
@@ -195,6 +207,7 @@ def combine_gvcfs(
         overwrite=overwrite,
         key_by_locus_and_alleles=True,
         branch_factor=branch_factor,
+        batch_size=batch_size,
     )
 
 

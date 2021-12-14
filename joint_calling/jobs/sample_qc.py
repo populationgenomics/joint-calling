@@ -87,15 +87,7 @@ def add_sample_qc_jobs(
 
     job_name = 'Subset MT for PCA - all'
     mt_for_pca_path = join(ancestry_bucket, 'mt_for_pca.mt')
-    # provided_pop_ht_path = join(ancestry_bucket, 'provided_pop.ht')
-    if not can_reuse(
-        [
-            mt_for_pca_path,
-            # mt_union_hgdp_path,
-            # provided_pop_ht_path,
-        ],
-        overwrite,
-    ):
+    if not can_reuse(mt_for_pca_path, overwrite):
         subset_for_pca_job = cluster.add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_subset_mt_for_pca.py '
             + (f'--overwrite ' if overwrite else '')
@@ -115,8 +107,8 @@ def add_sample_qc_jobs(
 
     relatedness_ht_path = join(relatedness_bucket, 'relatedness.ht')
     if somalier_pairs_path:
+        job_name = 'Somalier pairs to Hail table'
         if not can_reuse(relatedness_ht_path, overwrite):
-            job_name = 'Somalier pairs to Hail table'
             relatedness_j = cluster.add_job(
                 f'{utils.SCRIPTS_DIR}/sample_qc_somalier_to_ht.py '
                 + (f'--overwrite ' if overwrite else '')
@@ -129,8 +121,8 @@ def add_sample_qc_jobs(
         else:
             relatedness_j = b.new_job(f'{job_name} [reuse]')
     else:
+        job_name = 'Run pc_relate'
         if not can_reuse(relatedness_ht_path, overwrite):
-            job_name = 'Run pc_relate'
             relatedness_ht_path = join(relatedness_bucket, 'relatedness.ht')
             # PC relate needs non-preemptible workes, so requesting a new cluster
             cluster = get_cluster(
