@@ -433,8 +433,8 @@ def make_info_expr(
         vcf_info_dict[field] = t['vqsr'][f'{field}']
 
     # Add region_flag and allele_info fields to info dict
-    for field in ALLELE_TYPE_FIELDS:
-        vcf_info_dict[field] = t['allele_info'][f'{field}']
+    # for field in ALLELE_TYPE_FIELDS:
+    #     vcf_info_dict[field] = t['allele_info'][f'{field}']
     for field in REGION_FLAG_FIELDS:
         vcf_info_dict[field] = t['region_flag'][f'{field}']
 
@@ -450,25 +450,25 @@ def make_info_expr(
     # _n_larger for all hists EXCEPT DP hists
     for hist in HISTS:
         hist_type = f'{hist_prefix}qual_hists'
-        hist_dict = {
-            f'{hist}_bin_freq': hl.delimit(t[hist_type][hist].bin_freq, delimiter='|'),
-        }
-        vcf_info_dict.update(hist_dict)
-
-        if 'dp' in hist:
-            vcf_info_dict.update({f'{hist}_n_larger': t[hist_type][hist].n_larger},)
+        # hist_dict = {
+        #     f'{hist}_bin_freq': hl.delimit(t[hist_type][hist].bin_freq, delimiter='|'),
+        # }
+        # vcf_info_dict.update(hist_dict)
+        # 
+        # if 'dp' in hist:
+        #     vcf_info_dict.update({f'{hist}_n_larger': t[hist_type][hist].n_larger},)
 
     # Add in silico annotations to info dict
-    vcf_info_dict['cadd_raw_score'] = t['cadd']['raw_score']
-    vcf_info_dict['cadd_phred'] = t['cadd']['phred']
+    # vcf_info_dict['cadd_raw_score'] = t['cadd']['raw_score']
+    # vcf_info_dict['cadd_phred'] = t['cadd']['phred']
 
-    vcf_info_dict['revel_score'] = t['revel']['revel_score']
+    # vcf_info_dict['revel_score'] = t['revel']['revel_score']
 
     # In the v3.1 release in silico files this was max_ds, but changed to splice_ai_score in releases after v3.1
-    vcf_info_dict['splice_ai_max_ds'] = t['splice_ai']['splice_ai_score']
-    vcf_info_dict['splice_ai_consequence'] = t['splice_ai']['splice_consequence']
+    # vcf_info_dict['splice_ai_max_ds'] = t['splice_ai']['splice_ai_score']
+    # vcf_info_dict['splice_ai_consequence'] = t['splice_ai']['splice_consequence']
 
-    vcf_info_dict['primate_ai_score'] = t['primate_ai']['primate_ai_score']
+    # vcf_info_dict['primate_ai_score'] = t['primate_ai']['primate_ai_score']
 
     return vcf_info_dict
 
