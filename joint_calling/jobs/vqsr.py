@@ -646,6 +646,7 @@ def add_snps_variant_recalibrator_create_model_step(
     The latter is useful to produce the optional tranche plot.
     """
     j = b.new_job('AS-VQSR: SNPsVariantRecalibratorCreateModel')
+
     j.image(utils.GATK_IMAGE)
     mem_gb = 64 if not is_small_callset else 128
     j.memory(f'{mem_gb}G')
@@ -781,7 +782,7 @@ def add_snps_variant_recalibrator_step(
     j.command(
         f"""set -euo pipefail
 
-    gatk --java-options -Xms{mem_gb - 1}g \\
+    gatk --java-options -Xms{mem_gb - 2}g \\
       VariantRecalibrator \\
       -V {sites_only_variant_filtered_vcf['vcf.gz']} \\
       -O {j.recalibration} \\
