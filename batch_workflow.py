@@ -175,6 +175,16 @@ logger.setLevel(logging.INFO)
     is_flag=True,
     help='Do not generate somaleir fingerprints. Use pc_relate',
 )
+@click.option(
+    '--combiner-branch-factor',
+    'combiner_branch_factor',
+    type=click.INT,
+)
+@click.option(
+    '--combiner-batch-size',
+    'combiner_batch_size',
+    type=click.INT,
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -200,6 +210,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     assume_gvcfs_are_ready: bool,
     release_related: bool,
     skip_somalier: bool,
+    combiner_branch_factor: Optional[int],
+    combiner_batch_size: Optional[int],
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -330,9 +342,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'--meta-tsv {samples_tsv_path} '
             f'--out-mt {raw_combined_mt_path} '
             f'--bucket {combiner_bucket}/work '
-            f'--hail-billing {billing_project} '
-            f'--branch-factor 70 '   # 13893 / 100 ~ 199 batches
-            f'--batch-size 100 '     # processing each batch in 2 jobs
+            f'--hail-billing {billing_project} ' +
+            (f'--branch-factor {combiner_branch_factor} ' if combiner_branch_factor else '') +
+            (f'--batch-size {combiner_batch_size} ' if combiner_batch_size else '') +
             f'--n-partitions {scatter_count * 25}',
             max_age='48h',
             packages=utils.DATAPROC_PACKAGES,
