@@ -71,7 +71,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     eigenvalues_path: str,
     scores_ht_path: str,
     loadings_ht_path: str,
-    provided_pop_ht_path: str,
     inferred_pop_ht_path: str,
     meta_tsv_path: str,
     out_path_pattern: Optional[str],
