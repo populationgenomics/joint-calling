@@ -751,18 +751,21 @@ def _prepare_vcf_ht(
     #   info struct (unfurled data obtained above),
     #   dbSNP rsIDs
     #   all VEP annotations
-    ht = ht.annotate(info=ht.info.annotate(**info_expr, vep=ht.vep))
+    ht = ht.annotate(info=ht.info.annotate(
+        **info_expr, 
+        # vep=ht.vep
+    ))
 
-    if freq_entries_to_remove:
-        ht = ht.annotate_globals(
-            vep_csq_header=vep_csq_header, 
-            freq_entries_to_remove=freq_entries_to_remove
-        )
-    else:
-        ht = ht.annotate_globals(
-            vep_csq_header=vep_csq_header, 
-            freq_entries_to_remove=hl.empty_set(hl.tstr),
-        )
+    # if freq_entries_to_remove:
+    #     ht = ht.annotate_globals(
+    #         vep_csq_header=vep_csq_header, 
+    #         freq_entries_to_remove=freq_entries_to_remove
+    #     )
+    # else:
+    #     ht = ht.annotate_globals(
+    #         vep_csq_header=vep_csq_header, 
+    #         freq_entries_to_remove=hl.empty_set(hl.tstr),
+    #     )
         
     # Select relevant fields for VCF export
     ht = ht.select('info', 'filters', 'rsid')
@@ -808,7 +811,7 @@ def prepare_vcf_header_dict(
         subset_list=subset_list,
         subset_pops=pops,
     )
-    vcf_info_dict.update({'vep': {'Description': hl.eval(t.vep_csq_header)}})
+    # vcf_info_dict.update({'vep': {'Description': hl.eval(t.vep_csq_header)}})
 
     # Adjust keys to remove adj tags before exporting to VCF
     # VCF 4.3 specs do not allow hyphens in info fields
