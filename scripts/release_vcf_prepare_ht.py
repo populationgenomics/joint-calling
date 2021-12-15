@@ -181,8 +181,12 @@ def main(
 
     # Setup of parameters and Table/MatrixTable
     parameter_dict = _build_parameter_dict(ht, is_public_subset)
-
-    age_hist_data = hl.eval(ht.age_distribution)
+    
+    try:
+        age_hist_data = hl.eval(ht.age_distribution)
+    except AttributeError:
+        logger.warning('Age data not available')
+        age_hist_data = None
 
     vcf_ht = _prepare_vcf_ht(
         ht, 
@@ -218,12 +222,12 @@ def main(
 
 
 def _prepare_vcf_header_dict(
-    ht,
-    vcf_ht,
-    vcf_header_txt_path,
-    parameter_dict,
-    is_public_subset,
-    age_hist_data,
+    ht: hl.Table,
+    vcf_ht: hl.Table,
+    vcf_header_txt_path: str,
+    parameter_dict: Dict,
+    is_public_subset: bool,
+    age_hist_data: Optional[str] = None,
 ) -> Dict:
     logger.info('Making histogram bin edges...')
     bin_edges = make_hist_bin_edges_expr(
@@ -325,7 +329,7 @@ def populate_info_dict(
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
     label_delimiter: str = '_',
     bin_edges: Dict[str, str] = None,
-    age_hist_data: str = None,
+    age_hist_data: Optional[str] = None,
 ) -> Dict[str, Dict[str, str]]:
     """
     Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary with 
@@ -600,22 +604,27 @@ def unfurl_nested_annotations(
             expr_dict.update(combo_dict)
 
     if full_release:
-        logger.info('Unfurling age hists...')
-        age_hist_dict = {
-            'age_hist_het_bin_freq': hl.delimit(t.age_hist_het.bin_freq, delimiter='|'),
-            'age_hist_het_bin_edges': hl.delimit(
-                t.age_hist_het.bin_edges, delimiter='|'
-            ),
-            'age_hist_het_n_smaller': t.age_hist_het.n_smaller,
-            'age_hist_het_n_larger': t.age_hist_het.n_larger,
-            'age_hist_hom_bin_freq': hl.delimit(t.age_hist_hom.bin_freq, delimiter='|'),
-            'age_hist_hom_bin_edges': hl.delimit(
-                t.age_hist_hom.bin_edges, delimiter='|'
-            ),
-            'age_hist_hom_n_smaller': t.age_hist_hom.n_smaller,
-            'age_hist_hom_n_larger': t.age_hist_hom.n_larger,
-        }
-        expr_dict.update(age_hist_dict)
+        try:
+            logger.info('Unfurling age hists...')
+            age_hist_dict = {
+                'age_hist_het_bin_freq': hl.delimit(t.age_hist_het.bin_freq, delimiter='|'),
+                'age_hist_het_bin_edges': hl.delimit(
+                    t.age_hist_het.bin_edges, delimiter='|'
+                ),
+                'age_hist_het_n_smaller': t.age_hist_het.n_smaller,
+                'age_hist_het_n_larger': t.age_hist_het.n_larger,
+                'age_hist_hom_bin_freq': hl.delimit(t.age_hist_hom.bin_freq, delimiter='|'),
+                'age_hist_hom_bin_edges': hl.delimit(
+                    t.age_hist_hom.bin_edges, delimiter='|'
+                ),
+                'age_hist_hom_n_smaller': t.age_hist_hom.n_smaller,
+                'age_hist_hom_n_larger': t.age_hist_hom.n_larger,
+            }
+            expr_dict.update(age_hist_dict)
+        except AttributeError:
+            logger.warning('Age histograms not available')
+        else:
+            pass
 
     return hl.struct(**expr_dict), freq_entries_to_remove_vcf
 
@@ -763,24 +772,24 @@ def _prepare_vcf_ht(
 def prepare_vcf_header_dict(
     t: Union[hl.Table, hl.MatrixTable],
     bin_edges: Dict[str, str],
-    age_hist_data: str,
     subset_list: List[str],
     pops: Dict[str, str],
     filtering_model_field: str = 'filtering_model',
     format_dict: Dict[str, Dict[str, str]] = FORMAT_DICT,
     inbreeding_coeff_cutoff: float = INBREEDING_COEFF_HARD_CUTOFF,
+    age_hist_data: Optional[str] = None,
 ) -> Dict[str, Dict[str, str]]:
     """
     Prepare VCF header dictionary.
 
     :param t: Input MatrixTable/Table
     :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
-    :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param subset_list: List of sample subsets in dataset.
     :param pops: List of sample global population names for gnomAD genomes.
     :param filtering_model_field: String indicating the filtering model global annotation.
     :param format_dict: Dictionary describing MatrixTable entries. Used in header for VCF export.
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter used for variants.
+    :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :return: Prepared VCF header dictionary.
     """
     logger.info('Making FILTER dict for VCF...')
