@@ -770,9 +770,9 @@ def add_snps_variant_recalibrator_step(
     j = b.new_job('AS-VQSR: SNPsVariantRecalibrator')
 
     j.image(utils.GATK_IMAGE)
-    mem_gb = 64  # ~ twice the sum of all input resources and input VCF sizes
-    j.memory(f'{mem_gb}G')
-    j.cpu(2)
+    j.memory('highmem')
+    j.cpu(8)  # 7G per CPU = 56G memory
+    mem_gb = 56
     j.storage(f'{disk_size}G')
 
     j.declare_resource_group(recalibration={'index': '{root}.idx', 'base': '{root}'})
@@ -782,7 +782,7 @@ def add_snps_variant_recalibrator_step(
     j.command(
         f"""set -euo pipefail
 
-    gatk --java-options -Xms{mem_gb - 2}g \\
+    gatk --java-options -Xms{mem_gb - 1}g \\
       VariantRecalibrator \\
       -V {sites_only_variant_filtered_vcf['vcf.gz']} \\
       -O {j.recalibration} \\
