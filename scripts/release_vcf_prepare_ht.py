@@ -35,7 +35,7 @@ from gnomad.utils.vcf import (
     SITE_FIELDS,
     VQSR_FIELDS, make_hist_bin_edges_expr,
 )
-from gnomad.utils.vep import vep_struct_to_csq, VEP_CSQ_HEADER
+from gnomad.utils.vep import VEP_CSQ_HEADER
 from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
 from joint_calling.resources import (
@@ -49,13 +49,6 @@ from joint_calling.utils import get_validation_callback
 logger = logging.getLogger(__file__)
 logger.setLevel('INFO')
 
-
-# Add new site fields
-NEW_SITE_FIELDS = [
-    'monoallelic',
-    'transmitted_singleton',
-]
-SITE_FIELDS.extend(NEW_SITE_FIELDS)
 
 # Remove original alleles for containing non-releasable alleles
 MISSING_ALLELE_TYPE_FIELDS = ['original_alleles', 'has_star']
@@ -427,6 +420,8 @@ def make_info_expr(
     :return: Dictionary containing Hail expressions for relevant INFO annotations.
     :rtype: Dict[str, hl.expr.Expression]
     """
+    t.describe()
+    
     vcf_info_dict = {}
     # Add site-level annotations to vcf_info_dict
     for field in SITE_FIELDS:
