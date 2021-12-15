@@ -228,8 +228,7 @@ def add_vqsr_jobs(
         axiom_poly_resource_vcf=axiom_poly_resource_vcf,
         dbsnp_resource_vcf=dbsnp_resource_vcf,
         disk_size=small_disk,
-        web_bucket=web_bucket,
-        work_bucket=web_bucket,
+        is_small_callset=is_small_callset,
     )
     indels_recalibration = indels_variant_recalibrator_job.recalibration
     indels_tranches = indels_variant_recalibrator_job.tranches
@@ -242,7 +241,7 @@ def add_vqsr_jobs(
 
     if is_huge_callset:
         # Run SNP recalibrator in a scattered mode
-        model_file = add_snps_variant_recalibrator_create_model_step(
+        model_j = add_snps_variant_recalibrator_create_model_step(
             b,
             sites_only_variant_filtered_vcf=gathered_vcf,
             hapmap_resource_vcf=hapmap_resource_vcf,
@@ -250,25 +249,26 @@ def add_vqsr_jobs(
             one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
             dbsnp_resource_vcf=dbsnp_resource_vcf,
             disk_size=small_disk,
-            web_bucket=web_bucket,
-            work_bucket=work_bucket,
             is_small_callset=is_small_callset,
             is_huge_callset=is_huge_callset,
             max_gaussians=snp_max_gaussians,
-        ).model_file
+        )
+        if depends_on:
+            model_j.depends_on(*depends_on)
 
         snps_recalibrator_jobs = [
             add_snps_variant_recalibrator_scattered_step(
                 b,
                 sites_only_vcf=scattered_vcfs[idx],
                 interval=intervals[f'interval_{idx}'],
-                model_file=model_file,
+                model_file=model_j.model_file,
                 hapmap_resource_vcf=hapmap_resource_vcf,
                 omni_resource_vcf=omni_resource_vcf,
                 one_thousand_genomes_resource_vcf=one_thousand_genomes_resource_vcf,
                 dbsnp_resource_vcf=dbsnp_resource_vcf,
                 disk_size=small_disk,
                 max_gaussians=snp_max_gaussians,
+                is_small_callset=is_small_callset,
             )
             for idx in range(scatter_count)
         ]
@@ -312,8 +312,7 @@ def add_vqsr_jobs(
             dbsnp_resource_vcf=dbsnp_resource_vcf,
             disk_size=small_disk,
             max_gaussians=snp_max_gaussians,
-            web_bucket=web_bucket,
-            work_bucket=work_bucket,
+            is_small_callset=is_small_callset,
         )
         snps_recalibration = snps_recalibrator_job.recalibration
         snps_tranches = snps_recalibrator_job.tranches
@@ -559,9 +558,8 @@ def add_indels_variant_recalibrator_step(
     axiom_poly_resource_vcf: hb.ResourceGroup,
     dbsnp_resource_vcf: hb.ResourceGroup,
     disk_size: int,
-    web_bucket: str = None,
-    work_bucket: str = None,
     max_gaussians: int = 4,
+    is_small_callset: bool = False,
 ) -> Job:
     """
     Run VariantRecalibrator to calculate VQSLOD tranches for indels
@@ -577,9 +575,18 @@ def add_indels_variant_recalibrator_step(
     """
     j = b.new_job('AS-VQSR: IndelsVariantRecalibrator')
     j.image(utils.GATK_IMAGE)
-    mem_gb = 32
-    j.memory(f'{mem_gb}G')
-    j.cpu(2)
+
+    # we run it for the entire dataset in one job, so can take an entire instance:
+    j.cpu(16)
+    # however, for smaller datasets we take a standard instance, and for larger
+    # ones we take a highmem instance
+    if is_small_callset:
+        mem_gb = 60  # ~ 3.75G/core ~ 60G
+        j.memory('standard')
+    else:
+        mem_gb = 128  # ~ 8G/core ~ 128G
+        j.memory('highmem')
+    java_mem = mem_gb - 2
     j.storage(f'{disk_size}G')
 
     j.declare_resource_group(recalibration={'index': '{root}.idx', 'base': '{root}'})
@@ -591,7 +598,7 @@ def add_indels_variant_recalibrator_step(
     j.command(
         f"""set -euo pipefail
 
-    gatk --java-options -Xms{mem_gb - 1}g \\
+    gatk --java-options -Xms{java_mem}g \\
       VariantRecalibrator \\
       -V {sites_only_variant_filtered_vcf['vcf.gz']} \\
       -O {j.recalibration} \\
@@ -618,8 +625,6 @@ def add_snps_variant_recalibrator_create_model_step(
     one_thousand_genomes_resource_vcf: hb.ResourceGroup,
     dbsnp_resource_vcf: hb.ResourceGroup,
     disk_size: int,
-    web_bucket: str = None,
-    work_bucket: str = None,
     is_small_callset: bool = False,
     is_huge_callset: bool = False,
     max_gaussians: int = 4,
@@ -646,11 +651,19 @@ def add_snps_variant_recalibrator_create_model_step(
     The latter is useful to produce the optional tranche plot.
     """
     j = b.new_job('AS-VQSR: SNPsVariantRecalibratorCreateModel')
-
     j.image(utils.GATK_IMAGE)
-    mem_gb = 64 if not is_small_callset else 128
-    j.memory(f'{mem_gb}G')
-    j.cpu(2)
+
+    # we run it for the entire dataset in one job, so can take an entire instance:
+    j.cpu(16)
+    # however, for smaller datasets we take a standard instance, and for larger
+    # ones we take a highmem instance
+    if is_small_callset:
+        mem_gb = 60  # ~ 3.75G/core ~ 60G
+        j.memory('standard')
+    else:
+        mem_gb = 128  # ~ 8G/core ~ 128G
+        j.memory('highmem')
+    java_mem = mem_gb - 2
     j.storage(f'{disk_size}G')
 
     downsample_factor = 75 if is_huge_callset else 10
@@ -660,7 +673,7 @@ def add_snps_variant_recalibrator_create_model_step(
     j.command(
         f"""set -euo pipefail
 
-    gatk --java-options -Xms{mem_gb - 2}g \\
+    gatk --java-options -Xms{java_mem}g \\
       VariantRecalibrator \\
       -V {sites_only_variant_filtered_vcf['vcf.gz']} \\
       -O {j.recalibration} \\
@@ -693,6 +706,7 @@ def add_snps_variant_recalibrator_scattered_step(
     disk_size: int,
     interval: Optional[hb.ResourceGroup] = None,
     max_gaussians: int = 4,
+    is_small_callset: bool = False,
 ) -> Job:
     """
     Second step of VQSR for SNPs: run VariantRecalibrator scattered to apply
@@ -715,11 +729,15 @@ def add_snps_variant_recalibrator_scattered_step(
     Returns: a Job object with 2 outputs: j.recalibration (ResourceGroup) and j.tranches
     """
     j = b.new_job('AS-VQSR: SNPsVariantRecalibratorScattered')
-
     j.image(utils.GATK_IMAGE)
-    mem_gb = 64  # ~ twice the sum of all input resources and input VCF sizes
-    j.memory(f'{mem_gb}G')
-    j.cpu(2)
+
+    if is_small_callset:
+        j.cpu(4)
+        mem_gb = 15  # ~ 3.75G/core ~ 15G
+    else:
+        j.cpu(8)
+        mem_gb = 30  # ~ 3.75G/core ~ 30G
+    java_mem = mem_gb - 1
     j.storage(f'{disk_size}G')
 
     j.declare_resource_group(recalibration={'index': '{root}.idx', 'base': '{root}'})
@@ -731,7 +749,7 @@ def add_snps_variant_recalibrator_scattered_step(
 
     MODEL_REPORT={model_file}
 
-    gatk --java-options -Xms{mem_gb - 1}g \\
+    gatk --java-options -Xms{java_mem}g \\
       VariantRecalibrator \\
       -V {sites_only_vcf['vcf.gz']} \\
       -O {j.recalibration} \\
@@ -759,10 +777,9 @@ def add_snps_variant_recalibrator_step(
     omni_resource_vcf: hb.ResourceGroup,
     one_thousand_genomes_resource_vcf: hb.ResourceGroup,
     dbsnp_resource_vcf: hb.ResourceGroup,
-    web_bucket: str,
-    work_bucket: str,
     disk_size: int,
     max_gaussians: int = 4,
+    is_small_callset: bool = False,
 ) -> Job:
     """
     Recalibrate SNPs in one run (alternative to scatter-gather approach)
@@ -770,9 +787,19 @@ def add_snps_variant_recalibrator_step(
     j = b.new_job('AS-VQSR: SNPsVariantRecalibrator')
 
     j.image(utils.GATK_IMAGE)
-    j.memory('highmem')
-    j.cpu(8)  # 7G per CPU = 56G memory
-    mem_gb = 56
+
+    # we run it for the entire dataset in one job, so can take an entire instance:
+    j.cpu(16)
+    # however, for smaller datasets we take a standard instance, and for larger
+    # ones we take a highmem instance
+    if is_small_callset:
+        mem_gb = 60  # ~ 3.75G/core ~ 60G
+        j.memory('standard')
+    else:
+        mem_gb = 128  # ~ 8G/core ~ 128G
+        j.memory('highmem')
+    java_mem = mem_gb - 2
+
     j.storage(f'{disk_size}G')
 
     j.declare_resource_group(recalibration={'index': '{root}.idx', 'base': '{root}'})
@@ -782,7 +809,7 @@ def add_snps_variant_recalibrator_step(
     j.command(
         f"""set -euo pipefail
 
-    gatk --java-options -Xms{mem_gb - 1}g \\
+    gatk --java-options -Xms{java_mem}g \\
       VariantRecalibrator \\
       -V {sites_only_variant_filtered_vcf['vcf.gz']} \\
       -O {j.recalibration} \\
@@ -875,8 +902,12 @@ def add_apply_recalibration_step(
     """
     j = b.new_job('AS-VQSR: ApplyRecalibration')
     j.image(utils.GATK_IMAGE)
-    j.memory('8G')
+
+    j.cpu(2)  # memory: 3.75G * 2 = 7.5G on a standard instance
+    java_mem = 7
+
     j.storage(f'{disk_size}G')
+
     j.declare_resource_group(
         recalibrated_vcf={'vcf.gz': '{root}.vcf.gz', 'vcf.gz.tbi': '{root}.vcf.gz.tbi'}
     )
@@ -890,7 +921,7 @@ def add_apply_recalibration_step(
     mkdir $TMP_DIR
 
     TMP_INDEL_RECALIBRATED=/io/batch/tmp.indel.recalibrated.vcf.gz
-    gatk --java-options -Xms5g \\
+    gatk --java-options -Xms{java_mem}g \\
       ApplyVQSR \\
       --tmp-dir $TMP_DIR \\
       -O $TMP_INDEL_RECALIBRATED \\
