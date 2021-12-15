@@ -30,7 +30,6 @@ from gnomad.utils.vcf import (
     IN_SILICO_ANNOTATIONS_INFO_DICT,
     make_info_dict,
     make_vcf_filter_dict,
-    REGION_FLAG_FIELDS,
     RF_FIELDS,
     SITE_FIELDS,
     VQSR_FIELDS, make_hist_bin_edges_expr,
@@ -77,6 +76,7 @@ SUBSET_LIST_FOR_VCF = remove_fields_from_constant(
 
 # Remove decoy from region field flag
 MISSING_REGION_FIELDS = ['decoy']
+REGION_FLAG_FIELDS = ['decoy', 'lcr', 'non_par', 'segdup']
 REGION_FLAG_FIELDS = remove_fields_from_constant(
     REGION_FLAG_FIELDS, MISSING_REGION_FIELDS
 )
@@ -85,7 +85,6 @@ REGION_FLAG_FIELDS = remove_fields_from_constant(
 MISSING_INFO_FIELDS = (
     MISSING_ALLELE_TYPE_FIELDS
     + MISSING_REGION_FIELDS
-    + RF_FIELDS
 )
 
 # Remove unnecessary pop names from POP_NAMES dict
@@ -450,10 +449,10 @@ def make_info_expr(
     # _n_larger for all hists EXCEPT DP hists
     for hist in HISTS:
         hist_type = f'{hist_prefix}qual_hists'
-        # hist_dict = {
-        #     f'{hist}_bin_freq': hl.delimit(t[hist_type][hist].bin_freq, delimiter='|'),
-        # }
-        # vcf_info_dict.update(hist_dict)
+        hist_dict = {
+            f'{hist}_bin_freq': hl.delimit(t[hist_type][hist].bin_freq, delimiter='|'),
+        }
+        vcf_info_dict.update(hist_dict)
         # 
         # if 'dp' in hist:
         #     vcf_info_dict.update({f'{hist}_n_larger': t[hist_type][hist].n_larger},)
