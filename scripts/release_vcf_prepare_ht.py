@@ -523,14 +523,7 @@ def unfurl_nested_annotations(
     """
     freq_entries_to_remove_vcf = set()
     
-    # Making sure row-level fields from SITE_FIELDS are moved into .info struct,
-    # which is later moved into .release_ht_info, which is used in `make_info_expr`:
-    # vcf_info_dict[field] = t['release_ht_info'][f'{field}']
-    expr_dict = {
-        'monoallelic': t.monoallelic,
-        'transmitted_singleton': t.transmitted_singleton,
-        'InbreedingCoeff': t.InbreedingCoeff,
-    }
+    expr_dict = {}
 
     if (full_release + subset_release + full_for_subset) != 1:
         raise ValueError(
@@ -723,7 +716,7 @@ def _prepare_vcf_ht(
 
     # logger.info('Reformatting VEP annotation...')
     # vep_expr = vep_struct_to_csq(ht.vep)
-
+    
     logger.info('Constructing INFO field')
     ht = ht.annotate(
         region_flag=region_flag_expr(
@@ -734,7 +727,14 @@ def _prepare_vcf_ht(
                 'segdup': hl.read_table(SEG_DUP_INTERVALS_HT)
             },
         ),
-        release_ht_info=ht.info,
+        # Making sure row-level fields from SITE_FIELDS are moved 
+        # into .release_ht_info, which is used in `make_info_expr`:
+        # vcf_info_dict[field] = t['release_ht_info'][f'{field}']
+        release_ht_info=ht.info.annotate(
+            monoallelic=ht.monoallelic,
+            transmitted_singleton=ht.transmitted_singleton,
+            InbreedingCoeff=ht.InbreedingCoeff,
+        ),
         info=info_struct,
         rsid=rsid_expr,
         # vep=vep_expr,
