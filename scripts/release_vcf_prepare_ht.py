@@ -50,26 +50,27 @@ logger = logging.getLogger(__file__)
 logger.setLevel('INFO')
 
 
+# Add new site fields
+NEW_SITE_FIELDS = [
+    'monoallelic',
+    'transmitted_singleton',
+]
+SITE_FIELDS.extend(NEW_SITE_FIELDS)
+
 # Remove original alleles for containing non-releasable alleles
 MISSING_ALLELE_TYPE_FIELDS = ['original_alleles', 'has_star']
 ALLELE_TYPE_FIELDS = remove_fields_from_constant(
     ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS
 )
 
-# Remove SB (not included in VCF) and SOR (doesn't exist in v3.1) from site fields
-MISSING_SITES_FIELDS = ['SOR', 'SB']
-SITE_FIELDS = remove_fields_from_constant(SITE_FIELDS, MISSING_SITES_FIELDS)
-
-# Remove AS_VarDP from AS fields
-MISSING_AS_FIELDS = ['AS_VarDP']
-AS_FIELDS = remove_fields_from_constant(AS_FIELDS, MISSING_AS_FIELDS)
-
-# Make subset list (used in properly filling out VCF header descriptions and naming VCF info fields)
+# Make subset list (used in properly filling out VCF header descriptions 
+# and naming VCF info fields)
 SUBSET_LIST_FOR_VCF = SUBSETS.copy()
 SUBSET_LIST_FOR_VCF.append('')
 
 # Remove cohorts that have subpop frequencies stored as pop frequencies
-# Inclusion of these subsets significantly increases the size of storage in the VCFs because of the many subpops
+# Inclusion of these subsets significantly increases the size of storage 
+# in the VCFs because of the many subpops
 SUBSET_LIST_FOR_VCF = remove_fields_from_constant(
     SUBSET_LIST_FOR_VCF, COHORTS_WITH_POP_STORED_AS_SUBPOP
 )
@@ -83,9 +84,7 @@ REGION_FLAG_FIELDS = remove_fields_from_constant(
 # All missing fields to remove from vcf info dict
 MISSING_INFO_FIELDS = (
     MISSING_ALLELE_TYPE_FIELDS
-    + MISSING_AS_FIELDS
     + MISSING_REGION_FIELDS
-    + MISSING_SITES_FIELDS
     + RF_FIELDS
 )
 
@@ -523,7 +522,15 @@ def unfurl_nested_annotations(
         to remove from the VCF.
     """
     freq_entries_to_remove_vcf = set()
-    expr_dict = {}
+    
+    # Making sure row-level fields from SITE_FIELDS are moved into .info struct,
+    # which is later moved into .release_ht_info, which is used in `make_info_expr`:
+    # vcf_info_dict[field] = t['release_ht_info'][f'{field}']
+    expr_dict = {
+        'monoallelic': t.monoallelic,
+        'transmitted_singleton': t.transmitted_singleton,
+        'InbreedingCoeff': t.InbreedingCoeff,
+    }
 
     if (full_release + subset_release + full_for_subset) != 1:
         raise ValueError(

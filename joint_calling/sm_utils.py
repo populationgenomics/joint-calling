@@ -506,7 +506,7 @@ def find_inputs_from_db(
             inputs.append(entry)
 
     if not inputs:
-        logger.error('No found any projects with samples good for processing')
+        logger.error('Noе found any projects with samples good for processing')
         sys.exit(1)
 
     df = pd.DataFrame(inputs).set_index('s', drop=False)
