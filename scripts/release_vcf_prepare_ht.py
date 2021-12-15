@@ -30,7 +30,6 @@ from gnomad.utils.vcf import (
     IN_SILICO_ANNOTATIONS_INFO_DICT,
     make_info_dict,
     make_vcf_filter_dict,
-    RF_FIELDS,
     SITE_FIELDS,
     VQSR_FIELDS, make_hist_bin_edges_expr,
 )
@@ -224,7 +223,8 @@ def _prepare_vcf_header_dict(
     bin_edges = make_hist_bin_edges_expr(
         ht,
         prefix=COHORT if is_public_subset else '',
-        include_age_hists=parameter_dict['include_age_hists'],
+        # include_age_hists=parameter_dict['include_age_hists'],
+        include_age_hists=False,
     )
     ht.describe()
     
