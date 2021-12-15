@@ -327,12 +327,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         combiner_job = dataproc.hail_dataproc_job(
             b,
             f'{utils.SCRIPTS_DIR}/combine_gvcfs.py '
-            f'--meta-csv {samples_tsv_path} '
+            f'--meta-tsv {samples_tsv_path} '
             f'--out-mt {raw_combined_mt_path} '
             f'--bucket {combiner_bucket}/work '
             f'--hail-billing {billing_project} '
-            f'--branch-factor 100 '  # 13893 / 100 = 138.93 batches
-            f'--batch-size 140 '     # processing each batch in one job
+            f'--branch-factor 70 '   # 13893 / 100 ~ 199 batches
+            f'--batch-size 100 '     # processing each batch in 2 jobs
             f'--n-partitions {scatter_count * 25}',
             max_age='48h',
             packages=utils.DATAPROC_PACKAGES,

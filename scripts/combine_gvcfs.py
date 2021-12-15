@@ -5,13 +5,10 @@ Combine a set of GVCFs into a MatrixTable
 """
 
 import os
-from os.path import join, basename
-import subprocess
 from typing import List
 import logging
 import shutil
 
-import pandas as pd
 import click
 import hail as hl
 from hail.experimental.vcf_combiner import vcf_combiner
@@ -32,10 +29,11 @@ TARGET_RECORDS = 25_000
 @click.command()
 @click.version_option(_version.__version__)
 @click.option(
-    '--meta-csv',
-    'meta_csv_path',
+    '--meta-tsv',
+    'meta_tsv_path',
     required=True,
-    help='Sample data CSV path',
+    callback=get_validation_callback(ext='tsv'),
+    help='Sample data TSV path, to get samples names from the "s" column',
 )
 @click.option(
     '--out-mt',
@@ -102,7 +100,7 @@ TARGET_RECORDS = 25_000
     help='Number of partitions for the output matrix table',
 )
 def main(
-    meta_csv_path: str,
+    meta_tsv_path: str,
     out_mt_path: str,
     branch_factor: int,
     batch_size: int,
@@ -117,17 +115,12 @@ def main(
 
     logger.info(f'Combining GVCFs')
 
-    assert utils.file_exists(meta_csv_path)
-    local_meta_csv_path = join(local_tmp_dir, basename(meta_csv_path))
-    subprocess.run(
-        f'gsutil cp {meta_csv_path} {local_meta_csv_path}', check=False, shell=True
-    )
-    new_samples_df = pd.read_table(local_meta_csv_path)
+    new_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
 
     new_mt_path = os.path.join(work_bucket, 'new.mt')
     combine_gvcfs(
-        gvcf_paths=list(new_samples_df.gvcf),
-        sample_names=list(new_samples_df.s),
+        gvcf_paths=new_ht.gvcf.collect(),
+        sample_names=new_ht.s.collect(),
         out_mt_path=new_mt_path,
         work_bucket=work_bucket,
         branch_factor=branch_factor,
