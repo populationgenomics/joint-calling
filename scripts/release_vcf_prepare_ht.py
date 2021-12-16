@@ -761,16 +761,16 @@ def _prepare_vcf_ht(
         # vep=ht.vep
     ))
 
-    # if freq_entries_to_remove:
-    #     ht = ht.annotate_globals(
-    #         vep_csq_header=vep_csq_header, 
-    #         freq_entries_to_remove=freq_entries_to_remove
-    #     )
-    # else:
-    #     ht = ht.annotate_globals(
-    #         vep_csq_header=vep_csq_header, 
-    #         freq_entries_to_remove=hl.empty_set(hl.tstr),
-    #     )
+    if freq_entries_to_remove:
+        ht = ht.annotate_globals(
+            # vep_csq_header=vep_csq_header, 
+            freq_entries_to_remove=freq_entries_to_remove
+        )
+    else:
+        ht = ht.annotate_globals(
+            # vep_csq_header=vep_csq_header, 
+            freq_entries_to_remove=hl.empty_set(hl.tstr),
+        )
         
     # Select relevant fields for VCF export
     ht = ht.select('info', 'filters', 'rsid')
