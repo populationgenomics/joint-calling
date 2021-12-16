@@ -16,18 +16,22 @@ def get_cluster(
     name,
     num_workers: int,
     long: bool = False,
+    highmem_workers: bool = False,
     is_test: bool = False,
     phantomjs: bool = False,
     preemptible: bool = True,
     depends_on: Optional[List[Optional[Job]]] = None,
+    autoscaling_policy: Optional[str] = None,
+    max_age: Optional[str] = None,
 ) -> dataproc.DataprocCluster:
     """
     Get or create a Dataproc cluster by name
     """
-    max_age = '1h' if is_test else '8h'
-    if long:
-        max_age = '3h' if is_test else '24h'
-    
+    if not max_age:
+        max_age = '1h' if is_test else '8h'
+        if long:
+            max_age = '3h' if is_test else '24h'
+        
     depends_on = depends_on or []
     depends_on = [j for j in depends_on if j is not None]
 
@@ -42,4 +46,8 @@ def get_cluster(
         init=['gs://cpg-reference/hail_dataproc/install_phantomjs.sh']
         if phantomjs
         else [],
+        autoscaling_policy=autoscaling_policy,
+        worker_machine_type='n1-highmem-8' 
+        if highmem_workers 
+        else 'n1-standard-8',
     )

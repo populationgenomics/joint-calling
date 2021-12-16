@@ -17,8 +17,8 @@ import logging
 import click
 import pandas as pd
 import hailtop.batch as hb
-from analysis_runner import dataproc
 
+from joint_calling.dataproc import get_cluster
 from joint_calling import utils
 from joint_calling import sm_utils
 from joint_calling.jobs.variant_qc import add_variant_qc_jobs
@@ -179,11 +179,19 @@ logger.setLevel(logging.INFO)
     '--combiner-branch-factor',
     'combiner_branch_factor',
     type=click.INT,
+    help='Branch factor for VCF combiner (see https://hail.is/docs/0.2/experimental/vcf_combiner.html#pain-points)'
 )
 @click.option(
     '--combiner-batch-size',
     'combiner_batch_size',
     type=click.INT,
+    help='Size of a batch for phase1 of VCF combiner (see https://hail.is/docs/0.2/experimental/vcf_combiner.html#pain-points)'
+)
+@click.option(
+    '--highmem-workers',
+    'highmem_workers',
+    is_flag=True,
+    help='Use highmem workers in dataproc'
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
@@ -212,6 +220,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     skip_somalier: bool,
     combiner_branch_factor: Optional[int],
     combiner_batch_size: Optional[int],
+    highmem_workers: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -336,8 +345,15 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         autoscaling_workers = '50'
 
     if not utils.can_reuse(raw_combined_mt_path, overwrite):
-        combiner_job = dataproc.hail_dataproc_job(
+        combiner_job = get_cluster(
             b,
+            'Combiner',
+            num_workers=0,
+            autoscaling_policy=f'vcf-combiner-{autoscaling_workers}',
+            long=True,
+            highmem_workers=highmem_workers,
+            depends_on=pre_combiner_jobs,
+        ).add_job(
             f'{utils.SCRIPTS_DIR}/combine_gvcfs.py '
             f'--meta-tsv {samples_tsv_path} '
             f'--out-mt {raw_combined_mt_path} '
@@ -346,11 +362,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             (f'--branch-factor {combiner_branch_factor} ' if combiner_branch_factor else '') +
             (f'--batch-size {combiner_batch_size} ' if combiner_batch_size else '') +
             f'--n-partitions {scatter_count * 25}',
-            max_age='48h',
-            packages=utils.DATAPROC_PACKAGES,
-            autoscaling_policy=f'vcf-combiner-{autoscaling_workers}',
-            worker_machine_type='n1-highmem-8',
-            depends_on=pre_combiner_jobs,
             job_name='Combine GVCFs',
         )
     else:
@@ -376,6 +387,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         is_test=output_namespace in ['test', 'tmp'],
         somalier_pairs_path=somalier_pairs_path,
         somalier_job=somalier_j,
+        highmem_workers=highmem_workers,
     )
 
     add_variant_qc_jobs(
@@ -395,6 +407,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         is_test=output_namespace in ['test', 'tmp'],
         depends_on=[combiner_job, sample_qc_job],
         project_name=analysis_project,
+        highmem_workers=highmem_workers,
     )
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch, wait=False)

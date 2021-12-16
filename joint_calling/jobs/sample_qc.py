@@ -39,6 +39,7 @@ def add_sample_qc_jobs(
     is_test: bool = False,
     somalier_pairs_path: Optional[str] = None,
     somalier_job: Optional[Job] = None,
+    highmem_workers: bool = False,
 ) -> Tuple[Job, str, str]:
     """
     Sub-workflow that adds sample-level QC, relatedness and ancestry analysis jobs
@@ -51,6 +52,7 @@ def add_sample_qc_jobs(
         is_test=is_test,
         depends_on=[combiner_job, somalier_job],
         phantomjs=True,
+        highmem_workers=highmem_workers,
     )
 
     job_name = 'Sample QC hard filters'
@@ -88,7 +90,15 @@ def add_sample_qc_jobs(
     job_name = 'Subset MT for PCA - all'
     mt_for_pca_path = join(ancestry_bucket, 'mt_for_pca.mt')
     if not can_reuse(mt_for_pca_path, overwrite):
-        subset_for_pca_job = cluster.add_job(
+        subset_for_pca_job = get_cluster(
+            b,
+            'Sample QC PCA',
+            scatter_count,
+            is_test=is_test,
+            depends_on=[combiner_job, somalier_job],
+            phantomjs=True,
+            highmem_workers=highmem_workers,
+        ).add_job(
             f'{utils.SCRIPTS_DIR}/sample_qc_subset_mt_for_pca.py '
             + (f'--overwrite ' if overwrite else '')
             + f'--mt {mt_path} '
@@ -100,8 +110,6 @@ def add_sample_qc_jobs(
             job_name=job_name,
         )
         subset_for_pca_job.depends_on(combiner_job)
-        # To avoid submitting multiple jobs at the same time to the same cluster
-        subset_for_pca_job.depends_on(sample_qc_hardfilter_job)
     else:
         subset_for_pca_job = b.new_job(f'{job_name} [reuse]')
 
@@ -125,7 +133,7 @@ def add_sample_qc_jobs(
         if not can_reuse(relatedness_ht_path, overwrite):
             relatedness_ht_path = join(relatedness_bucket, 'relatedness.ht')
             # PC relate needs non-preemptible workes, so requesting a new cluster
-            cluster = get_cluster(
+            relatedness_j = get_cluster(
                 b,
                 'pc_relate',
                 scatter_count // 3,
@@ -135,8 +143,8 @@ def add_sample_qc_jobs(
                 # (throw SparkException: Job aborted due to stage failure: ShuffleMapStage)
                 # so we use num_workers instead of num_secondary_workers here
                 preemptible=False,
-            )
-            relatedness_j = cluster.add_job(
+                highmem_workers=highmem_workers,
+            ).add_job(
                 f'{utils.SCRIPTS_DIR}/sample_qc_pcrelate.py '
                 + (f'--overwrite ' if overwrite else '')
                 + f'--pca-mt {mt_for_pca_path} '
@@ -155,6 +163,7 @@ def add_sample_qc_jobs(
                 is_test=is_test,
                 depends_on=[relatedness_j],
                 phantomjs=True,
+                highmem_workers=highmem_workers,
             )
         else:
             relatedness_j = b.new_job(f'{job_name} [reuse]')

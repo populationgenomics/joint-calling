@@ -36,6 +36,7 @@ def add_variant_qc_jobs(
     project_name: str,
     depends_on: Optional[List[Job]] = None,
     run_rf: bool = False,
+    highmem_workers: bool = False,
 ) -> List[Job]:
     """
     Add variant QC Hail-query jobs
@@ -46,13 +47,16 @@ def add_variant_qc_jobs(
     # Starting 3 clusters to work in parallel. The last one is long, to submit
     # further jobs
     cluster1 = get_cluster(
-        b, f'VarQC 1', scatter_count, is_test=is_test, depends_on=depends_on
+        b, f'VarQC 1', scatter_count, is_test=is_test, depends_on=depends_on,
+        highmem_workers=highmem_workers,
     )
     cluster2 = get_cluster(
-        b, f'VarQC 2', scatter_count, is_test=is_test, depends_on=depends_on
+        b, f'VarQC 2', scatter_count, is_test=is_test, depends_on=depends_on,
+        highmem_workers=highmem_workers,
     )
     cluster3 = get_cluster(
-        b, f'VarQC 3', scatter_count, is_test=is_test, depends_on=depends_on, long=True
+        b, f'VarQC 3', scatter_count, is_test=is_test, depends_on=depends_on, long=True,
+        highmem_workers=highmem_workers,
     )
 
     fam_stats_ht_path = join(work_bucket, 'fam-stats.ht') if ped_file else None
@@ -148,6 +152,7 @@ def add_variant_qc_jobs(
             is_test=is_test,
             long=True,
             depends_on=[rf_anno_job],
+            highmem_workers=highmem_workers,
         )
 
         job_name = 'Random forest'
@@ -211,6 +216,7 @@ def add_variant_qc_jobs(
             is_test=is_test,
             long=True,
             depends_on=[rf_anno_job, vqsr_vcf_job],
+            highmem_workers=highmem_workers,
         )
         eval_job = add_vqsr_eval_jobs(
             b=b,
