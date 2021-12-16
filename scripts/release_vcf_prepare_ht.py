@@ -194,7 +194,7 @@ def main(
     )
     
     logger.info('Cleaning up the VCF HT for final export...')
-    vcf_ht = _cleanup_ht_for_vcf_export(
+    vcf_ht, _ = _cleanup_ht_for_vcf_export(
         vcf_ht,
         drop_freqs=list(hl.eval(vcf_ht.freq_entries_to_remove)),
         drop_hists=parameter_dict['drop_hists'],        
