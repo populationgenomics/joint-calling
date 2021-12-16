@@ -916,7 +916,8 @@ def _build_parameter_dict(
             'pops': POPS,
             'subsets': SUBSET_LIST_FOR_VCF,
             'is_subset': False,
-            'drop_hists': ['age_hist_het_bin_edges', 'age_hist_hom_bin_edges'],
+            'drop_hists': [],
+            # 'drop_hists': ['age_hist_het_bin_edges', 'age_hist_hom_bin_edges'],
             'include_age_hists': True,
             'sample_sum_sets_and_pops': {'hgdp': HGDP_POPS, 'thousand-genomes': TGP_POPS},
         }
