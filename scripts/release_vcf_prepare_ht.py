@@ -172,11 +172,11 @@ def main(
     # Setup of parameters and Table/MatrixTable
     parameter_dict = _build_parameter_dict(ht, is_public_subset)
     
-    try:
-        age_hist_data = hl.eval(ht.age_distribution)
-    except AttributeError:
-        logger.warning('Age data not available')
-        age_hist_data = None
+    # try:
+    #     age_hist_data = hl.eval(ht.age_distribution)
+    # except AttributeError:
+    #     logger.warning('Age data not available')
+    age_hist_data = None
 
     vcf_ht = _prepare_vcf_ht(
         ht, 
@@ -393,6 +393,8 @@ def populate_info_dict(
 
     if age_hist_data:
         age_hist_data = '|'.join(str(x) for x in age_hist_data)
+        
+    assert age_hist_data is None
 
     vcf_info_dict.update(
         make_info_dict(
