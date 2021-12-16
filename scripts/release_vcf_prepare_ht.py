@@ -220,22 +220,25 @@ def _prepare_vcf_header_dict(
     age_hist_data: Optional[str] = None,
 ) -> Dict:
     logger.info('Making histogram bin edges...')
-    bin_edges = make_hist_bin_edges_expr(
-        ht,
-        prefix=COHORT if is_public_subset else '',
-        # include_age_hists=parameter_dict['include_age_hists'],
-        include_age_hists=False,
-    )
+
+    # Doesn't work because raw_qual_hists.* are not defined for 
+    # the first row (ht.head(1)...[0]):
+    # bin_edges = make_hist_bin_edges_expr(
+    #     ht,
+    #     prefix=COHORT if is_public_subset else '',
+    #     # include_age_hists=parameter_dict['include_age_hists'],
+    #     include_age_hists=False,
+    # )
     ht.describe()
     
     header_dict = prepare_vcf_header_dict(
         vcf_ht,
-        bin_edges=bin_edges,
         age_hist_data=age_hist_data,
         subset_list=parameter_dict['subsets'],
         pops=parameter_dict['pops'],
         filtering_model_field=parameter_dict['filtering_model_field'],
         inbreeding_coeff_cutoff=ht.inbreeding_coeff_cutoff,
+        bin_edges=None,
     )
     if not is_public_subset:
         header_dict.pop('format')
@@ -775,13 +778,13 @@ def _prepare_vcf_ht(
 
 def prepare_vcf_header_dict(
     t: Union[hl.Table, hl.MatrixTable],
-    bin_edges: Dict[str, str],
     subset_list: List[str],
     pops: Dict[str, str],
     filtering_model_field: str = 'filtering_model',
     format_dict: Dict[str, Dict[str, str]] = FORMAT_DICT,
     inbreeding_coeff_cutoff: float = INBREEDING_COEFF_HARD_CUTOFF,
     age_hist_data: Optional[str] = None,
+    bin_edges: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Dict[str, str]]:
     """
     Prepare VCF header dictionary.
