@@ -93,6 +93,8 @@ def cpg_custom_metrics(
     out_ht_path: Optional[str] = None,
     overwrite: bool = False,
     gnomad_path: str = resources.GNOMAD_HT,
+    count_gnomad_snps: bool = True,
+    count_chrx_het_hom: bool = True,
 ) -> hl.Table:
     """
     Extra metrics for CPG reports.
@@ -138,14 +140,16 @@ def cpg_custom_metrics(
         logger.info('Counting het/hom ratio on chrX as an extra sex check')
         # Number of hom/hem on chrX, as an extra sex check measure
         chrx_mt = hl.filter_intervals(mt, [hl.parse_locus_interval('chrX')])
-        chrx_ht = hl.sample_qc(mt).cols()
+        chrx_ht = hl.sample_qc(chrx_mt).cols()
         ht = ht.annotate(chrX_sample_qc=chrx_ht[ht.key].sample_qc)
         ht = ht.annotate(chrX_r_het_hom_var=ht.chrX_sample_qc.r_het_hom_var)
         return ht
 
     ht = split_mt.cols()
-    ht = _count_gnomad_snps(split_mt, ht)
-    ht = _chrx_het_hom(split_mt, ht)
+    if count_gnomad_snps:
+        ht = _count_gnomad_snps(split_mt, ht)
+    if count_chrx_het_hom:
+        ht = _chrx_het_hom(split_mt, ht)
     return ht.checkpoint(out_ht_path, overwrite=True)
 
 

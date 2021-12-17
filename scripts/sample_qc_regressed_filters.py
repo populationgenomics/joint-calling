@@ -5,6 +5,8 @@ Run sample QC on a MatrixTable, hard filter samples, add soft filter labels.
 """
 
 import logging
+from typing import Optional
+
 import click
 import hail as hl
 
@@ -35,7 +37,7 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--hail-sample-qc-ht',
     'hail_sample_qc_ht_path',
-    callback=utils.get_validation_callback(ext='ht', must_exist=True),
+    callback=utils.get_validation_callback(ext='ht'),
     required=True,
 )
 @click.option(
@@ -81,7 +83,7 @@ logger.setLevel(logging.INFO)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     pca_scores_ht_path: str,
     meta_tsv_path: str,
-    hail_sample_qc_ht_path: str,
+    hail_sample_qc_ht_path: Optional[str],
     filter_cutoffs_path: str,
     out_regressed_metrics_ht_path: str,
     out_inferred_pop_ht_path: str,
@@ -108,14 +110,15 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         overwrite=overwrite,
     )
 
-    # Re-computing QC metrics per population and annotating failing samples
-    sqc.apply_regressed_filters(
-        sample_qc_ht=hl.read_table(hail_sample_qc_ht_path),
-        pop_pca_scores_ht=hl.read_table(pca_scores_ht_path),
-        tmp_bucket=tmp_bucket,
-        out_ht_path=out_regressed_metrics_ht_path,
-        overwrite=overwrite,
-    )
+    if hail_sample_qc_ht_path:
+        # Re-computing QC metrics per population and annotating failing samples
+        sqc.apply_regressed_filters(
+            sample_qc_ht=hl.read_table(hail_sample_qc_ht_path),
+            pop_pca_scores_ht=hl.read_table(pca_scores_ht_path),
+            tmp_bucket=tmp_bucket,
+            out_ht_path=out_regressed_metrics_ht_path,
+            overwrite=overwrite,
+        )
 
 
 if __name__ == '__main__':
