@@ -38,7 +38,6 @@ logger.setLevel(logging.INFO)
     '--hail-sample-qc-ht',
     'hail_sample_qc_ht_path',
     callback=utils.get_validation_callback(ext='ht'),
-    required=True,
 )
 @click.option(
     '--filter-cutoffs-file',
