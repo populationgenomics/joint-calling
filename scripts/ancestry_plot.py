@@ -68,11 +68,11 @@ logger.setLevel(logging.INFO)
     help='Hail billing account ID.',
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
+    meta_tsv_path: str,
     eigenvalues_path: str,
     scores_ht_path: str,
     loadings_ht_path: str,
     inferred_pop_ht_path: str,
-    meta_tsv_path: str,
     out_path_pattern: Optional[str],
     hail_billing: str,  # pylint: disable=unused-argument
 ):

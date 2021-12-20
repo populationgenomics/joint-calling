@@ -270,11 +270,14 @@ def add_variant_qc_jobs(
     final_ht_j.depends_on(final_mt_j)
 
     jobs = []
+    can_reuse_vcfs = False
     for chrom in list(map(str, range(1, 22 + 1))) + ['X', 'Y']:
         job_name = f'Making final VCF: HT to VCF for chr{chrom}'
         logger.info(job_name)
         vcf_path = out_filtered_vcf_ptrn_path.format(CHROM=chrom)
-        if not utils.can_reuse([vcf_path], overwrite):
+        if chrom == '1':
+            can_reuse_vcfs = utils.can_reuse([vcf_path], overwrite)
+        if not can_reuse_vcfs:
             j = cluster.add_job(
                 f'{utils.SCRIPTS_DIR}/release_vcf_export_chrom.py '
                 f'--ht {export_ht_path} '

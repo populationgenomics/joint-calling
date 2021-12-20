@@ -33,11 +33,6 @@ logger.setLevel(logging.INFO)
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
-    '--filter-cutoffs-file',
-    'filter_cutoffs_path',
-    help=f'YAML file with filtering cutoffs',
-)
-@click.option(
     '--out-regressed-metrics-ht',
     'out_regressed_metrics_ht_path',
     callback=utils.get_validation_callback(ext='ht', must_exist=False),

@@ -192,6 +192,7 @@ def add_sample_qc_jobs(
             b,
             f'{utils.SCRIPTS_DIR}/ancestry_pca.py '
             f'--mt-for-pca {mt_for_pca_path} '
+            f'--meta-tsv {samples_tsv_path} '
             f'--min-pop-prob {cutoffs_d["pca"]["min_pop_prob"]} '
             f'--n-pcs {num_ancestry_pcs} '
             f'--out-eigenvalues {eigenvalues_path} '

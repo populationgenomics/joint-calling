@@ -97,8 +97,8 @@ logger.setLevel(logging.INFO)
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_for_pca: str,
-    n_pcs: int,
     meta_tsv_path: str,
+    n_pcs: int,
     related_samples_to_drop_ht_path: Optional[str],
     min_pop_prob: float,
     subcontinental: bool,
