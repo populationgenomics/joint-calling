@@ -5,7 +5,6 @@ Run sample QC on a MatrixTable, hard filter samples, add soft filter labels.
 """
 
 import logging
-from typing import Optional
 
 import click
 import hail as hl
@@ -29,15 +28,9 @@ logger.setLevel(logging.INFO)
     required=True,
 )
 @click.option(
-    '--meta-tsv',
-    'meta_tsv_path',
-    callback=utils.get_validation_callback(ext='tsv', must_exist=True),
-    required=True,
-)
-@click.option(
     '--hail-sample-qc-ht',
     'hail_sample_qc_ht_path',
-    callback=utils.get_validation_callback(ext='ht'),
+    callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
     '--filter-cutoffs-file',
@@ -45,17 +38,8 @@ logger.setLevel(logging.INFO)
     help=f'YAML file with filtering cutoffs',
 )
 @click.option(
-    '--n-pcs', 'n_pcs', default=20, help='number of PCs to compute for ancestry PCA.'
-)
-@click.option(
     '--out-regressed-metrics-ht',
     'out_regressed_metrics_ht_path',
-    callback=utils.get_validation_callback(ext='ht', must_exist=False),
-    required=True,
-)
-@click.option(
-    '--out-inferred-pop-ht',
-    'out_inferred_pop_ht_path',
     callback=utils.get_validation_callback(ext='ht', must_exist=False),
     required=True,
 )
@@ -81,43 +65,22 @@ logger.setLevel(logging.INFO)
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     pca_scores_ht_path: str,
-    meta_tsv_path: str,
-    hail_sample_qc_ht_path: Optional[str],
-    filter_cutoffs_path: str,
+    hail_sample_qc_ht_path: str,
     out_regressed_metrics_ht_path: str,
-    out_inferred_pop_ht_path: str,
     tmp_bucket: str,
     overwrite: bool,
-    n_pcs: int,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
-    local_tmp_dir = utils.init_hail(__file__)
+    utils.init_hail(__file__)
 
-    cutoffs_d = utils.get_filter_cutoffs(filter_cutoffs_path)
-    
-    meta_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
-
-    # Using calculated PCA scores as well as training samples with known
-    # `population` tag, to assign population tags to remaining samples
-    sqc.infer_pop_labels(
+    # Re-computing QC metrics per population and annotating failing samples
+    sqc.apply_regressed_filters(
+        sample_qc_ht=hl.read_table(hail_sample_qc_ht_path),
         pop_pca_scores_ht=hl.read_table(pca_scores_ht_path),
-        provided_pop_ht=meta_ht,
         tmp_bucket=tmp_bucket,
-        min_prob=cutoffs_d['pca']['min_pop_prob'],
-        n_pcs=n_pcs,
-        out_ht_path=out_inferred_pop_ht_path,
+        out_ht_path=out_regressed_metrics_ht_path,
         overwrite=overwrite,
     )
-
-    if hail_sample_qc_ht_path:
-        # Re-computing QC metrics per population and annotating failing samples
-        sqc.apply_regressed_filters(
-            sample_qc_ht=hl.read_table(hail_sample_qc_ht_path),
-            pop_pca_scores_ht=hl.read_table(pca_scores_ht_path),
-            tmp_bucket=tmp_bucket,
-            out_ht_path=out_regressed_metrics_ht_path,
-            overwrite=overwrite,
-        )
 
 
 if __name__ == '__main__':

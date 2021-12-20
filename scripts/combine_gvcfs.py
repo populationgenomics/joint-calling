@@ -8,6 +8,7 @@ import os
 from typing import List
 import logging
 import shutil
+import collections
 
 import click
 import hail as hl
@@ -117,10 +118,16 @@ def main(
 
     new_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
 
+    sample_names = new_ht.s.collect()
+    gvcfs = new_ht.gvcf.collect()
+    _check_duplicates(sample_names)
+    _check_duplicates(gvcfs)
+    print(f'Combining {len(sample_names)} samples: {", ".join(sample_names)}')
+
     new_mt_path = os.path.join(work_bucket, 'new.mt')
     combine_gvcfs(
-        gvcf_paths=new_ht.gvcf.collect(),
-        sample_names=new_ht.s.collect(),
+        gvcf_paths=gvcfs,
+        sample_names=sample_names,
         out_mt_path=new_mt_path,
         work_bucket=work_bucket,
         branch_factor=branch_factor,
@@ -150,6 +157,17 @@ def main(
     )
 
     shutil.rmtree(local_tmp_dir)
+
+
+def _check_duplicates(items):
+    duplicates = [
+        item for item, count 
+        in collections.Counter(items).items() 
+        if count > 1
+    ]
+    if duplicates:
+        raise ValueError(f'Found {len(duplicates)} duplicats: {duplicates}')
+    return duplicates
 
 
 def _combine_with_the_existing_mt(

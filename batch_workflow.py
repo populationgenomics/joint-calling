@@ -135,12 +135,6 @@ logger.setLevel(logging.INFO)
     help='Number of secondary workers for Dataproc clusters, as well as the'
     'number of shards to parition data for the AS-VQSR analysis',
 )
-@click.option(
-    '--num-ancestry-pcs',
-    'num_ancestry_pcs',
-    type=int,
-    default=20,
-)
 @click.option('--dry-run', 'dry_run', is_flag=True)
 @click.option(
     '--check-existence/--no-check-existence',
@@ -211,7 +205,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     skip_samples: Optional[Collection[str]],
     force_samples: Optional[Collection[str]],
     scatter_count: int,
-    num_ancestry_pcs: int,
     dry_run: bool,
     check_existence: bool,
     add_validation_samples: bool,
@@ -287,7 +280,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     )
 
     samples_df = find_inputs(
-        tmp_bucket=tmp_bucket,
+        analysis_bucket=analysis_bucket,
         overwrite=False,
         input_projects=input_sm_projects,
         source_tag=source_tag,
@@ -307,7 +300,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     ) = pre_combiner.add_pre_combiner_jobs(
         b=b,
         samples_df=samples_df,
-        pre_combiner_bucket=join(tmp_bucket, 'pre_combiner'),
+        tmp_bucket=tmp_bucket,
+        analysis_bucket=analysis_bucket,
         output_suffix=project_output_suffix,
         overwrite=overwrite,
         analysis_project=analysis_project,
@@ -383,7 +377,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         scatter_count=scatter_count,
         combiner_job=combiner_job,
         billing_project=billing_project,
-        num_ancestry_pcs=num_ancestry_pcs,
         is_test=output_namespace in ['test', 'tmp'],
         somalier_pairs_path=somalier_pairs_path,
         somalier_job=somalier_j,
@@ -435,7 +428,7 @@ Hard-filtered per-chromosome VCFs:
 
 
 def find_inputs(
-    tmp_bucket: str,
+    analysis_bucket: str,
     overwrite: bool,
     input_projects: List[str],
     source_tag: Optional[str] = None,
@@ -453,7 +446,7 @@ def find_inputs(
     To specify where to search raw GVCFs, specify `raw_gvcf_source_tag` which
     corresponds with meta.source value in 'in-progress 'analysis entries
     """
-    output_tsv_path = input_tsv_path or join(tmp_bucket, 'samples.tsv')
+    output_tsv_path = input_tsv_path or join(analysis_bucket, 'samples.tsv')
 
     if utils.can_reuse(output_tsv_path, overwrite):
         logger.info(f'Reading already found DB inputs from {output_tsv_path}')

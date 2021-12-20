@@ -199,11 +199,10 @@ def infer_sex(
 def run_pca_ancestry_analysis(
     mt: hl.MatrixTable,
     sample_to_drop_ht: Optional[hl.Table],
-    tmp_bucket: str,
     n_pcs: int,
-    out_eigenvalues_path: Optional[str] = None,
-    out_scores_ht_path: Optional[str] = None,
-    out_loadings_ht_path: Optional[str] = None,
+    out_eigenvalues_path: str,
+    out_scores_ht_path: str,
+    out_loadings_ht_path: str,
     overwrite: bool = False,
 ) -> hl.Table:
     """
@@ -221,7 +220,6 @@ def run_pca_ancestry_analysis(
         'scores': array<float64>
     """
     logger.info('Running PCA ancestry analysis')
-    out_scores_ht_path = out_scores_ht_path or join(tmp_bucket, 'pop_pca_scores.ht')
     if all(
         not fp or utils.can_reuse(fp, overwrite)
         for fp in [
@@ -240,18 +238,16 @@ def run_pca_ancestry_analysis(
         mt, sample_to_drop_ht, n_pcs=n_pcs
     )
 
-    if out_eigenvalues_path:
-        hl.Table.from_pandas(pd.DataFrame(eigenvalues)).export(out_eigenvalues_path)
-    if out_loadings_ht_path:
-        loadings_ht.write(out_loadings_ht_path, overwrite=True)
+    hl.Table.from_pandas(pd.DataFrame(eigenvalues)).export(out_eigenvalues_path)
+    loadings_ht.write(out_loadings_ht_path, overwrite=True)
     scores_ht.write(out_scores_ht_path, overwrite=True)
     scores_ht = hl.read_table(out_scores_ht_path)
     return scores_ht
 
 
 def infer_pop_labels(
-    pop_pca_scores_ht: hl.Table,
-    provided_pop_ht: hl.Table,
+    scores_ht: hl.Table,
+    training_pop_ht: hl.Table,
     tmp_bucket: str,
     min_prob: float,
     max_mislabeled_training_samples: int = 50,
@@ -263,10 +259,9 @@ def infer_pop_labels(
     Take population PCA results and training data, and run random forest
     to assign global population labels.
 
-    :param pop_pca_scores_ht: output table of `_run_pca_ancestry_analysis()`
+    :param scores_ht: output table of `_run_pca_ancestry_analysis()`
         with a row field 'scores': array<float64>
-    :param provided_pop_ht: table with a `continental_pop` field. Samples for which
-        the latter is defined will be used to train the random forest
+    :param training_pop_ht: table with samples with defined `training_pop`: str
     :param tmp_bucket: bucket to write checkpoints and intermediate files
     :param min_prob: min probability of belonging to a given population
         for the population to be set (otherwise set to `None`)
@@ -289,12 +284,8 @@ def infer_pop_labels(
     if utils.can_reuse(out_ht_path, overwrite):
         return hl.read_table(out_ht_path)
 
-    samples_with_pop_ht = provided_pop_ht.filter(
-        hl.is_defined(provided_pop_ht.continental_pop)
-        & (provided_pop_ht.continental_pop != '')
-    )
-    pop_pca_scores_ht = pop_pca_scores_ht.annotate(
-        training_pop=samples_with_pop_ht[pop_pca_scores_ht.key].continental_pop
+    scores_ht = scores_ht.annotate(
+        training_pop=training_pop_ht[scores_ht.key].training_pop
     )
 
     def _run_assign_population_pcs(pop_pca_scores_ht, min_prob):
@@ -314,7 +305,7 @@ def infer_pop_labels(
         return pop_ht, pops_rf_model, n_mislabeled_samples
 
     pop_ht, pops_rf_model, n_mislabeled_samples = _run_assign_population_pcs(
-        pop_pca_scores_ht, min_prob
+        scores_ht, min_prob
     )
     while n_mislabeled_samples > max_mislabeled_training_samples:
         logger.info(
@@ -323,10 +314,10 @@ def infer_pop_labels(
             f'Re-running without them.'
         )
 
-        pop_ht = pop_ht[pop_pca_scores_ht.key]
-        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+        pop_ht = pop_ht[scores_ht.key]
+        pop_pca_scores_ht = scores_ht.annotate(
             training_pop=hl.or_missing(
-                (pop_ht.training_pop == pop_ht.pop), pop_pca_scores_ht.training_pop
+                (pop_ht.training_pop == pop_ht.pop), scores_ht.training_pop
             )
         ).persist()
 
@@ -347,7 +338,10 @@ def infer_pop_labels(
     if overwrite or not file_exists(pop_rf_file):
         with hl.hadoop_open(pop_rf_file, 'wb') as out:
             pickle.dump(pops_rf_model, out)
-
+    
+    pop_ht = pop_ht.annotate(
+        is_training=hl.is_defined(training_pop_ht[pop_ht.key])
+    )
     return pop_ht.checkpoint(out_ht_path, overwrite=True)
 
 

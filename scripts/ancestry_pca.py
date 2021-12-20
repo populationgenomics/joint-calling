@@ -30,18 +30,31 @@ logger.setLevel(logging.INFO)
     help='path to Matrix Table generated with sample_qc_subset_mt_for_pca.py',
 )
 @click.option(
-    '--n-pcs', 'n_pcs', type=int, help='number of PCs to compute for ancestry PCA.'
+    '--meta-tsv',
+    'meta_tsv_path',
+    callback=utils.get_validation_callback(ext='tsv', must_exist=True),
+    required=True,
 )
 @click.option(
-    '--pop',
-    'pop',
-    help='population label to subset the training dataset to',
+    '--n-pcs', 'n_pcs', type=int, help='number of PCs to compute for ancestry PCA.'
 )
 @click.option(
     '--related-samples-to-drop-ht',
     'related_samples_to_drop_ht_path',
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
     help='Samples to remove from the analysis',
+)
+@click.option(
+    '--min-pop_prob', 
+    'min_pop_prob',
+    type=int,
+    help='Minimal probability to infer population',
+)
+@click.option(
+    '--subcontinental', 
+    'subcontinental',
+    is_flag=True,
+    help='Infer subcontinental ancestry (default is continental level)',
 )
 @click.option(
     '--out-eigenvalues',
@@ -56,6 +69,11 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--out-loadings-ht',
     'out_loadings_ht_path',
+    callback=utils.get_validation_callback(ext='ht', must_exist=False),
+)
+@click.option(
+    '--out-inferred-pop-ht',
+    'out_inferred_pop_ht_path',
     callback=utils.get_validation_callback(ext='ht', must_exist=False),
 )
 @click.option(
@@ -80,46 +98,75 @@ logger.setLevel(logging.INFO)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_for_pca: str,
     n_pcs: int,
+    meta_tsv_path: str,
     related_samples_to_drop_ht_path: Optional[str],
-    pop: Optional[str],
+    min_pop_prob: int,
+    subcontinental: bool,
     out_eigenvalues_path: str,
     out_scores_ht_path: str,
     out_loadings_ht_path: str,
+    out_inferred_pop_ht_path: str,
     tmp_bucket: str,
     overwrite: bool,
     hail_billing: str,  # pylint: disable=unused-argument
 ):
-    utils.init_hail(__file__)
+    local_tmp_dir = utils.init_hail(__file__)
 
-    if all(
-        utils.can_reuse(fp, overwrite)
-        for fp in [out_eigenvalues_path, out_scores_ht_path, out_loadings_ht_path]
-    ):
+    if all(utils.can_reuse(fp, overwrite) for fp in [
+        out_eigenvalues_path, 
+        out_scores_ht_path, 
+        out_loadings_ht_path
+    ]):
         return
 
     mt = hl.read_matrix_table(mt_for_pca)
-
-    if pop:
-        # Get samples from the specified population only
-        mt = mt.filter_cols(
-            ~hl.is_defined(mt.hgdp_1kg_metadata)
-            | (mt.hgdp_1kg_metadata.population_inference.pop == pop.lower())
-        )
 
     related_samples_to_drop_ht = None
     if related_samples_to_drop_ht_path:
         related_samples_to_drop_ht = hl.read_table(related_samples_to_drop_ht_path)
 
-    sqc.run_pca_ancestry_analysis(
+    scores_ht = sqc.run_pca_ancestry_analysis(
         mt=mt,
         sample_to_drop_ht=related_samples_to_drop_ht,
-        tmp_bucket=tmp_bucket,
         n_pcs=n_pcs,
         out_eigenvalues_path=out_eigenvalues_path,
         out_scores_ht_path=out_scores_ht_path,
         out_loadings_ht_path=out_loadings_ht_path,
         overwrite=overwrite,
     )
+
+    scores_ht = hl.read_table(scores_ht)
+    
+    meta_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
+
+    tag = 'subcontinental_pop' if subcontinental else 'continental_pop'
+    training_pop_ht = meta_ht.filter(
+        hl.is_defined(meta_ht[tag]) & (meta_ht[tag] != '-')
+    )
+    training_pop_ht = training_pop_ht.annotate(
+        training_pop=training_pop_ht[tag]
+    )
+    # Using calculated PCA scores as well as training samples with known
+    # `population` tag, to assign population tags to remaining samples
+    sqc.infer_pop_labels(
+        scores_ht=scores_ht,
+        training_pop_ht=training_pop_ht,
+        tmp_bucket=tmp_bucket,
+        min_prob=min_pop_prob,
+        n_pcs=n_pcs,
+        out_ht_path=out_inferred_pop_ht_path,
+        overwrite=overwrite,
+    )
+
+# def _make_provided_pop_ht(
+#     ht: hl.Table, 
+#     subcontinental: bool = False
+# ) -> hl.Table:
+#     tag = 'subcontinental_pop' if subcontinental else 'continental_pop'
+#     ht = ht.annotate(
+#         pop=hl.if_else(ht[tag] != '-', ht[tag], ''),
+#     )
+#     return ht
 
 
 if __name__ == '__main__':

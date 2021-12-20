@@ -16,7 +16,7 @@ from bokeh.resources import CDN
 from bokeh.embed import file_html
 from bokeh.transform import factor_cmap, factor_mark
 from bokeh.plotting import ColumnDataSource, figure
-from bokeh.palettes import turbo  # pylint: disable=no-name-in-module
+from bokeh.palettes import turbo  # flake: disable=F401
 from bokeh.models import CategoricalColorMapper, HoverTool
 
 from joint_calling import utils, resources
@@ -30,6 +30,12 @@ logger.setLevel(logging.INFO)
 
 @click.command()
 @click.version_option(_version.__version__)
+@click.option(
+    '--meta-tsv',
+    'meta_tsv_path',
+    callback=utils.get_validation_callback(ext='tsv', must_exist=True),
+    required=True,
+)
 @click.option(
     '--eigenvalues',
     'eigenvalues_path',
@@ -47,12 +53,6 @@ logger.setLevel(logging.INFO)
     'loadings_ht_path',
     required=True,
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
-)
-@click.option(
-    '--meta-tsv',
-    'meta_tsv_path',
-    callback=utils.get_validation_callback(ext='tsv', must_exist=True),
-    required=True,
 )
 @click.option(
     '--inferred-pop-ht',
@@ -90,23 +90,30 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     )
 
 
-def key_by_external_id(ht, sample_map_ht):
+def summarize_projects_by_pop(ht):
     """
-    Assuming ht.s is a CPG id, replaces it with external ID, using map in sample_map_ht
+    Make labels that split samples for a population by project
     """
-    ht = ht.annotate(internal_id=ht.s).key_by('internal_id')
-    ht = (
-        ht.annotate(
-            s=hl.if_else(
-                hl.is_defined(sample_map_ht[ht.internal_id]),
-                sample_map_ht[ht.internal_id].external_id,
-                ht.internal_id,
-            )
-        )
-        .key_by('s')
-        .drop('internal_id')
-    )
-    return ht
+    cnts_by_pop = dict()
+    data = ht.select('pop', 'project').collect()
+    for d in data:
+        if d.pop not in cnts_by_pop:
+            cnts_by_pop[d.pop] = dict()
+        if d.project not in cnts_by_pop[d.pop]:
+            cnts_by_pop[d.pop][d.project] = 0
+        cnts_by_pop[d.pop][d.project] += 1
+    
+    summary_by_pop = {
+        pop: ', '.join(f'{project}: {cnt}' for project, cnt in sorted(proj_d.items())) 
+        for pop, proj_d in cnts_by_pop.items()
+    }
+    summary_by_pop = {k: v for k, v in summary_by_pop.items() if k}
+    summary_by_pop = hl.literal(summary_by_pop)
+    return summary_by_pop
+
+
+BG_LABEL = 'Provided ancestry (1KG+HGDP)'
+FG_LABEL = 'Inferred ancestry'
 
 
 def produce_plots(
@@ -120,48 +127,49 @@ def produce_plots(
 ):
     """
     Generate plots in HTML format, write for each PC (of n_pcs) and
-    scope ("study", "continental_pop", "subpop", plus for loadings) into
+    scope ("project", "population") plus for loadings) into
     file paths defined by `out_path_pattern`.
     """
     scores_ht = hl.read_table(scores_ht_path)
     inferred_pop_ht = hl.read_table(inferred_pop_ht_path)
 
-    sample_map_ht = meta_ht.select('external_id')
-    scores_ht = key_by_external_id(scores_ht, sample_map_ht).cache()
-    provided_pop_ht = key_by_external_id(meta_ht, sample_map_ht).cache()
-    inferred_pop_ht = key_by_external_id(inferred_pop_ht, sample_map_ht).cache()
-
     scores_ht = scores_ht.annotate(
-        continental_pop=hl.case()
-        .when(
-            provided_pop_ht[scores_ht.s].continental_pop != '',
-            provided_pop_ht[scores_ht.s].project
-            + ' ['
-            + provided_pop_ht[scores_ht.s].continental_pop
-            + ']',
-        )
-        .default(
-            provided_pop_ht[scores_ht.s].project
-            + ' [inferred '
-            + inferred_pop_ht[scores_ht.s].pop
-            + ']'
-        ),
-        subpop=hl.case()
-        .when(
-            provided_pop_ht[scores_ht.s].subpop != '',
-            provided_pop_ht[scores_ht.s].project
-            + ' ['
-            + provided_pop_ht[scores_ht.s].subpop
-            + ']',
-        )
-        .default(
-            provided_pop_ht[scores_ht.s].project
-            + ' [inferred '
-            + inferred_pop_ht[scores_ht.s].pop
-            + ']'
-        ),
-        study=provided_pop_ht[scores_ht.s].project,
+        pop=inferred_pop_ht[scores_ht.s].pop,
+        is_training=inferred_pop_ht[scores_ht.s].is_training,
     ).cache()
+
+    def key_by_external_id(ht):
+        """
+        Assuming ht.s is a CPG id, replaces it with external ID, using map in sample_map_ht
+        """
+        ht = ht.annotate(old_s=ht.s).key_by('old_s')
+        ht = (
+            ht.annotate(
+                s=hl.if_else(
+                    hl.is_defined(meta_ht[ht.old_s]),
+                    meta_ht[ht.old_s].external_id,
+                    ht.old_s,
+                )
+            )
+            .key_by('s')
+            .drop('old_s')
+        )
+        return ht
+    
+    ht = key_by_external_id(scores_ht)
+
+    pop_full_names = hl.literal({
+        'nfe': 'Non-Finnish European', 
+        'fin': 'Finnish',
+        'mid': 'Middle Eastern',
+        'oth': 'Other',
+        'afr': 'African/African American',
+        'eas': 'East Asian',
+        'sas': 'South Asian',
+        'amr': 'Latino/Admixed American',
+    })
+    ht = ht.annotate(pop=pop_full_names[ht.pop])
+    ht = ht.cache()
 
     eigenvalues_ht = hl.import_table(
         eigenvalues_path, no_header=True, types={'f0': hl.tfloat}
@@ -173,50 +181,28 @@ def produce_plots(
 
     plots = []
 
-    sample_names = scores_ht.s.collect()
-    studies = scores_ht.study.collect()
-    unique_studies = remove_duplicates(studies)
-    bg_studies = [s for s in unique_studies if s == 'gnomad']
-    fg_studies = [s for s in unique_studies if s != 'gnomad']
-
-    plots.extend(
-        _plot_study(
-            number_of_pcs,
-            variance,
-            scores_ht,
-            studies,
-            sample_names,
-            bg_studies,
-            fg_studies,
-            out_path_pattern=out_path_pattern,
+    sample_names = ht.s.collect()
+    projects = ht.project.collect()
+    is_training = ht.is_training.collect()
+    
+    for scope, title, labels in [
+        ('project', 'Project', projects),
+        ('population', 'Population', ht.pop.collect()),
+    ]:
+        plots.extend(
+            _plot_pca(
+                scope=scope,
+                title=title,
+                labels=labels,
+                number_of_pcs=number_of_pcs,
+                variance=variance,
+                ht=ht,
+                projects=projects,
+                is_training=is_training,
+                sample_names=sample_names,
+                out_path_pattern=out_path_pattern,
+            )
         )
-    )
-
-    plots.extend(
-        _plot_continental_pop(
-            number_of_pcs,
-            variance,
-            scores_ht,
-            studies,
-            sample_names,
-            bg_studies,
-            fg_studies,
-            out_path_pattern=out_path_pattern,
-        )
-    )
-
-    plots.extend(
-        _plot_subcontinental_pop(
-            number_of_pcs,
-            variance,
-            scores_ht,
-            studies,
-            sample_names,
-            bg_studies,
-            fg_studies,
-            out_path_pattern=out_path_pattern,
-        )
-    )
 
     plots.extend(
         _plot_loadings(
@@ -227,27 +213,30 @@ def produce_plots(
     return plots
 
 
-def _plot_study(
+def _plot_pca(
+    scope,
+    title,
+    labels,
     number_of_pcs,
     variance,
-    scores,
-    studies,
+    ht,
+    projects,
     sample_names,
-    bg_studies,
-    fg_studies,
+    is_training,
     out_path_pattern=None,
 ):
-    tooltips = [('labels', '@label'), ('samples', '@samples')]
-    cntr: Counter = Counter(studies)
-    labels = [f'{x} ({cntr[x]})' for x in studies]
-    unique_labels = list(Counter(labels).keys())
+    
+    cntr: Counter = Counter(labels)
+    labels = [f'{x} ({cntr[x]})' for x in labels]
 
+    unique_labels = list(Counter(labels).keys())
+    tooltips = [('labels', '@label'), ('samples', '@samples')]
     plots = []
     for i in range(number_of_pcs - 1):
         pc1 = i
         pc2 = i + 1
         plot = figure(
-            title='Study',
+            title=title,
             x_axis_label=f'PC{pc1 + 1} ({variance[pc1]})%)',
             y_axis_label=f'PC{pc2 + 1} ({variance[pc2]}%)',
             tooltips=tooltips,
@@ -255,22 +244,22 @@ def _plot_study(
         )
         source = ColumnDataSource(
             dict(
-                x=scores.scores[pc1].collect(),
-                y=scores.scores[pc2].collect(),
+                x=ht.scores[pc1].collect(),
+                y=ht.scores[pc2].collect(),
                 label=labels,
                 samples=sample_names,
-                study=studies,
+                project=projects,
+                is_training=[
+                    {True: BG_LABEL, False: FG_LABEL}.get(v) 
+                    for v in is_training
+                ],
             )
         )
         plot.scatter(
             'x',
             'y',
             alpha=0.5,
-            marker=factor_mark(
-                'study',
-                ['cross'] * len(bg_studies) + ['circle'] * len(fg_studies),
-                bg_studies + fg_studies,
-            ),
+            marker=factor_mark('is_training', ['cross', 'circle'], [BG_LABEL, FG_LABEL]),
             source=source,
             size=4,
             color=factor_cmap('label', ['#1b9e77', '#d95f02'], unique_labels),
@@ -279,133 +268,9 @@ def _plot_study(
         plot.add_layout(plot.legend[0], 'left')
         plots.append(plot)
         if out_path_pattern:
-            html = file_html(plot, CDN, 'my plot')
+            html = file_html(plot, CDN, title)
             plot_filename_html = out_path_pattern.format(
-                scope='study', pci=pc2, ext='html'
-            )
-            with hl.hadoop_open(plot_filename_html, 'w') as f:
-                f.write(html)
-    return plots
-
-
-def _plot_continental_pop(
-    number_of_pcs,
-    variance,
-    scores,
-    studies,
-    sample_names,
-    bg_studies,
-    fg_studies,
-    out_path_pattern=None,
-):
-    tooltips = [('labels', '@label'), ('samples', '@samples')]
-    labels = scores.continental_pop.collect()
-    cntr = Counter(labels)
-    labels = [f'{x} ({cntr[x]})' for x in labels]
-    unique_labels = list(Counter(labels).keys())
-
-    plots = []
-    for i in range(number_of_pcs - 1):
-        pc1 = i
-        pc2 = i + 1
-        plot = figure(
-            title='Continental Population',
-            x_axis_label=f'PC{pc1 + 1} ({variance[pc1]})%)',
-            y_axis_label=f'PC{pc2 + 1} ({variance[pc2]}%)',
-            tooltips=tooltips,
-            width=1000,
-        )
-        source = ColumnDataSource(
-            dict(
-                x=scores.scores[pc1].collect(),
-                y=scores.scores[pc2].collect(),
-                label=labels,
-                samples=sample_names,
-                study=studies,
-            )
-        )
-        plot.scatter(
-            'x',
-            'y',
-            alpha=0.6,
-            marker=factor_mark(
-                'study',
-                ['cross'] * len(bg_studies) + ['circle'] * len(fg_studies),
-                bg_studies + fg_studies,
-            ),
-            source=source,
-            size=4,
-            color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
-            legend_group='label',
-        )
-        plot.add_layout(plot.legend[0], 'left')
-        plots.append(plot)
-        if out_path_pattern:
-            html = file_html(plot, CDN, 'my plot')
-            plot_filename_html = out_path_pattern.format(
-                scope='continental_pop', pci=pc2, ext='html'
-            )
-            with hl.hadoop_open(plot_filename_html, 'w') as f:
-                f.write(html)
-    return plots
-
-
-def _plot_subcontinental_pop(
-    number_of_pcs,
-    variance,
-    scores,
-    studies,
-    sample_names,
-    bg_studies,
-    fg_studies,
-    out_path_pattern=None,
-):
-    tooltips = [('labels', '@label'), ('samples', '@samples')]
-    labels = scores.subpop.collect()
-    cntr = Counter(labels)
-    labels = [f'{x} ({cntr[x]})' for x in labels]
-    unique_labels = list(Counter(labels).keys())
-
-    plots = []
-    for i in range(number_of_pcs - 1):
-        pc1 = i
-        pc2 = i + 1
-        plot = figure(
-            title='Subpopulation',
-            x_axis_label=f'PC{pc1 + 1} ({variance[pc1]})%)',
-            y_axis_label=f'PC{pc2 + 1} ({variance[pc2]}%)',
-            tooltips=tooltips,
-            width=1000,
-        )
-        source = ColumnDataSource(
-            dict(
-                x=scores.scores[pc1].collect(),
-                y=scores.scores[pc2].collect(),
-                label=labels,
-                samples=sample_names,
-                study=studies,
-            )
-        )
-        plot.scatter(
-            'x',
-            'y',
-            alpha=0.6,
-            marker=factor_mark(
-                'study',
-                ['cross'] * len(bg_studies) + ['circle'] * len(fg_studies),
-                bg_studies + fg_studies,
-            ),
-            source=source,
-            size=4,
-            color=factor_cmap('label', turbo(len(unique_labels)), unique_labels),
-            legend_group='label',
-        )
-        plot.add_layout(plot.legend[0], 'left')
-        plots.append(plot)
-        if out_path_pattern:
-            html = file_html(plot, CDN, 'my plot')
-            plot_filename_html = out_path_pattern.format(
-                scope='subpop', pci=pc2, ext='html'
+                scope=scope, pci=pc2, ext='html'
             )
             with hl.hadoop_open(plot_filename_html, 'w') as f:
                 f.write(html)

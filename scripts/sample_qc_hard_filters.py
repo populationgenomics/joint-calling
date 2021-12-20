@@ -129,6 +129,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         tmp_bucket=tmp_bucket,
         out_ht_path=out_custom_qc_ht_path,
         overwrite=overwrite,
+        count_gnomad_snps=True,
+        count_chrx_het_hom=True,
     )
 
     # `sex_ht` row fields: is_female, chr20_mean_dp, sex_karyotype

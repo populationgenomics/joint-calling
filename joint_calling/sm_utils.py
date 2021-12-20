@@ -465,6 +465,9 @@ def find_inputs_from_db(
 
             if not _check_gvcf(reblocked_gvcf_path or staging_gvcf_path):
                 continue
+                
+            stack = proj.replace('-test', '')
+            project = s['meta'].get('project', proj.replace('-test', ''))
 
             entry = default_entry.copy()
             entry.update(
@@ -472,8 +475,8 @@ def find_inputs_from_db(
                     's': sample_id,
                     'external_id': external_id,
                     'fam_id': external_id,
-                    'stack': proj.replace('-test', ''),
-                    'project': s['meta'].get('project', proj.replace('-test', '')),
+                    'stack': stack,
+                    'project': project,
                     'source': source_tag or '-',
                     'gvcf': reblocked_gvcf_path or '-',
                     'topostproc_gvcf': staging_gvcf_path or '-',
@@ -500,7 +503,7 @@ def find_inputs_from_db(
                     'r_30x': qc_metrics.get('pct_30x'),
                     'r_aligned_in_pairs': qc_metrics.get('pct_reads_aligned_in_pairs'),
                     'continental_pop': s['meta'].get('continental_pop', '-'),
-                    'subpop': s['meta'].get('subpop', '-'),
+                    'subcontinental_pop': s['meta'].get('subcontinental_pop') or s['meta'].get('subpop', '-'),
                 }
             )
             inputs.append(entry)

@@ -48,12 +48,6 @@ logger.setLevel(logging.INFO)
     'pop',
 )
 @click.option(
-    '--out-provided-pop-ht',
-    'out_provided_pop_ht_path',
-    callback=utils.get_validation_callback(ext='ht'),
-    help='writes table with 3 column fields: continental_pop, subpop, study',
-)
-@click.option(
     '--out-mt',
     'out_mt_path',
     callback=utils.get_validation_callback(ext='mt'),
@@ -88,7 +82,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     mt_path: str,
     meta_tsv_path: str,
     pop: Optional[str],
-    out_provided_pop_ht_path: Optional[str],
     out_mt_path: Optional[str],
     tmp_bucket: str,
     overwrite: bool,
@@ -112,40 +105,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     )
     mt = mt.naive_coalesce(5000)
     mt.checkpoint(out_mt_path, overwrite=True)
-
-    if out_provided_pop_ht_path:
-        _make_provided_pop_ht(
-            mt=mt,
-            input_metadata_ht=input_metadata_ht,
-            out_provided_pop_ht_path=out_provided_pop_ht_path,
-            overwrite=overwrite,
-        )
-
-
-def _make_provided_pop_ht(
-    mt: hl.MatrixTable,
-    input_metadata_ht: hl.Table,
-    out_provided_pop_ht_path: str,
-    overwrite: bool,
-) -> hl.Table:
-    if utils.can_reuse(out_provided_pop_ht_path, overwrite):
-        return hl.read_table(out_provided_pop_ht_path)
-    ht = mt.cols().select_globals().select()
-    ht = ht.annotate(
-        continental_pop=hl.case()
-        .when(
-            input_metadata_ht[ht.s].continental_pop != '-',
-            input_metadata_ht[ht.s].continental_pop,
-        )
-        .default(''),
-        subpop=hl.case()
-        .when(
-            input_metadata_ht[ht.s].subpop != '-',
-            input_metadata_ht[ht.s].subpop,
-        )
-        .default(''),
-    )
-    return ht.checkpoint(out_provided_pop_ht_path, overwrite=overwrite)
 
 
 if __name__ == '__main__':
