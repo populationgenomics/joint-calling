@@ -45,7 +45,7 @@ logger.setLevel(logging.INFO)
     help='Samples to remove from the analysis',
 )
 @click.option(
-    '--min-pop_prob', 
+    '--min-pop-prob', 
     'min_pop_prob',
     type=int,
     help='Minimal probability to infer population',
@@ -157,16 +157,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         out_ht_path=out_inferred_pop_ht_path,
         overwrite=overwrite,
     )
-
-# def _make_provided_pop_ht(
-#     ht: hl.Table, 
-#     subcontinental: bool = False
-# ) -> hl.Table:
-#     tag = 'subcontinental_pop' if subcontinental else 'continental_pop'
-#     ht = ht.annotate(
-#         pop=hl.if_else(ht[tag] != '-', ht[tag], ''),
-#     )
-#     return ht
 
 
 if __name__ == '__main__':

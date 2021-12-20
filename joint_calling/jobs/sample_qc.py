@@ -82,7 +82,7 @@ def add_sample_qc_jobs(
     else:
         sample_qc_hardfilter_job = b.new_job(f'{job_name} [reuse]')
 
-    job_name = 'Subset MT for PCA - all'
+    job_name = 'Subset MT for PCA'
     mt_for_pca_path = join(ancestry_bucket, 'mt_for_pca.mt')
     if not can_reuse(mt_for_pca_path, overwrite):
         subset_for_pca_job = add_job(
@@ -92,7 +92,7 @@ def add_sample_qc_jobs(
             + f'--mt {mt_path} '
             f'--meta-tsv {samples_tsv_path} '
             f'--out-mt {mt_for_pca_path} '
-            f'--tmp-bucket {join(tmp_bucket, f"subset_mt_for_pca_all")} '
+            f'--tmp-bucket {join(tmp_bucket, f"subset_mt_for_pca")} '
             + ('--is-test ' if is_test else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             job_name=job_name,
