@@ -47,7 +47,7 @@ logger.setLevel(logging.INFO)
 @click.option(
     '--min-pop-prob', 
     'min_pop_prob',
-    type=int,
+    type=float,
     help='Minimal probability to infer population',
 )
 @click.option(
@@ -100,7 +100,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     n_pcs: int,
     meta_tsv_path: str,
     related_samples_to_drop_ht_path: Optional[str],
-    min_pop_prob: int,
+    min_pop_prob: float,
     subcontinental: bool,
     out_eigenvalues_path: str,
     out_scores_ht_path: str,
