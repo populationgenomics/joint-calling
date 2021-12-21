@@ -303,7 +303,7 @@ def add_sample_qc_jobs(
             num_workers=scatter_count,
             is_test=is_test,
             highmem=highmem_workers,
-            depends_on=[regressed_filters_job, sample_qc_hardfilter_job],
+            depends_on=[regressed_filters_job, pca_job, sample_qc_hardfilter_job],
         )
     else:
         metadata_qc_job = b.new_job(f'{job_name} [reuse]')
