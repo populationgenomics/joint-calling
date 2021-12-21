@@ -601,9 +601,12 @@ def _add_postproc_gvcf_jobs(
       done
     }}
 
+    GVCF=/io/batch/{sample_name}.g.vcf.gz
+    REBLOCKED=/io/batch/{sample_name}-reblocked.g.vcf.gz
+
     # Retrying copying to avoid google bandwidth limits
-    retry gsutil cp {gvcf_path} /io/batch/{sample_name}.g.vcf.gz
-    retry gsutil cp {resources.NOALT_REGIONS} noalt-regions.bed
+    retry gsutil cp {gvcf_path} $GVCF
+    retry gsutil cp {resources.NOALT_REGIONS} /io/batch/noalt-regions.bed
 
     # Copying reference data as well to avoid crazy logging costs 
     # for region requests
@@ -613,18 +616,19 @@ def _add_postproc_gvcf_jobs(
 
     # Reindexing just to make sure the index is not corrupted
     bcftools index --tbi /io/batch/{sample_name}.g.vcf.gz
-
+    
     gatk --java-options "-Xms{mem_gb - 1}g" \\
     ReblockGVCF \\
     --reference /io/batch/{basename(ref_fasta)} \\
-    -V /io/batch/{sample_name}.g.vcf.gz \\
+    -V $GVCF \\
     -do-qual-approx \\
-    -O /io/batch/{sample_name}-reblocked.g.vcf.gz \\
+    -O $REBLOCKED \\
     --create-output-variant-index true
 
-    bcftools view /io/batch/{sample_name}-reblocked.g.vcf.gz -T noalt-regions.bed \\
+    EXISTING_SN=$(bcftools view $REBLOCKED | awk '/^#CHROM/ {{ print $NF; exit }}')    
+    bcftools view $REBLOCKED -T /io/batch/noalt-regions.bed \\
     | bcftools annotate -x INFO/DS \\
-    | bcftools reheader -s <(echo "{external_id} {sample_name}") \\
+    | bcftools reheader -s <(echo "$EXISTING_SN {sample_name}") \\
     | bcftools view -Oz -o {j.output_gvcf['g.vcf.gz']}
 
     bcftools index --tbi {j.output_gvcf['g.vcf.gz']}
