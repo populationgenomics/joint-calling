@@ -357,7 +357,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         )
     else:
         combiner_job = b.new_job('Combine GVCFs [reuse]')
-    combiner_job.depends_on(pre_combiner_jobs)
+    combiner_job.depends_on(*pre_combiner_jobs)
 
     sample_qc_job, hard_filter_ht_path, meta_ht_path = add_sample_qc_jobs(
         b=b,
