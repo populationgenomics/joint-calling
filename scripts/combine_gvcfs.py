@@ -211,6 +211,10 @@ def combine_gvcfs(
     hl.experimental.run_combiner(
         gvcf_paths,
         sample_names=sample_names,
+        # header must be used with sample_names, otherwise sample_names will be ignored
+        # first gvcf path is fine as a header because it will be read until 
+        # the last line starting with # 
+        header=gvcf_paths[0],
         out_file=out_mt_path,
         reference_genome=utils.DEFAULT_REF,
         use_genome_default_intervals=True,
