@@ -30,6 +30,9 @@ def add_job(
     max_age: Optional[str] = None,
     pyfiles: Optional[List[str]] = None,
 ):
+    """
+    Wrapper around submitting a dataproc cluster job
+    """
     if not max_age:
         max_age = '1h' if is_test else '24h'
         if long:
@@ -63,7 +66,7 @@ def get_cluster(
     name,
     num_workers: int,
     long: bool = False,
-    highmem_workers: bool = False,
+    highmem: bool = False,
     is_test: bool = False,
     phantomjs: bool = False,
     preemptible: bool = True,
@@ -95,6 +98,6 @@ def get_cluster(
         else [],
         autoscaling_policy=autoscaling_policy,
         worker_machine_type='n1-highmem-8' 
-        if highmem_workers 
+        if highmem 
         else 'n1-standard-8',
     )

@@ -18,7 +18,7 @@ import click
 import pandas as pd
 import hailtop.batch as hb
 
-from joint_calling.dataproc import get_cluster
+from joint_calling.dataproc import add_job
 from joint_calling import utils
 from joint_calling import sm_utils
 from joint_calling.jobs.variant_qc import add_variant_qc_jobs
@@ -339,15 +339,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         autoscaling_workers = '50'
 
     if not utils.can_reuse(raw_combined_mt_path, overwrite):
-        combiner_job = get_cluster(
+        combiner_job = add_job(
             b,
-            'Combiner',
-            num_workers=0,
-            autoscaling_policy=f'vcf-combiner-{autoscaling_workers}',
-            long=True,
-            highmem_workers=highmem_workers,
-            depends_on=pre_combiner_jobs,
-        ).add_job(
             f'{utils.SCRIPTS_DIR}/combine_gvcfs.py '
             f'--meta-tsv {samples_tsv_path} '
             f'--out-mt {raw_combined_mt_path} '
@@ -357,9 +350,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             (f'--batch-size {combiner_batch_size} ' if combiner_batch_size else '') +
             f'--n-partitions {scatter_count * 25}',
             job_name='Combine GVCFs',
+            num_workers=0,
+            highmem=highmem_workers,
+            autoscaling_policy=f'vcf-combiner-{autoscaling_workers}',
+            long=True,
         )
     else:
         combiner_job = b.new_job('Combine GVCFs [reuse]')
+    combiner_job.depends_on(pre_combiner_jobs)
 
     sample_qc_job, hard_filter_ht_path, meta_ht_path = add_sample_qc_jobs(
         b=b,

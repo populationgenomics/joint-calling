@@ -48,15 +48,15 @@ def add_variant_qc_jobs(
     # further jobs
     cluster1 = get_cluster(
         b, f'VarQC 1', scatter_count, is_test=is_test, depends_on=depends_on,
-        highmem_workers=highmem_workers,
+        highmem=highmem_workers,
     )
     cluster2 = get_cluster(
         b, f'VarQC 2', scatter_count, is_test=is_test, depends_on=depends_on,
-        highmem_workers=highmem_workers,
+        highmem=highmem_workers,
     )
     cluster3 = get_cluster(
         b, f'VarQC 3', scatter_count, is_test=is_test, depends_on=depends_on, long=True,
-        highmem_workers=highmem_workers,
+        highmem=highmem_workers,
     )
 
     fam_stats_ht_path = join(work_bucket, 'fam-stats.ht') if ped_file else None
@@ -152,7 +152,7 @@ def add_variant_qc_jobs(
             is_test=is_test,
             long=True,
             depends_on=[rf_anno_job],
-            highmem_workers=highmem_workers,
+            highmem=highmem_workers,
         )
 
         job_name = 'Random forest'
@@ -216,7 +216,7 @@ def add_variant_qc_jobs(
             is_test=is_test,
             long=True,
             depends_on=[rf_anno_job, vqsr_vcf_job],
-            highmem_workers=highmem_workers,
+            highmem=highmem_workers,
         )
         eval_job = add_vqsr_eval_jobs(
             b=b,
