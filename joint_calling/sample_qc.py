@@ -241,10 +241,7 @@ def run_pca_ancestry_analysis(
     eigenvalues, scores_ht, loadings_ht = run_pca_with_relateds(
         mt, sample_to_drop_ht, n_pcs=n_pcs
     )
-
     logger.info(f'scores_ht.s: {scores_ht.s.collect()}')
-    logger.info(f'loadings_ht.s: {loadings_ht.s.collect()}')
-    logger.info(f'eigenvalues: {eigenvalues}')
 
     hl.Table.from_pandas(pd.DataFrame(eigenvalues)).export(out_eigenvalues_path)
     loadings_ht.write(out_loadings_ht_path, overwrite=True)
