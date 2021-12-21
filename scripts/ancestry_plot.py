@@ -136,6 +136,7 @@ def produce_plots(
     scores_ht = scores_ht.annotate(
         pop=inferred_pop_ht[scores_ht.s].pop,
         is_training=inferred_pop_ht[scores_ht.s].is_training,
+        project=meta_ht[scores_ht.s].project
     ).cache()
 
     def key_by_external_id(ht):
