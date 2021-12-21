@@ -208,7 +208,6 @@ def run_pca_ancestry_analysis(
     """
     :param mt: variants usable for PCA analysis, combined with samples
         with known populations (HGDP, 1KG, etc)
-    :param tmp_bucket: bucket path to write checkpoints
     :param sample_to_drop_ht: table with samples to drop based on
         previous relatedness analysis. With a `rank` row field
     :param n_pcs: maximum number of principal components

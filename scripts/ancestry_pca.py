@@ -112,19 +112,16 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 ):
     local_tmp_dir = utils.init_hail(__file__)
 
-    if all(utils.can_reuse(fp, overwrite) for fp in [
-        out_eigenvalues_path, 
-        out_scores_ht_path, 
-        out_loadings_ht_path
-    ]):
-        return
-
     mt = hl.read_matrix_table(mt_for_pca)
 
     related_samples_to_drop_ht = None
     if related_samples_to_drop_ht_path:
         related_samples_to_drop_ht = hl.read_table(related_samples_to_drop_ht_path)
 
+    logger.info(
+        f'Running PCA on {mt.count_cols()} samples, {mt.count_rows()} sites, '
+        f'using {n_pcs} PCs'
+    )
     sqc.run_pca_ancestry_analysis(
         mt=mt,
         sample_to_drop_ht=related_samples_to_drop_ht,
@@ -146,8 +143,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     training_pop_ht = training_pop_ht.annotate(
         training_pop=training_pop_ht[tag]
     )
-    # Using calculated PCA scores as well as training samples with known
-    # `population` tag, to assign population tags to remaining samples
+    
+    logger.info(
+        'Using calculated PCA scores as well as training samples with known '
+        '`population` tag to assign population tags to remaining samples'
+    )
     sqc.infer_pop_labels(
         scores_ht=scores_ht,
         training_pop_ht=training_pop_ht,
