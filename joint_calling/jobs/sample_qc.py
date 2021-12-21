@@ -187,7 +187,10 @@ def add_sample_qc_jobs(
     scores_ht_path = join(ancestry_analysis_bucket, f'scores.ht')
     loadings_ht_path = join(ancestry_analysis_bucket, f'loadings.ht')
     inferred_pop_ht_path = join(ancestry_bucket, 'inferred_pop.ht')
-    if not can_reuse([eigenvalues_path, scores_ht_path, loadings_ht_path], overwrite):
+    if not can_reuse([
+        eigenvalues_path, scores_ht_path, loadings_ht_path,
+        inferred_pop_ht_path
+    ], overwrite):
         pca_job = add_job(
             b,
             f'{utils.SCRIPTS_DIR}/ancestry_pca.py '
