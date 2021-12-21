@@ -24,7 +24,7 @@ logger.setLevel(logging.INFO)
 @click.version_option(_version.__version__)
 @click.option(
     '--mt-for-pca',
-    'mt_for_pca',
+    'mt_for_pca_path',
     required=True,
     callback=utils.get_validation_callback(ext='mt', must_exist=True),
     help='path to Matrix Table generated with sample_qc_subset_mt_for_pca.py',
@@ -96,7 +96,7 @@ logger.setLevel(logging.INFO)
     help='Hail billing account ID.',
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
-    mt_for_pca: str,
+    mt_for_pca_path: str,
     meta_tsv_path: str,
     n_pcs: int,
     related_samples_to_drop_ht_path: Optional[str],
@@ -112,7 +112,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 ):
     local_tmp_dir = utils.init_hail(__file__)
 
-    mt = hl.read_matrix_table(mt_for_pca)
+    mt = hl.read_matrix_table(mt_for_pca_path)
 
     related_samples_to_drop_ht = None
     if related_samples_to_drop_ht_path:
