@@ -125,7 +125,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     if related_samples_to_drop_ht_path:
         related_samples_to_drop_ht = hl.read_table(related_samples_to_drop_ht_path)
 
-    scores_ht = sqc.run_pca_ancestry_analysis(
+    sqc.run_pca_ancestry_analysis(
         mt=mt,
         sample_to_drop_ht=related_samples_to_drop_ht,
         n_pcs=n_pcs,
@@ -135,7 +135,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         overwrite=overwrite,
     )
 
-    scores_ht = hl.read_table(scores_ht)
+    scores_ht = hl.read_table(out_scores_ht_path)
     
     meta_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
 
