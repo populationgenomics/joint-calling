@@ -19,7 +19,7 @@ import click
 from google.cloud import storage
 from joint_calling import _version, get_package_path
 from joint_calling import __name__ as package_name
-
+from joint_calling.sm_utils import float_vals, int_vals
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -435,7 +435,11 @@ def parse_input_metadata(
     """
     local_csv_path = join(local_tmp_dir, basename(meta_tsv_path))
     gsutil_cp(meta_tsv_path, local_csv_path)
-    df = pd.read_table(local_csv_path)
+    df = pd.read_table(local_csv_path, dtype=str)
+    for col in float_vals.keys():
+        df[col] = df[col].astype(float)
+    for col in int_vals.keys():
+        df[col] = df[col].astype(int)
     ht = hl.Table.from_pandas(df).key_by('s')
     if out_ht_path:
         ht = ht.checkpoint(out_ht_path, overwrite=True)

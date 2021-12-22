@@ -258,13 +258,6 @@ default_entry = {
     'library_id': '-',
     'platform': '-',
     'centre': '-',
-    'r_contamination': None,
-    'r_chimera': None,
-    'r_duplication': None,
-    'median_insert_size': None,
-    'median_coverage': None,
-    'r_30x': None,
-    'r_aligned_in_pairs': None,
     'fam_id': '-',
     'mat_id': '-',
     'pat_id': '-',
@@ -272,6 +265,19 @@ default_entry = {
     'sex_karyotype': '-',
     'age': None,
 }
+float_vals = {
+    'r_contamination': None,
+    'r_chimera': None,
+    'r_duplication': None,
+    'r_30x': None,
+    'r_aligned_in_pairs': None,
+}
+int_vals = {
+    'median_insert_size': None,
+    'median_coverage': None,
+}
+default_entry.update(float_vals)
+default_entry.update(int_vals)
 
 
 def find_inputs_from_db(

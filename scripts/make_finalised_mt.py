@@ -122,6 +122,9 @@ def main(
     mt.write(out_mt_path, overwrite=True)
 
     if out_nonref_mt_path:
+        # hl.len(mt.alleles) > 1 - find sites with an ALT allele
+        # hl.agg.any(mt.GT.is_non_ref() - check that there is any sample with non-ref
+        #    genotype present, in case if all samples with ALT were filtered out
         mt = mt.filter_rows((hl.len(mt.alleles) > 1) & hl.agg.any(mt.GT.is_non_ref()))
         mt.write(out_nonref_mt_path, overwrite=True)
 
