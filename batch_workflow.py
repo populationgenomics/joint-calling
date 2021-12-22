@@ -239,7 +239,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     analysis_bucket = ptrn.format(suffix=output_analysis_suffix)
     web_bucket = ptrn.format(suffix=web_bucket_suffix)
 
-    combiner_bucket = f'{tmp_bucket}/combiner'
+    combiner_bucket = f'{analysis_bucket}/combiner'
     raw_combined_mt_path = f'{combiner_bucket}/{output_version}-raw.mt'
     output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}'
     filtered_combined_mt_path = f'{output_bucket}/mt/{output_version}.mt'
