@@ -25,7 +25,7 @@ from sample_metadata.models import (
 from sample_metadata import exceptions
 
 from joint_calling import utils
-
+from joint_calling.utils import default_entry
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -234,50 +234,6 @@ def replace_paths_to_test(s: Dict) -> Optional[Dict]:
         return s
     except Exception:  # pylint: disable=broad-except
         return None
-
-
-default_entry = {
-    's': None,
-    'external_id': None,
-    'stack': None,
-    'project': None,
-    'source': '-',
-    'continental_pop': '-',
-    'subpop': '-',
-    'topostproc_gvcf': '-',
-    'gvcf': '-',
-    'cram': '-',
-    'crai': '-',
-    'realign_cram': '-',
-    'realign_crai': '-',
-    'batch': '-',
-    'resequencing_label': '-',
-    'primary_study': '-',
-    'operation': 'add',
-    'flowcell_lane': '-',
-    'library_id': '-',
-    'platform': '-',
-    'centre': '-',
-    'fam_id': '-',
-    'mat_id': '-',
-    'pat_id': '-',
-    'sex': '-',
-    'sex_karyotype': '-',
-    'age': None,
-}
-float_vals = {
-    'r_contamination': None,
-    'r_chimera': None,
-    'r_duplication': None,
-    'r_30x': None,
-    'r_aligned_in_pairs': None,
-}
-int_vals = {
-    'median_insert_size': None,
-    'median_coverage': None,
-}
-default_entry.update(float_vals)
-default_entry.update(int_vals)
 
 
 def find_inputs_from_db(

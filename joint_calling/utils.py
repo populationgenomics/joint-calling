@@ -19,7 +19,6 @@ import click
 from google.cloud import storage
 from joint_calling import _version, get_package_path
 from joint_calling import __name__ as package_name
-from joint_calling.sm_utils import float_vals, int_vals
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -493,3 +492,47 @@ def gsutil_cp(
     if not quiet:
         logger.info(cmd)
     subprocess.run(cmd, check=False, shell=True)
+
+
+default_entry = {
+    's': None,
+    'external_id': None,
+    'stack': None,
+    'project': None,
+    'source': '-',
+    'continental_pop': '-',
+    'subpop': '-',
+    'topostproc_gvcf': '-',
+    'gvcf': '-',
+    'cram': '-',
+    'crai': '-',
+    'realign_cram': '-',
+    'realign_crai': '-',
+    'batch': '-',
+    'resequencing_label': '-',
+    'primary_study': '-',
+    'operation': 'add',
+    'flowcell_lane': '-',
+    'library_id': '-',
+    'platform': '-',
+    'centre': '-',
+    'fam_id': '-',
+    'mat_id': '-',
+    'pat_id': '-',
+    'sex': '-',
+    'sex_karyotype': '-',
+    'age': None,
+}
+float_vals = {
+    'r_contamination': None,
+    'r_chimera': None,
+    'r_duplication': None,
+    'r_30x': None,
+    'r_aligned_in_pairs': None,
+}
+int_vals = {
+    'median_insert_size': None,
+    'median_coverage': None,
+}
+default_entry.update(float_vals)
+default_entry.update(int_vals)
