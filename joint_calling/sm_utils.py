@@ -241,7 +241,7 @@ def find_inputs_from_db(
     skip_samples: Optional[Collection[str]] = None,
     check_existence: bool = True,
     source_tag: Optional[str] = None,
-    assume_gvcfs_are_ready: bool = False,
+    do_not_query_smdb_for_gvcfs: bool = False,
 ) -> pd.DataFrame:
     """
     Determine input samples and pull input files and metadata from the CPG
@@ -273,8 +273,9 @@ def find_inputs_from_db(
                     logger.info(f'Skiping sample: {s["id"]}')
                     continue
                 not_skipped_sids.append(s['id'])
-            logger.info(f'Excluding skipped samples: {len(not_skipped_sids)}')
-            samples = [s for s in samples if s in not_skipped_sids]
+            if len(not_skipped_sids) < len(samples):
+                logger.info(f'Left after removing skipped samples: {len(not_skipped_sids)}')
+            samples = [s for s in samples if s['id'] in not_skipped_sids]
             if not samples:
                 logger.info(f'No samples to process, skipping project {proj}')
                 continue
@@ -294,7 +295,7 @@ def find_inputs_from_db(
 
         reblocked_gvcf_by_sid: Dict[str, str] = {}
         staging_gvcf_by_sid: Dict[str, str] = {}
-        if assume_gvcfs_are_ready:
+        if do_not_query_smdb_for_gvcfs:
             if proj.endswith('-test'):
                 stack = proj.replace('-test', '')
                 namespace = 'test'
@@ -471,7 +472,7 @@ def find_inputs_from_db(
             inputs.append(entry)
 
     if not inputs:
-        logger.error('Noе found any projects with samples good for processing')
+        logger.error('Could not find any projects with samples ready for processing')
         sys.exit(1)
 
     df = pd.DataFrame(inputs).set_index('s', drop=False)

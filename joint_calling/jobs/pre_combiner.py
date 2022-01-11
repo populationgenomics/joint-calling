@@ -30,7 +30,7 @@ def add_pre_combiner_jobs(
     analysis_project: str,  # pylint: disable=unused-argument
     force_samples: Collection[str],
     skip_samples: Collection[str],
-    assume_gvcfs_are_ready: bool = False,
+    assume_gvcfs_exist: bool = False,
 ) -> Tuple[pd.DataFrame, str, List[Job]]:
     """
     Add jobs that prepare GVCFs for the combiner, if needed.
@@ -77,7 +77,7 @@ def add_pre_combiner_jobs(
         output_gvcf_path = join(gvcf_bucket, f'{sn}.g.vcf.gz')
 
         if sn in force_samples or (
-            not assume_gvcfs_are_ready and 
+            not assume_gvcfs_exist and 
             not utils.can_reuse(output_gvcf_path, overwrite)
         ):
             j = _add_postproc_gvcf_jobs(

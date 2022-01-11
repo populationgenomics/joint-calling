@@ -149,9 +149,13 @@ logger.setLevel(logging.INFO)
     is_flag=True,
 )
 @click.option(
-    '--assume-gvcfs-are-ready',
-    '--validate-smdb',
-    'assume_gvcfs_are_ready',
+    '--do-not-query-smdb-for-gvcfs',
+    'do_not_query_smdb_for_gvcfs',
+    is_flag=True,
+)
+@click.option(
+    '--assume-gvcfs-exist',
+    'assume_gvcfs_exist',
     is_flag=True,
     help='Do not validate the existence of `analysis.output` of SMDB GVCF records',
 )
@@ -187,6 +191,12 @@ logger.setLevel(logging.INFO)
     is_flag=True,
     help='Use highmem workers in dataproc'
 )
+@click.option(
+    '--skip-missing-qc',
+    'skip_missing_qc',
+    is_flag=True,
+    help='Drop samples without QC provided'
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -208,12 +218,14 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     dry_run: bool,
     check_existence: bool,
     add_validation_samples: bool,
-    assume_gvcfs_are_ready: bool,
+    do_not_query_smdb_for_gvcfs: bool,
+    assume_gvcfs_exist: bool,
     release_related: bool,
     skip_somalier: bool,
     combiner_branch_factor: Optional[int],
     combiner_batch_size: Optional[int],
     highmem_workers: bool,
+    skip_missing_qc: bool,
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -290,7 +302,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         age_datas=age_datas,
         reported_sex_datas=reported_sex_datas,
         add_validation_samples=add_validation_samples,
-        assume_gvcfs_are_ready=assume_gvcfs_are_ready,
+        do_not_query_smdb_for_gvcfs=do_not_query_smdb_for_gvcfs,
     )
 
     (
@@ -307,7 +319,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         analysis_project=analysis_project,
         force_samples=force_samples or [],
         skip_samples=skip_samples or [],
-        assume_gvcfs_are_ready=assume_gvcfs_are_ready,
+        assume_gvcfs_exist=assume_gvcfs_exist,
     )
 
     relatedness_bucket = join(analysis_bucket, 'relatedness')
@@ -325,7 +337,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             web_url=f'https://{output_namespace}-web.populationgenomics.org.au/{analysis_project}',
             tmp_bucket=join(tmp_bucket, 'somalier'),
             depends_on=pre_combiner_jobs,
-            assume_files_exist=assume_gvcfs_are_ready,
+            assume_files_exist=assume_gvcfs_exist,
         )
 
     # Combiner takes advantage of autoscaling cluster policies
@@ -436,7 +448,7 @@ def find_inputs(
     age_datas: Optional[List[utils.ColumnInFile]] = None,
     reported_sex_datas: Optional[List[utils.ColumnInFile]] = None,
     add_validation_samples: bool = True,
-    assume_gvcfs_are_ready: bool = False,
+    do_not_query_smdb_for_gvcfs: bool = False,
 ) -> pd.DataFrame:
     """
     Find inputs, make a sample data DataFrame, save to a TSV file.
@@ -461,7 +473,7 @@ def find_inputs(
             skip_samples=skip_samples,
             check_existence=check_existence,
             source_tag=source_tag,
-            assume_gvcfs_are_ready=assume_gvcfs_are_ready,
+            do_not_query_smdb_for_gvcfs=do_not_query_smdb_for_gvcfs,
         )
     if age_datas:
         for age_data in age_datas:
