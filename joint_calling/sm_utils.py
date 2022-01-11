@@ -332,7 +332,7 @@ def find_inputs_from_db(
                 if not reblocked_gvcf_analysis and not staging_gvcf_analysis:
                     sids_without_gvcf.append(s['id'] + '/' + s['external_id'])
                     continue
-    
+
                 if reblocked_gvcf_analysis:
                     if not reblocked_gvcf_analysis.output:
                         logger.error(
@@ -409,7 +409,7 @@ def find_inputs_from_db(
                 if not gvcf_path.endswith('.g.vcf.gz'):
                     logger.warning(
                         f'GVCF analysis for sample ID {sample_id} "output" field '
-                        f'is not a GVCF'
+                        f'is not a GVCF: {gvcf_path}'
                     )
                     return False
                 if check_existence and not utils.file_exists(gvcf_path):

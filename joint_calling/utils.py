@@ -435,10 +435,8 @@ def parse_input_metadata(
     local_csv_path = join(local_tmp_dir, basename(meta_tsv_path))
     gsutil_cp(meta_tsv_path, local_csv_path)
     df = pd.read_table(local_csv_path, dtype=str)
-    for col in float_vals.keys():
-        df[col] = df[col].astype(float)
-    for col in int_vals.keys():
-        df[col] = df[col].astype(int)
+    for col in list(float_vals.keys()) + list(int_vals.keys()):
+        df[col] = df[~df[col].isnull()][col].astype(float)
     ht = hl.Table.from_pandas(df).key_by('s')
     if out_ht_path:
         ht = ht.checkpoint(out_ht_path, overwrite=True)
@@ -501,7 +499,7 @@ default_entry = {
     'project': None,
     'source': '-',
     'continental_pop': '-',
-    'subpop': '-',
+    'subcontinental_pop': '-',
     'topostproc_gvcf': '-',
     'gvcf': '-',
     'cram': '-',
