@@ -116,7 +116,7 @@ def main(
     n_partitions: Optional[int],
 ):  # pylint: disable=missing-function-docstring
     if n_partitions:
-        if n_partitions < 2586:
+        if n_partitions >= 2586:
             raise click.BadParameter(
                 f'n_partitions must be less than {MAX_PARTITIONS} (combiner\'s default '
                 f'number of partitions), got {n_partitions}'
@@ -139,16 +139,17 @@ def main(
         new_mt_path = os.path.join(tmp_bucket, 'new.mt')
     else:
         new_mt_path = out_mt_path
-
-    combine_gvcfs(
-        gvcf_paths=gvcfs,
-        sample_names=sample_names,
-        out_mt_path=new_mt_path,
-        tmp_bucket=tmp_bucket,
-        branch_factor=branch_factor,
-        batch_size=batch_size,
-        overwrite=True,
-    )
+    
+    if not utils.file_exists(new_mt_path):
+        combine_gvcfs(
+            gvcf_paths=gvcfs,
+            sample_names=sample_names,
+            out_mt_path=new_mt_path,
+            tmp_bucket=tmp_bucket,
+            branch_factor=branch_factor,
+            batch_size=batch_size,
+            overwrite=True,
+        )
     new_mt = hl.read_matrix_table(new_mt_path)
     _log_mt_write(new_mt, new_mt_path)
 
