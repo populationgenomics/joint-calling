@@ -251,8 +251,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     analysis_bucket = ptrn.format(suffix=output_analysis_suffix)
     web_bucket = ptrn.format(suffix=web_bucket_suffix)
 
-    combiner_bucket = f'{analysis_bucket}/combiner'
-    raw_combined_mt_path = f'{combiner_bucket}/{output_version}-raw.mt'
+    raw_combined_mt_path = f'{analysis_bucket}/combiner/{output_version}-raw.mt'
     output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}'
     filtered_combined_mt_path = f'{output_bucket}/mt/{output_version}.mt'
     filtered_vcf_ptrn_path = f'{output_bucket}/vcf/{output_version}.chr{{CHROM}}.vcf.bgz'
@@ -356,11 +355,11 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             f'{utils.SCRIPTS_DIR}/combine_gvcfs.py '
             f'--meta-tsv {samples_tsv_path} '
             f'--out-mt {raw_combined_mt_path} '
-            f'--bucket {combiner_bucket}/work '
+            f'--tmp-bucket {tmp_bucket}/combiner '
             f'--hail-billing {billing_project} ' +
             (f'--branch-factor {combiner_branch_factor} ' if combiner_branch_factor else '') +
             (f'--batch-size {combiner_batch_size} ' if combiner_batch_size else '') +
-            f'--n-partitions {scatter_count * 25}',
+            (f'--n-partitions {scatter_count * 25} ' if output_namespace == 'test' else ''),
             job_name='Combine GVCFs',
             num_workers=0,
             highmem=highmem_workers,

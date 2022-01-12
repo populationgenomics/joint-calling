@@ -5,7 +5,7 @@ Combine a set of GVCFs into a MatrixTable
 """
 
 import os
-from typing import List
+from typing import List, Optional
 import logging
 import shutil
 import collections
@@ -71,8 +71,8 @@ TARGET_RECORDS = 25_000
     'provided with --out-mt',
 )
 @click.option(
-    '--bucket',
-    'work_bucket',
+    '--tmp-bucket',
+    'tmp_bucket',
     required=True,
     help='path to folder for intermediate output. '
     'Can be a Google Storage URL (i.e. start with `gs://`).',
@@ -105,12 +105,12 @@ def main(
     out_mt_path: str,
     branch_factor: int,
     batch_size: int,
-    existing_mt_path: str,
-    work_bucket: str,
+    existing_mt_path: Optional[str],
+    tmp_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
-    n_partitions: int,
+    n_partitions: Optional[int],
 ):  # pylint: disable=missing-function-docstring
     local_tmp_dir = utils.init_hail('combine_gvcfs', local_tmp_dir)
 
@@ -124,21 +124,24 @@ def main(
     _check_duplicates(gvcfs)
     print(f'Combining {len(sample_names)} samples: {", ".join(sample_names)}')
 
-    new_mt_path = os.path.join(work_bucket, 'new.mt')
+    if n_partitions is not None or existing_mt_path is not None:
+        # We are going to re-partition later, so writing the
+        # matrix table into tmp:
+        new_mt_path = os.path.join(tmp_bucket, 'new.mt')
+    else:
+        new_mt_path = out_mt_path
+
     combine_gvcfs(
         gvcf_paths=gvcfs,
         sample_names=sample_names,
         out_mt_path=new_mt_path,
-        work_bucket=work_bucket,
+        tmp_bucket=tmp_bucket,
         branch_factor=branch_factor,
         batch_size=batch_size,
         overwrite=True,
     )
     new_mt = hl.read_matrix_table(new_mt_path)
-    logger.info(
-        f'Written {new_mt.cols().count()} new samples to {out_mt_path}, '
-        f'n_partitions={new_mt.n_partitions()}'
-    )
+    _log_mt_write(new_mt, new_mt_path)
 
     new_plus_existing_mt = None
     if existing_mt_path:
@@ -147,16 +150,25 @@ def main(
             existing_mt_path=existing_mt_path,
             new_mt_path=new_mt_path,
         )
-
+        
     mt = new_plus_existing_mt or new_mt
-    mt.repartition(n_partitions)
-    mt.write(out_mt_path, overwrite=True)
-    logger.info(
-        f'Written {mt.count_cols()} samples to {out_mt_path}, '
-        f'n_partitions={mt.n_partitions()}'
-    )
+    if n_partitions is not None:
+        mt.repartition(n_partitions)
+        
+    # We need to write only if we repartitioned or combined with existing.
+    # Otherwise, we are happy with the initial matrix table.
+    if existing_mt_path or n_partitions is not None:
+        mt.write(out_mt_path, overwrite=True)
+        _log_mt_write(mt, out_mt_path)
 
     shutil.rmtree(local_tmp_dir)
+    
+    
+def _log_mt_write(mt, path):
+    logger.info(
+        f'Written {mt.cols().count()} new samples to {path}, '
+        f'n_partitions={mt.n_partitions()}'
+    )
 
 
 def _check_duplicates(items):
@@ -200,7 +212,7 @@ def combine_gvcfs(
     gvcf_paths: List[str],
     sample_names: List[str],
     out_mt_path: str,
-    work_bucket: str,
+    tmp_bucket: str,
     branch_factor: int,
     batch_size: int,
     overwrite: bool = True,
@@ -218,7 +230,7 @@ def combine_gvcfs(
         out_file=out_mt_path,
         reference_genome=utils.DEFAULT_REF,
         use_genome_default_intervals=True,
-        tmp_path=os.path.join(work_bucket, 'tmp'),
+        tmp_path=tmp_bucket,
         overwrite=overwrite,
         key_by_locus_and_alleles=True,
         branch_factor=branch_factor,
