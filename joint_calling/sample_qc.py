@@ -192,6 +192,11 @@ def infer_sex(
         excluded_intervals=hl.read_table(resources.TEL_AND_CENT_HT),
         included_intervals=target_regions,
         gt_expr='LGT',
+        # DRAGMAP's Y ploidy in XX inferres as around ~0.3, 
+        # which would lead to a cutoff of 1.08, and all samples detected as missing
+        # Y karyotype. Fixing this by setting a lower ploidy
+        normal_ploidy_cutoff=3,  
+        aneuploidy_cutoff=7,
     )
     return ht.checkpoint(out_ht_path, overwrite=True)
 

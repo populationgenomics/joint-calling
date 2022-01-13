@@ -141,7 +141,8 @@ def produce_plots(
 
     def key_by_external_id(ht):
         """
-        Assuming ht.s is a CPG id, replaces it with external ID, using map in sample_map_ht
+        Assuming ht.s is a CPG id, replaces it with external ID, 
+        assuming it's defined in meta_ht.external_id
         """
         ht = ht.annotate(old_s=ht.s).key_by('old_s')
         ht = (
