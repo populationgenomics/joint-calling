@@ -62,12 +62,11 @@ def add_pre_combiner_jobs(
 
     # Samples for which a raw GVCF is provided as input:
     gvcf_df = samples_df[samples_df.topostproc_gvcf != '-']
-    for sn, project, stack, source, external_id, gvcf_path in zip(
+    for sn, project, stack, source, gvcf_path in zip(
         gvcf_df['s'],
         gvcf_df['project'],
         gvcf_df['stack'],
         gvcf_df['source'],
-        gvcf_df['external_id'],
         gvcf_df['topostproc_gvcf'],
     ):
         proj_bucket = get_project_bucket(stack, project)
@@ -86,7 +85,6 @@ def add_pre_combiner_jobs(
                 output_path=output_gvcf_path,
                 sample_name=sn,
                 project_name=stack,
-                external_id=external_id,
             )
             jobs_by_sample[sn].append(j)
         samples_df.loc[sn, ['gvcf']] = output_gvcf_path
@@ -130,9 +128,8 @@ def add_pre_combiner_jobs(
     # Samples for which a CRAM is provided as input for variant calling:
     hc_intervals_j = None
     cram_df = samples_df[samples_df.cram != '-']
-    for sn, external_id, project, stack, source, input_cram, input_crai in zip(
+    for sn, project, stack, source, input_cram, input_crai in zip(
         cram_df['s'],
-        cram_df['external_id'],
         cram_df['project'],
         cram_df['stack'],
         cram_df['source'],
@@ -160,12 +157,10 @@ def add_pre_combiner_jobs(
                 output_path=output_gvcf_path,
                 sample_name=sn,
                 project_name=stack,
-                external_id=external_id,
                 cram_fpath=input_cram,
                 crai_fpath=input_crai,
                 intervals_j=hc_intervals_j,
                 tmp_bucket=join(tmp_bucket, 'pre_combiner'),
-                overwrite=overwrite,
                 depends_on=jobs_by_sample.get(sn, []),
             )
             jobs_by_sample[sn].append(gvcf_j)
@@ -321,12 +316,10 @@ def _add_produce_gvcf_jobs(
     output_path: str,
     sample_name: str,
     project_name: str,
-    external_id: str,
     cram_fpath: str,
     crai_fpath: str,
     intervals_j: Job,
     tmp_bucket: str,
-    overwrite: bool,
     depends_on: Optional[List[Job]] = None,
 ) -> Job:
     """
@@ -387,7 +380,6 @@ def _add_produce_gvcf_jobs(
         output_path=output_path,
         sample_name=sample_name,
         project_name=project_name,
-        external_id=external_id,
         depends_on=[merge_j],
     )
     return j
@@ -546,7 +538,6 @@ def _add_postproc_gvcf_jobs(
     output_path: str,
     sample_name: str,
     project_name: str,
-    external_id: str,
     depends_on: Optional[List[Job]] = None,
 ) -> Job:
     """
