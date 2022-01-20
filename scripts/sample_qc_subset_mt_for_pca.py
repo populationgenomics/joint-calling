@@ -44,27 +44,12 @@ logger.setLevel(logging.INFO)
     help='path to a CSV with QC and population metadata for the samples',
 )
 @click.option(
-    '--pop',
-    'pop',
-)
-@click.option(
     '--out-mt',
     'out_mt_path',
     callback=utils.get_validation_callback(ext='mt'),
     help='path to write the Matrix Table after subsetting to selected rows. '
     'The difference with --out-hgdp-union-mt is that it contains only the dataset '
     'samples',
-)
-@click.option(
-    '--tmp-bucket',
-    'tmp_bucket',
-)
-@click.option(
-    '--overwrite/--reuse',
-    'overwrite',
-    is_flag=True,
-    help='if an intermediate or a final file exists, skip running the code '
-    'that generates it.',
 )
 @click.option(
     '--is-test',
@@ -81,16 +66,13 @@ logger.setLevel(logging.INFO)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_path: str,
     meta_tsv_path: str,
-    pop: Optional[str],
     out_mt_path: Optional[str],
-    tmp_bucket: str,
-    overwrite: bool,
     is_test: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
 ):
     local_tmp_dir = utils.init_hail(__file__)
 
-    input_metadata_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
+    utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
 
     sites_ht = hl.read_table(ANCESTRY_SITES).key_by('locus')
 
