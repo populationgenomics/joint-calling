@@ -36,7 +36,6 @@ def add_variant_qc_jobs(
     depends_on: Optional[List[Job]] = None,
     highmem_workers: bool = False,
     export_to_vcf: bool = False,
-    validation_samples_added: bool = False,
 ) -> List[Job]:
     """
     Add variant QC Hail-query jobs

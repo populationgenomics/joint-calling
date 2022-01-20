@@ -153,77 +153,78 @@ def main(
     if not overwrite and utils.file_exists(out_final_filter_ht_path):
         ht = hl.read_table(out_final_filter_ht_path)
         ht.summarize()
-    else:
-        ht = hl.read_table(score_bin_ht_path)
-        if FILTER_CENTROMERE_TELOMERE:
-            tel_cent_ht = hl.read_table(resources.TEL_AND_CENT_HT)
-            ht = ht.filter(~hl.is_defined(tel_cent_ht[ht.locus]))
+        return
+        
+    ht = hl.read_table(score_bin_ht_path)
+    if FILTER_CENTROMERE_TELOMERE:
+        tel_cent_ht = hl.read_table(resources.TEL_AND_CENT_HT)
+        ht = ht.filter(~hl.is_defined(tel_cent_ht[ht.locus]))
 
-        info_ht = hl.read_table(info_split_ht_path)
-        ht = ht.filter(~info_ht[ht.key].AS_lowqual)
+    info_ht = hl.read_table(info_split_ht_path)
+    ht = ht.filter(~info_ht[ht.key].AS_lowqual)
 
-        if model_id.startswith('vqsr_'):
-            ht = ht.drop('info')
+    if model_id.startswith('vqsr_'):
+        ht = ht.drop('info')
 
-        freq_ht = hl.read_table(freq_ht_path)
-        ht = ht.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
-        freq_idx = freq_ht[ht.key]
-        aggregated_bin_ht = hl.read_table(score_bin_agg_ht_path)
+    freq_ht = hl.read_table(freq_ht_path)
+    ht = ht.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
+    freq_idx = freq_ht[ht.key]
+    aggregated_bin_ht = hl.read_table(score_bin_agg_ht_path)
 
-        vqsr_ht = None
-        if vqsr_filters_split_ht_path:
-            vqsr_ht = hl.read_table(vqsr_filters_split_ht_path)
+    vqsr_ht = None
+    if vqsr_filters_split_ht_path:
+        vqsr_ht = hl.read_table(vqsr_filters_split_ht_path)
 
-        ht = generate_final_filter_ht(
-            ht,
-            model_name,
-            score_name,
-            ac0_filter_expr=freq_idx.freq[0].AC == 0,
-            ts_ac_filter_expr=freq_idx.freq[1].AC == 1,
-            mono_allelic_flag_expr=(freq_idx.freq[1].AF == 1)
-            | (freq_idx.freq[1].AF == 0),
-            snp_bin_cutoff=SNP_BIN_CUTOFF,
-            indel_bin_cutoff=INDEL_BIN_CUTOFF,
-            snp_score_cutoff=SNP_SCORE_CUTOFF,
-            indel_score_cutoff=INDEL_SCORE_CUTOFF,
-            inbreeding_coeff_cutoff=inbreeding_coeff_threshold,
-            aggregated_bin_ht=aggregated_bin_ht,
-            bin_id='bin',
-            vqsr_ht=vqsr_ht,
-        )
+    ht = generate_final_filter_ht(
+        ht,
+        model_name,
+        score_name,
+        ac0_filter_expr=freq_idx.freq[0].AC == 0,
+        ts_ac_filter_expr=freq_idx.freq[1].AC == 1,
+        mono_allelic_flag_expr=(freq_idx.freq[1].AF == 1)
+        | (freq_idx.freq[1].AF == 0),
+        snp_bin_cutoff=SNP_BIN_CUTOFF,
+        indel_bin_cutoff=INDEL_BIN_CUTOFF,
+        snp_score_cutoff=SNP_SCORE_CUTOFF,
+        indel_score_cutoff=INDEL_SCORE_CUTOFF,
+        inbreeding_coeff_cutoff=inbreeding_coeff_threshold,
+        aggregated_bin_ht=aggregated_bin_ht,
+        bin_id='bin',
+        vqsr_ht=vqsr_ht,
+    )
+    ht = ht.annotate_globals(
+        filtering_model=ht.filtering_model.annotate(model_id=model_id)
+    )
+    if model_id.startswith('vqsr_'):
         ht = ht.annotate_globals(
-            filtering_model=ht.filtering_model.annotate(model_id=model_id)
+            filtering_model=ht.filtering_model.annotate(
+                snv_training_variables=[
+                    'AS_QD',
+                    'AS_MQRankSum',
+                    'AS_ReadPosRankSum',
+                    'AS_FS',
+                    'AS_SOR',
+                    'AS_MQ',
+                ],
+                indel_training_variables=[
+                    'AS_QD',
+                    'AS_MQRankSum',
+                    'AS_ReadPosRankSum',
+                    'AS_FS',
+                    'AS_SOR',
+                ],
+            )
         )
-        if model_id.startswith('vqsr_'):
-            ht = ht.annotate_globals(
-                filtering_model=ht.filtering_model.annotate(
-                    snv_training_variables=[
-                        'AS_QD',
-                        'AS_MQRankSum',
-                        'AS_ReadPosRankSum',
-                        'AS_FS',
-                        'AS_SOR',
-                        'AS_MQ',
-                    ],
-                    indel_training_variables=[
-                        'AS_QD',
-                        'AS_MQRankSum',
-                        'AS_ReadPosRankSum',
-                        'AS_FS',
-                        'AS_SOR',
-                    ],
-                )
+    else:
+        ht = ht.annotate_globals(
+            filtering_model=ht.filtering_model.annotate(
+                snv_training_variables=ht.features,
+                indel_training_variables=ht.features,
             )
-        else:
-            ht = ht.annotate_globals(
-                filtering_model=ht.filtering_model.annotate(
-                    snv_training_variables=ht.features,
-                    indel_training_variables=ht.features,
-                )
-            )
+        )
 
-        ht = ht.checkpoint(out_final_filter_ht_path, True)
-        ht.summarize()
+    ht = ht.checkpoint(out_final_filter_ht_path, True)
+    ht.summarize()
 
 
 def generate_final_filter_ht(
