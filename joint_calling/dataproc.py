@@ -29,6 +29,7 @@ def add_job(
     autoscaling_policy: Optional[str] = None,
     max_age: Optional[str] = None,
     pyfiles: Optional[List[str]] = None,
+    worker_boot_disk_size: Optional[int] = None,
 ):
     """
     Wrapper around submitting a dataproc cluster job
@@ -58,6 +59,7 @@ def add_job(
         if highmem 
         else 'n1-standard-8',
         pyfiles=pyfiles,
+        worker_boot_disk_size=worker_boot_disk_size,
     )
 
 
