@@ -39,11 +39,6 @@ logger.setLevel(logging.INFO)
     type=click.INT,
 )
 @click.option(
-    '--header-path',
-    'header_path',
-    help='Optional path to a header file to use for importing VQSR VCF',
-)
-@click.option(
     '--bucket',
     'work_bucket',
     required=True,
@@ -66,7 +61,6 @@ def main(  # pylint: disable=missing-function-docstring
     output_ht_path: str,
     vqsr_vcf_path: str,
     n_partitions: int,
-    header_path: str,
     work_bucket: str,  # pylint: disable=unused-argument
     local_tmp_dir: str,
     overwrite: bool,
@@ -76,7 +70,6 @@ def main(  # pylint: disable=missing-function-docstring
         vqsr_vcf_path, 
         output_ht_path,
         overwrite=overwrite,
-        header_path=header_path,
         n_partitions=n_partitions,
     )
 
@@ -84,7 +77,6 @@ def main(  # pylint: disable=missing-function-docstring
 def load_vqsr(
     site_only_vqsr_vcf_path: str,
     output_ht_path: str,
-    header_path: Optional[str] = None,
     overwrite: bool = False,
     n_partitions: int = None,
 ):
@@ -99,7 +91,6 @@ def load_vqsr(
         site_only_vqsr_vcf_path,
         force_bgz=True,
         reference_genome='GRCh38',
-        header_path=header_path,
     )
     if n_partitions:
         mt = mt.repartition(n_partitions)
