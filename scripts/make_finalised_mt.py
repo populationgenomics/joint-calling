@@ -49,19 +49,25 @@ logger.setLevel('INFO')
     '--freq-ht',
     'freq_ht_path',
     required=True,
-    help='Table with frequencies',
+    help='Table with frequency annotations',
 )
 @click.option(
-    '--info-ht',
-    'info_ht_path',
+    '--vqsr-ht',
+    'vqsr_ht_path',
     required=True,
-    help='Table with "info" row field',
+    help='Table with AS-VQSR annotations (both input and output)',
 )
 @click.option(
-    '--final-filter-ht',
-    'vqsr_final_filter_ht_path',
+    '--allele-data-ht',
+    'allele_data_ht_path',
     required=True,
-    help='Table with AS-VQSR annotations',
+    help='Table with allele_data annotation',
+)
+@click.option(
+    '--qc-ac-ht',
+    'qc_ac_ht_path',
+    required=True,
+    help='Table with qc_ac_* annotations',
 )
 @click.option(
     '--local-tmp-dir',
@@ -85,9 +91,10 @@ def main(
     out_mt_path: str,
     out_nonref_mt_path: Optional[str],
     meta_ht_path: str,
+    vqsr_ht_path: str,
     freq_ht_path: str,
-    info_ht_path: str,
-    vqsr_final_filter_ht_path: str,
+    allele_data_ht_path: str,
+    qc_ac_ht_path: str,
     local_tmp_dir: str,
     overwrite: bool,  # pylint: disable=unused-argument
     hail_billing: str,  # pylint: disable=unused-argument
@@ -108,16 +115,48 @@ def main(
         mt_path, split=True, add_meta=True, meta_ht=hl.read_table(meta_ht_path)
     )
 
-    vqsr_ht = hl.read_table(vqsr_final_filter_ht_path)
+    vqsr_ht = hl.read_table(vqsr_ht_path)
+    mt = annotate_vqsr(mt, vqsr_ht)
+    # INFO/AS_* fields
+    # AS-VQSR output fields (AS_VQSLOD, AS_culprit, NEGATIVE_TRAIN_SITE, POSITIVE_TRAIN_SITE, AS_FilterStatus)
+    # filters (corresponds to VCF's FILTER column. Populated from AS_FilterStatus after splitting by allele)
+    
     freq_ht = hl.read_table(freq_ht_path)
-    info_ht = hl.read_table(info_ht_path)
-    
-    mt = mt.annotate_rows(**vqsr_ht[mt.row_key])
     mt = mt.annotate_rows(**freq_ht[mt.row_key])
-    mt = mt.annotate_rows(info=info_ht[mt.row_key].info)
+    # InbreedingCoeff
+    # freq
+    # faf
+    # popmax:
+    #   AC
+    #   AF
+    #   AN
+    #   homozygote_count
+    #   pop
+    #   faf95
+    # qual_hists
+    # raw_qual_hists
     
-    mt = mt.annotate_globals(**vqsr_ht.index_globals())
-    mt = mt.annotate_globals(**freq_ht.index_globals())
+    allele_data_ht = hl.read_table(allele_data_ht_path)
+    mt = mt.annotate_rows(**allele_data_ht[mt.row_key])
+    # allele_data:
+    #   nonsplit_alleles
+    #   has_star
+    #   variant_type
+    #   n_alt_alleles
+    #   allele_type
+    #   was_mixed
+    
+    qc_ac_ht = hl.read_table(qc_ac_ht_path)
+    mt = mt.annotate_rows(**qc_ac_ht[mt.row_key])
+    # ac_qc_samples_raw
+    # ac_qc_samples_unrelated_raw
+    # ac_release_samples_raw
+    # ac_qc_samples_adj
+    # ac_qc_samples_unrelated_adj
+    # ac_release_samples_adj
+
+    for ht in [vqsr_ht, freq_ht, allele_data_ht, qc_ac_ht]:
+        mt = mt.annotate_globals(**ht.index_globals())
 
     mt.write(out_mt_path, overwrite=True)
 
@@ -127,6 +166,25 @@ def main(
         #    genotype present, in case if all samples with ALT were filtered out
         mt = mt.filter_rows((hl.len(mt.alleles) > 1) & hl.agg.any(mt.GT.is_non_ref()))
         mt.write(out_nonref_mt_path, overwrite=True)
+
+
+def annotate_vqsr(mt, vqsr_ht):
+    """
+    Assuming `vqsr_ht` is a site-only table (split multiallelics) from VQSR VCF, 
+    and `mt` is a matrix table (split multiallelics), annotates `mt` rows from `vqsr_ht`
+    """
+    mt = mt.annotate_rows(**vqsr_ht[mt.row_key])
+    
+    # vqsr_ht has info annotation split by allele; plus new AS-VQSR annotations
+    mt = mt.annotate_rows(info=vqsr_ht[mt.row_key].info)
+
+    # populating filters which is outside of info
+    mt = mt.annotate_rows(
+        filters=mt.filters.union(vqsr_ht[mt.row_key].filters),
+    )
+    
+    mt = mt.annotate_globals(**vqsr_ht.index_globals())
+    return mt
 
 
 if __name__ == '__main__':
