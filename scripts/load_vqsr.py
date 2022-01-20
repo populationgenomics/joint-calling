@@ -5,6 +5,8 @@ Imports AS-VQSR site VCF into a HT
 """
 
 import logging
+from typing import Optional
+
 import click
 import hail as hl
 
@@ -25,11 +27,6 @@ logger.setLevel(logging.INFO)
     help='VQSR filtering annotation resource',
 )
 @click.option(
-    '--split-multiallelic',
-    'split_multiallelic',
-    is_flag=True,
-)
-@click.option(
     '--vqsr-vcf-path',
     'vqsr_vcf_path',
     help='Path to VQSR site-only VCF. Can be specified as Hadoop glob patterns',
@@ -38,7 +35,7 @@ logger.setLevel(logging.INFO)
     '--n-partitions',
     'n_partitions',
     help='Desired base number of partitions for output tables',
-    default=5000,
+    default=1000,
     type=click.INT,
 )
 @click.option(
@@ -67,26 +64,49 @@ logger.setLevel(logging.INFO)
 )
 def main(  # pylint: disable=missing-function-docstring
     output_ht_path: str,
-    split_multiallelic: bool,
     vqsr_vcf_path: str,
-    n_partitions: str,
+    n_partitions: int,
     header_path: str,
     work_bucket: str,  # pylint: disable=unused-argument
     local_tmp_dir: str,
     overwrite: bool,
 ):
-    local_tmp_dir = utils.init_hail('load_data', local_tmp_dir)
+    utils.init_hail('load_data', local_tmp_dir)
+    load_vqsr(
+        vqsr_vcf_path, 
+        output_ht_path,
+        overwrite=overwrite,
+        header_path=header_path,
+        n_partitions=n_partitions,
+    )
+
+
+def load_vqsr(
+    site_only_vqsr_vcf_path: str,
+    output_ht_path: str,
+    header_path: Optional[str] = None,
+    overwrite: bool = False,
+    n_partitions: int = None,
+):
+    """
+    Loads the VQSR'ed site-only VCF into a site-only hail table. Populates ht.filters
+    """
+    if utils.can_reuse(output_ht_path, overwrite):
+        return hl.read_table(output_ht_path)
 
     logger.info(f'Importing VQSR annotations...')
     mt = hl.import_vcf(
-        vqsr_vcf_path,
+        site_only_vqsr_vcf_path,
         force_bgz=True,
-        reference_genome=utils.DEFAULT_REF,
-        header_file=header_path,
-    ).repartition(n_partitions)
+        reference_genome='GRCh38',
+        header_path=header_path,
+    )
+    if n_partitions:
+        mt = mt.repartition(n_partitions)
 
     ht = mt.rows()
 
+    # some numeric fields are loaded as strings, so converting them to ints and floats 
     ht = ht.annotate(
         info=ht.info.annotate(
             AS_VQSLOD=ht.info.AS_VQSLOD.map(hl.float),
@@ -97,26 +117,25 @@ def main(  # pylint: disable=missing-function-docstring
                     x == '', hl.missing(hl.tarray(hl.tint32)), x.split(',').map(hl.int)
                 )
             ),
-        )
+        ),
     )
-
     unsplit_count = ht.count()
-    if not split_multiallelic:
-        ht = ht.checkpoint(output_ht_path, overwrite=overwrite)
-        logger.info(f'Wrote unsplit HT to {output_ht_path}')
 
     ht = hl.split_multi_hts(ht)
     ht = ht.annotate(
         info=ht.info.annotate(**split_info_annotation(ht.info, ht.a_index)),
     )
-    if split_multiallelic:
-        ht = ht.checkpoint(output_ht_path, overwrite=overwrite)
-        logger.info(f'Wrote split HT to {output_ht_path}')
+    ht = ht.annotate(
+        filters=ht.filters.union(hl.set([ht.info.AS_FilterStatus])),
+    )
+    ht.write(output_ht_path, overwrite=True)
+    ht = hl.read_table(output_ht_path)
+    logger.info(f'Wrote split HT to {output_ht_path}')
     split_count = ht.count()
-
     logger.info(
         f'Found {unsplit_count} unsplit and {split_count} split variants with VQSR annotations'
     )
+    return ht
 
 
 if __name__ == '__main__':
