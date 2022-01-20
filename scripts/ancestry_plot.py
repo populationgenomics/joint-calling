@@ -139,11 +139,13 @@ def produce_plots(
         project=meta_ht[scores_ht.s].project
     ).cache()
 
-    def key_by_external_id(ht):
+    def key_by_external_id(ht, meta_ht=None):
         """
         Assuming ht.s is a CPG id, replaces it with external ID, 
         assuming it's defined in meta_ht.external_id
         """
+        if meta_ht is None:
+            meta_ht = ht
         ht = ht.annotate(old_s=ht.s).key_by('old_s')
         ht = (
             ht.annotate(
@@ -158,7 +160,7 @@ def produce_plots(
         )
         return ht
     
-    ht = key_by_external_id(scores_ht)
+    ht = key_by_external_id(scores_ht, meta_ht)
 
     pop_full_names = hl.literal({
         'nfe': 'Non-Finnish European', 

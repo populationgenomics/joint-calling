@@ -48,13 +48,11 @@ def add_sample_qc_jobs(
     hard_filtered_samples_ht_path = join(sample_qc_bucket, 'hard_filtered_samples.ht')
     sex_ht_path = join(sample_qc_bucket, 'sex.ht')
     hail_sample_qc_ht_path = join(sample_qc_bucket, 'hail_sample_qc.ht')
-    custom_qc_ht_path = join(sample_qc_bucket, 'custom_qc.ht')
     if not can_reuse(
         [
             hard_filtered_samples_ht_path,
             sex_ht_path,
             hail_sample_qc_ht_path,
-            custom_qc_ht_path,
         ],
         overwrite,
     ):
@@ -67,7 +65,6 @@ def add_sample_qc_jobs(
             f'--out-hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
             f'--out-sex-ht {sex_ht_path} '
             f'--out-hail-sample-qc-ht {hail_sample_qc_ht_path} '
-            f'--out-custom-qc-ht {custom_qc_ht_path} '
             f'--tmp-bucket {tmp_bucket} '
             + (f'--overwrite ' if overwrite else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
@@ -92,7 +89,6 @@ def add_sample_qc_jobs(
             + f'--mt {mt_path} '
             f'--meta-tsv {samples_tsv_path} '
             f'--out-mt {mt_for_pca_path} '
-            f'--tmp-bucket {join(tmp_bucket, f"subset_mt_for_pca")} '
             + ('--is-test ' if is_test else '')
             + (f'--hail-billing {billing_project} ' if billing_project else ''),
             job_name=job_name,
@@ -287,7 +283,6 @@ def add_sample_qc_jobs(
             f'--meta-tsv {samples_tsv_path} '
             f'--hard-filtered-samples-ht {hard_filtered_samples_ht_path} '
             f'--sex-ht {sex_ht_path} '
-            f'--custom-qc-ht {custom_qc_ht_path} '
             f'--hail-sample-qc-ht {hail_sample_qc_ht_path} '
             f'--regressed-filtes-ht {regressed_metrics_ht_path} '
             f'--relatedness-ht {relatedness_ht_path} '

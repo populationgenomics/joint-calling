@@ -60,12 +60,6 @@ logger.setLevel(logging.INFO)
     required=True,
 )
 @click.option(
-    '--out-custom-qc-ht',
-    'out_custom_qc_ht_path',
-    callback=utils.get_validation_callback(ext='ht', must_exist=False),
-    required=True,
-)
-@click.option(
     '--tmp-bucket',
     'tmp_bucket',
     required=True,
@@ -97,7 +91,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     out_hard_filtered_samples_ht_path: str,
     out_sex_ht_path: str,
     out_hail_sample_qc_ht_path: str,
-    out_custom_qc_ht_path: str,
     tmp_bucket: str,
     local_tmp_dir: str,
     overwrite: bool,
@@ -121,16 +114,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         tmp_bucket=tmp_bucket,
         out_ht_path=out_hail_sample_qc_ht_path,
         overwrite=overwrite,
-    )
-
-    # Calculate separately the number of non-gnomAD SNPs
-    sqc.cpg_custom_metrics(
-        split_mt=mt_split,
-        tmp_bucket=tmp_bucket,
-        out_ht_path=out_custom_qc_ht_path,
-        overwrite=overwrite,
-        count_gnomad_snps=True,
-        count_chrx_het_hom=True,
     )
 
     # `sex_ht` row fields: is_female, chr20_mean_dp, sex_karyotype

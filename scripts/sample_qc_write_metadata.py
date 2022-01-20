@@ -49,12 +49,6 @@ logger.setLevel(logging.INFO)
     callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
-    '--custom-qc-ht',
-    'custom_qc_ht_path',
-    required=True,
-    callback=utils.get_validation_callback(ext='ht', must_exist=True),
-)
-@click.option(
     '--regressed-filtes-ht',
     'regressed_metrics_ht_path',
     required=True,
@@ -115,7 +109,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     hard_filtered_samples_ht_path: str,
     hail_sample_qc_ht_path: str,
     sex_ht_path: str,
-    custom_qc_ht_path: str,
     regressed_metrics_ht_path: str,
     relatedness_ht_path: str,
     release_related: bool,
@@ -134,7 +127,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     input_metadata_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
     hard_filtered_samples_ht = hl.read_table(hard_filtered_samples_ht_path)
     sex_ht = hl.read_table(sex_ht_path)
-    custom_qc_ht = hl.read_table(custom_qc_ht_path)
     hail_sample_qc_ht = hl.read_table(hail_sample_qc_ht_path)
     regressed_metrics_ht = hl.read_table(regressed_metrics_ht_path)
     relatedness_ht = hl.read_table(relatedness_ht_path)
@@ -158,7 +150,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     # Combine all intermediate tables together
     _generate_metadata(
         sample_qc_ht=hail_sample_qc_ht,
-        custom_qc_ht=custom_qc_ht,
         sex_ht=sex_ht,
         input_metadata_ht=input_metadata_ht,
         hard_filtered_samples_ht=hard_filtered_samples_ht,
@@ -174,7 +165,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
 
 def _generate_metadata(
     sample_qc_ht: hl.Table,
-    custom_qc_ht: hl.Table,
     sex_ht: hl.Table,
     input_metadata_ht: hl.Table,
     hard_filtered_samples_ht: hl.Table,
@@ -190,7 +180,6 @@ def _generate_metadata(
     Combine all intermediate tables into a single metadata table
 
     :param sample_qc_ht: table with a `bi_allelic_sample_qc` row field
-    :param custom_qc_ht: table with a `nongnomad_snps` row field
     :param sex_ht: table with the follwing row fields:
         `f_stat`, `n_called`, `expected_homs`, `observed_homs`
     :param input_metadata_ht: table with stats from the input metadata
@@ -224,7 +213,9 @@ def _generate_metadata(
     if not overwrite and file_exists(out_ht_path):
         meta_ht = hl.read_table(out_ht_path)
     else:
-        meta_ht = sex_ht.transmute(
+        meta_ht = input_metadata_ht.drop('sex_karyotype')
+        
+        sex_ht = sex_ht.transmute(
             impute_sex_stats=hl.struct(
                 f_stat=sex_ht.f_stat,
                 n_called=sex_ht.n_called,
@@ -233,17 +224,16 @@ def _generate_metadata(
             )
         )
 
-        meta_ht = meta_ht.annotate_globals(**regressed_metrics_ht.index_globals())
-
         meta_ht = meta_ht.annotate(
+            **sex_ht[meta_ht.key],
             sample_qc=sample_qc_ht[meta_ht.key].bi_allelic_sample_qc,
-            custom_qc=custom_qc_ht[meta_ht.key],
             **hard_filtered_samples_ht[meta_ht.key],
             **regressed_metrics_ht[meta_ht.key],
             **pop_ht[meta_ht.key],
-            **input_metadata_ht[meta_ht.key],
             related=hl.is_defined(related_samples_to_drop_after_qc_ht[meta_ht.key]),
         )
+
+        meta_ht = meta_ht.annotate_globals(**regressed_metrics_ht.index_globals())
 
         meta_ht = meta_ht.annotate(
             hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
