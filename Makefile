@@ -153,4 +153,6 @@ nagim_main:
 	--skip-sample CPG143743 \
 	--skip-sample CPG144386 \
 	--skip-sample CPG144865 \
-	--skip-sample CPG145458
+	--skip-sample CPG145458 \
+	--subset-project amp-pd \
+	--subset-project mgrb

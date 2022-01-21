@@ -197,6 +197,12 @@ logger.setLevel(logging.INFO)
     is_flag=True,
     help='Drop samples without QC provided'
 )
+@click.option(
+    '--subset-project',
+    'subset_projects',
+    multiple=True,
+    help='Create a subset matrix table including only these projects'
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -225,7 +231,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     combiner_branch_factor: Optional[int],
     combiner_batch_size: Optional[int],
     highmem_workers: bool,
-    skip_missing_qc: bool,
+    skip_missing_qc: bool,  # pylint: disable=unused-argument
+    subset_projects: Optional[Collection[str]],
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -392,7 +399,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         highmem_workers=highmem_workers,
     )
 
-    add_variant_qc_jobs(
+    var_qc_jobs = add_variant_qc_jobs(
         b=b,
         work_bucket=join(analysis_bucket, 'variant_qc'),
         web_bucket=join(web_bucket, 'variant_qc'),
@@ -411,6 +418,34 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         project_name=analysis_project,
         highmem_workers=highmem_workers,
     )
+    
+    if subset_projects:
+        diff_projects = set(subset_projects) - set(input_projects)
+        if diff_projects:
+            raise click.BadParameter(
+                f'--subset-project values should be a subset of --input-project '
+                f'values. The following projects are not in input projects: '
+                f'{diff_projects} '
+            )
+        subset_projects = list(set(subset_projects))
+        subset_mt_path = (
+            f'{output_bucket}/mt/{output_version}-{"-".join(subset_projects)}.mt'
+        )
+        job_name = f'Making subset MT for {", ".join(subset_projects)}'
+        if overwrite or not utils.file_exists(subset_mt_path):
+            add_job(
+                b,
+                f'{utils.SCRIPTS_DIR}/make_subset_mt.py '
+                f'--mt {filtered_combined_mt_path} ' +
+                (' '.join(f'--subset-project {p}' for p in subset_projects)) +
+                f'--out-ht {subset_mt_path}',
+                job_name=job_name,
+                is_test=output_namespace in ['test', 'tmp'],
+                num_workers=scatter_count,
+                depends_on=var_qc_jobs,
+            )
+        else:
+            b.new_job(f'{job_name} [reuse]')
 
     b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch, wait=False)
 
