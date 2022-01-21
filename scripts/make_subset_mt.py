@@ -30,6 +30,7 @@ logger.setLevel('INFO')
     '--subset-project',
     'subset_projects',
     multiple=True,
+    required=True,
     help='Create a subset matrix table including only these projects'
 )
 @click.option(
@@ -51,7 +52,7 @@ logger.setLevel('INFO')
 )
 def main(
     mt_path: str,
-    subset_projects: Optional[List[str]],
+    subset_projects: List[str],
     out_mt_path: str,
     local_tmp_dir: str,
     hail_billing: str,  # pylint: disable=unused-argument
@@ -66,6 +67,15 @@ def main(
         f'Full matrix table: {mt.count_cols()} samples, {mt.count_rows()} rows, '
         f'{len(all_projects)} projects: {", ".join(all_projects)}'
     )
+
+    subset_projects = list(set(subset_projects))
+    diff_projects = set(subset_projects) - set(all_projects)
+    if diff_projects:
+        raise click.BadParameter(
+            f'--subset-project values should be a subset of the existing matrix '
+            f'table projects: mt.meta.project ({all_projects}). '
+            f'The following projects are not in existing projects: {diff_projects} '
+        )
 
     mt = mt.filter_cols(hl.literal(subset_projects).contains(mt.meta.project))
     mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))

@@ -437,8 +437,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
                 b,
                 f'{utils.SCRIPTS_DIR}/make_subset_mt.py '
                 f'--mt {filtered_combined_mt_path} ' +
-                (' '.join(f'--subset-project {p}' for p in subset_projects)) +
-                f'--out-ht {subset_mt_path}',
+                (''.join(f'--subset-project {p} ' for p in subset_projects)) +
+                f'--out-mt {subset_mt_path}',
                 job_name=job_name,
                 is_test=output_namespace in ['test', 'tmp'],
                 num_workers=scatter_count,
