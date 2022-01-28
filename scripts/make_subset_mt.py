@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 """
-Generate a subset Matrix Table given a list of projects
+Generate a subset Matrix Table given a list of projects.
+
+Will also remove reference blocks.
 """
 
 import logging
@@ -64,8 +66,14 @@ def main(
     mt = hl.read_matrix_table(mt_path)
     all_projects = list(set(mt.meta.project.collect()))
     logger.info(
-        f'Full matrix table: {mt.count_cols()} samples, {mt.count_rows()} rows, '
+        f'Full matrix table: {mt.count_cols()} samples, '
+        f'{mt.count_rows() / 1_000_000}M rows, '
         f'{len(all_projects)} projects: {", ".join(all_projects)}'
+    )
+
+    mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref())).persist()
+    logger.info(
+        f'Without reference blocks: {mt.count_rows() / 1_000_000}M rows'
     )
 
     subset_projects = list(set(subset_projects))
@@ -76,16 +84,18 @@ def main(
             f'table projects: mt.meta.project ({all_projects}). '
             f'The following projects are not in existing projects: {diff_projects} '
         )
+    logger.info(f'Subsetting to {", ".join(subset_projects)}')
 
     mt = mt.filter_cols(hl.literal(subset_projects).contains(mt.meta.project))
     mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
-    all_projects = list(set(mt.meta.project.collect()))
-    logger.info(
-        f'Subset matrix table: {mt.count_cols()} samples, {mt.count_rows()} rows, '
-        f'{len(all_projects)} projects: {", ".join(all_projects)}'
-    )
 
     mt.write(out_mt_path, overwrite=True)
+    mt = hl.read_matrix_table(out_mt_path)
+    new_projects = list(set(mt.meta.project.collect()))
+    logger.info(
+        f'Subset matrix table: {mt.count_cols()} samples, {mt.count_rows()} rows, '
+        f'{len(all_projects)} projects: {", ".join(new_projects)}'
+    )
 
 
 if __name__ == '__main__':
