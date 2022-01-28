@@ -128,10 +128,17 @@ def mt_to_sites_only_ht(mt: hl.MatrixTable, n_partitions: int) -> hl.Table:
     :param n_partitions: number of partitions for the output table
     :return: hl.Table
     """
-
     mt = _filter_rows_and_add_tags(mt)
     ht = _create_info_ht(mt, n_partitions=n_partitions)
-    ht = adjust_vcf_incompatible_types(ht)
+    ht = adjust_vcf_incompatible_types(
+        ht, 
+        # with default INFO_VCF_AS_PIPE_DELIMITED_FIELDS, AS_VarDP will be converted
+        # into a pipe-delimited value e.g.: VarDP=|132.1|140.2
+        # which breaks VQSR parser (it doesn't recognise the delimiter and treats
+        # it as a array with a single string value "|132.1|140.2", leading to 
+        # an IndexOutOfBound exception when trying to access value for second allele)
+        pipe_delimited_annotations=[]
+    )
     return ht
 
 
