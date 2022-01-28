@@ -167,13 +167,6 @@ logger.setLevel(logging.INFO)
     help='Whether to keep or remove related samples from the release',
 )
 @click.option(
-    '--skip-somalier',
-    'skip_somalier',
-    default=False,
-    is_flag=True,
-    help='Do not generate somaleir fingerprints. Use pc_relate',
-)
-@click.option(
     '--combiner-branch-factor',
     'combiner_branch_factor',
     type=click.INT,
@@ -203,6 +196,12 @@ logger.setLevel(logging.INFO)
     multiple=True,
     help='Create a subset matrix table including only these projects'
 )
+@click.option(
+    '--release-bucket',
+    'release_bucket',
+    help='Write subset matrix table to this bucket '
+         '(otherwise will put next to the main MT)'
+)
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
     analysis_project: str,
@@ -227,12 +226,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     do_not_query_smdb_for_gvcfs: bool,
     assume_gvcfs_exist: bool,
     release_related: bool,
-    skip_somalier: bool,
     combiner_branch_factor: Optional[int],
     combiner_batch_size: Optional[int],
     highmem_workers: bool,
     skip_missing_qc: bool,  # pylint: disable=unused-argument
     subset_projects: Optional[Collection[str]],
+    release_bucket: Optional[str],
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -260,6 +259,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
 
     raw_combined_mt_path = f'{analysis_bucket}/combiner/{output_version}-raw.mt'
     output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}'
+    release_bucket = release_bucket or output_bucket
     filtered_combined_mt_path = f'{output_bucket}/mt/{output_version}.mt'
     filtered_vcf_ptrn_path = f'{output_bucket}/vcf/{output_version}.chr{{CHROM}}.vcf.bgz'
     _create_mt_readme(
@@ -329,22 +329,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     )
 
     relatedness_bucket = join(analysis_bucket, 'relatedness')
-    somalier_j = None
-    somalier_pairs_path = None
-    if not skip_somalier:
-        somalier_j, ped_fpath, _, somalier_pairs_path = pedigree.pedigree_checks(
-            b,
-            samples_df=samples_df,
-            overwrite=overwrite,
-            ped_fpath=ped_fpath,
-            output_suffix=project_output_suffix,
-            relatedness_bucket=relatedness_bucket,
-            web_bucket=join(web_bucket, 'somalier'),
-            web_url=f'https://{output_namespace}-web.populationgenomics.org.au/{analysis_project}',
-            tmp_bucket=join(tmp_bucket, 'somalier'),
-            depends_on=pre_combiner_jobs,
-            assume_files_exist=assume_gvcfs_exist,
-        )
 
     # Combiner takes advantage of autoscaling cluster policies
     # to reduce costs for the work that uses only the driver machine:
@@ -394,8 +378,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         combiner_job=combiner_job,
         billing_project=billing_project,
         is_test=output_namespace in ['test', 'tmp'],
-        somalier_pairs_path=somalier_pairs_path,
-        somalier_job=somalier_j,
         highmem_workers=highmem_workers,
     )
 
@@ -429,7 +411,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             )
         subset_projects = list(set(subset_projects))
         subset_mt_path = (
-            f'{output_bucket}/mt/{output_version}-{"-".join(subset_projects)}.mt'
+            f'{release_bucket}/mt/{output_version}-{"-".join(subset_projects)}.mt'
         )
         job_name = f'Making subset MT for {", ".join(subset_projects)}'
         if overwrite or not utils.file_exists(subset_mt_path):
