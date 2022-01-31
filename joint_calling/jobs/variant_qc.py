@@ -43,7 +43,7 @@ def add_variant_qc_jobs(
     vqsr_bucket = join(work_bucket, 'vqsr')
     
     depends_on = depends_on or []
-    
+
     vqsred_vcf_path = join(vqsr_bucket, 'output.vcf.gz')
     if overwrite or not utils.file_exists(vqsred_vcf_path):
         vqsr_vcf_job = add_vqsr_jobs(
@@ -145,7 +145,7 @@ def add_variant_qc_jobs(
     #   faf95
     # qual_hists
     # raw_qual_hists
-    
+
     if overwrite or not utils.file_exists(freq_ht_path):
         freq_job = add_job(
             b,

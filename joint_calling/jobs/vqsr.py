@@ -18,6 +18,24 @@ logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
 logger.setLevel(logging.INFO)
 
 
+SNP_RECALIBRATION_ANNOTATION_VALUES_AS = [
+    'AS_QD',
+    'AS_MQRankSum',
+    'AS_ReadPosRankSum',
+    'AS_FS',
+    'AS_SOR',
+    'AS_MQ',
+    'AS_VarDP',  # TODO: skip for exomes
+]
+INDEL_RECALIBRATION_ANNOTATION_VALUES_AS = [
+    'AS_FS',
+    'AS_ReadPosRankSum',
+    'AS_MQRankSum',
+    'AS_QD',
+    'AS_SOR',
+    'AS_VarDP',  # TODO: skip for exomes
+]
+
 SNP_RECALIBRATION_TRANCHE_VALUES = [
     100.0,
     99.95,
@@ -31,14 +49,6 @@ SNP_RECALIBRATION_TRANCHE_VALUES = [
     98.0,
     97.0,
     90.0,
-]
-SNP_RECALIBRATION_ANNOTATION_VALUES = [
-    'AS_QD',
-    'AS_MQRankSum',
-    'AS_ReadPosRankSum',
-    'AS_FS',
-    'AS_SOR',
-    'AS_MQ',
 ]
 INDEL_RECALIBRATION_TRANCHE_VALUES = [
     100.0,
@@ -55,13 +65,6 @@ INDEL_RECALIBRATION_TRANCHE_VALUES = [
     92.0,
     91.0,
     90.0,
-]
-INDEL_RECALIBRATION_ANNOTATION_VALUES = [
-    'AS_FS',
-    'AS_SOR',
-    'AS_ReadPosRankSum',
-    'AS_MQRankSum',
-    'AS_QD',
 ]
 
 
@@ -189,7 +192,7 @@ def add_vqsr_jobs(
     depends_on = depends_on or []
 
     job_name = 'AS-VQSR: MT to VCF'
-    combined_vcf_path = join(work_bucket, 'input.vcf.gz')
+    combined_vcf_path = join(work_bucket, 'input.vcf.bgz')
     if not can_reuse(combined_vcf_path, overwrite):
         mt_to_vcf_job = add_job(
             b,
@@ -647,7 +650,7 @@ def add_indels_variant_recalibrator_step(
     tranche_cmdl = ' '.join(
         [f'-tranche {v}' for v in INDEL_RECALIBRATION_TRANCHE_VALUES]
     )
-    an_cmdl = ' '.join([f'-an {v}' for v in INDEL_RECALIBRATION_ANNOTATION_VALUES])
+    an_cmdl = ' '.join([f'-an {v}' for v in INDEL_RECALIBRATION_ANNOTATION_VALUES_AS])
     j.command(
         f"""set -euo pipefail
 
@@ -733,7 +736,7 @@ def add_snps_variant_recalibrator_create_model_step(
     downsample_factor = 75 if is_huge_callset else 10
 
     tranche_cmdl = ' '.join([f'-tranche {v}' for v in SNP_RECALIBRATION_TRANCHE_VALUES])
-    an_cmdl = ' '.join([f'-an {v}' for v in SNP_RECALIBRATION_ANNOTATION_VALUES])
+    an_cmdl = ' '.join([f'-an {v}' for v in SNP_RECALIBRATION_ANNOTATION_VALUES_AS])
     j.command(
         f"""set -euo pipefail
 
@@ -834,7 +837,7 @@ def add_snps_variant_recalibrator_scattered_step(
     )
 
     tranche_cmdl = ' '.join([f'-tranche {v}' for v in SNP_RECALIBRATION_TRANCHE_VALUES])
-    an_cmdl = ' '.join([f'-an {v}' for v in SNP_RECALIBRATION_ANNOTATION_VALUES])
+    an_cmdl = ' '.join([f'-an {v}' for v in SNP_RECALIBRATION_ANNOTATION_VALUES_AS])
     j.command(
         f"""set -euo pipefail
 
@@ -920,7 +923,7 @@ def add_snps_variant_recalibrator_step(
     )
     
     tranche_cmdl = ' '.join([f'-tranche {v}' for v in SNP_RECALIBRATION_TRANCHE_VALUES])
-    an_cmdl = ' '.join([f'-an {v}' for v in SNP_RECALIBRATION_ANNOTATION_VALUES])
+    an_cmdl = ' '.join([f'-an {v}' for v in SNP_RECALIBRATION_ANNOTATION_VALUES_AS])
     j.command(
         f"""set -euo pipefail
 
