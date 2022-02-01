@@ -71,11 +71,6 @@ def main(
         f'{len(all_projects)} projects: {", ".join(all_projects)}'
     )
 
-    mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref())).persist()
-    logger.info(
-        f'Without reference blocks: {mt.count_rows() / 1_000_000}M rows'
-    )
-
     subset_projects = list(set(subset_projects))
     diff_projects = set(subset_projects) - set(all_projects)
     if diff_projects:
