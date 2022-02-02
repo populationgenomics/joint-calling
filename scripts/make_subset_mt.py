@@ -7,6 +7,7 @@ Will also remove reference blocks.
 """
 
 import logging
+from os.path import join
 from typing import Optional, List
 
 import click
@@ -83,7 +84,7 @@ def main(
 
     mt = mt.filter_cols(hl.literal(subset_projects).contains(mt.meta.project))
     mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
-
+    
     mt.write(out_mt_path, overwrite=True)
     mt = hl.read_matrix_table(out_mt_path)
     new_projects = list(set(mt.meta.project.collect()))
