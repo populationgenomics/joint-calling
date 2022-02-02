@@ -1,6 +1,7 @@
 """
 Dataproc cluster utils
 """
+import math
 from typing import Optional, List
 from analysis_runner import dataproc
 from hailtop.batch.job import Job
@@ -12,7 +13,7 @@ DataprocCluster = dataproc.DataprocCluster
 
 
 # GCP quota on number of cores
-MAX_NONPREEMPTIBLE_WORKERS = 50
+MAX_PRIMARY_WORKERS = 50
 
 
 def add_job(
@@ -42,14 +43,30 @@ def add_job(
     depends_on = depends_on or []
     depends_on = [j for j in depends_on if j is not None]
     
+    if preemptible:
+        num_secondary_workers = num_workers
+        # number of primary workers has to be 5-10% of the number of secondary workers:
+        # see Tim's comment in https://discuss.hail.is/t/all-nodes-are-unhealthy/1764
+        # using 8% here:
+        num_primary_workers = int(math.ceil(num_secondary_workers * 0.08))
+    else:
+        num_secondary_workers = 0
+        num_primary_workers = num_workers
+
+    # 2 is the minimal number of primary workers for dataproc cluster:
+    num_primary_workers = max(num_primary_workers, 2)
+
+    # limiting the number of primary workers to avoid hitting GCP quota:
+    num_primary_workers = min(num_primary_workers, MAX_PRIMARY_WORKERS)
+    
     return dataproc.hail_dataproc_job(
         b,
         script=script,
         job_name=job_name,
         max_age=max_age,
         packages=utils.DATAPROC_PACKAGES,
-        num_secondary_workers=num_workers if preemptible else 0,
-        num_workers=min(2 if preemptible else num_workers, MAX_NONPREEMPTIBLE_WORKERS),
+        num_secondary_workers=num_secondary_workers,
+        num_workers=num_primary_workers,
         autoscaling_policy=autoscaling_policy,
         depends_on=depends_on,
         init=['gs://cpg-reference/hail_dataproc/install_phantomjs.sh']
