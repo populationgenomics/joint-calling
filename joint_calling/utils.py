@@ -193,7 +193,7 @@ class ColumnInFile:
         return data_by_sample
 
 
-def file_exists(path: str) -> bool:
+def file_exists(path: str, project: Optional[str] = None) -> bool:
     """
     Check if the object exists, where the object can be:
         * local file
@@ -203,17 +203,19 @@ def file_exists(path: str) -> bool:
           in which case it will check for the existence of a
           *.mt/_SUCCESS or *.ht/_SUCCESS file.
     :param path: path to the file/directory/object/mt/ht
+    :param project: GCP project for requester-pays buckets
     :return: True if the object exists
     """
     if path.startswith('gs://'):
         logger.info(f'Checking {path} existence')
-        bucket = path.replace('gs://', '').split('/')[0]
+        bucket_name = path.replace('gs://', '').split('/')[0]
         path = path.replace('gs://', '').split('/', maxsplit=1)[1]
         path = path.rstrip('/')  # ".mt/" -> ".mt"
         if any(path.endswith(f'.{suf}') for suf in ['mt', 'ht']):
             path = os.path.join(path, '_SUCCESS')
-        gs = storage.Client()
-        return gs.get_bucket(bucket).get_blob(path)
+
+        bucket = storage.Client().bucket(bucket_name, user_project=project)
+        return bucket.get_blob(path)
     return os.path.exists(path)
 
 

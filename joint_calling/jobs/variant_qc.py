@@ -25,18 +25,15 @@ def add_variant_qc_jobs(
     hard_filter_ht_path: str,
     meta_ht_path: str,
     out_filtered_combined_mt_path: str,
-    out_filtered_vcf_ptrn_path: str,
     sample_count: int,
     ped_file: Optional[str],
     overwrite: bool,
     vqsr_params_d: Dict,
     scatter_count: int,
     is_test: bool,
-    project_name: str,
     depends_on: Optional[List[Job]] = None,
     highmem_workers: bool = False,
-    export_to_vcf: bool = False,
-) -> List[Job]:
+) -> Job:
     """
     Add variant QC Hail-query jobs
     """
@@ -188,52 +185,4 @@ def add_variant_qc_jobs(
     else:
         final_mt_j = b.new_job(f'{job_name} [reuse]')
 
-    jobs = [final_mt_j]
-    if export_to_vcf:
-        job_name = f'Making final VCF: prepare HT'
-        logger.info(job_name)
-        export_ht_path = join(work_bucket, 'export_vcf.ht')
-        export_vcf_header_txt = join(work_bucket, 'export_vcf_header.txt')
-        if not utils.can_reuse([export_ht_path, export_vcf_header_txt], overwrite):
-            final_ht_j = add_job(
-                b,
-                f'{utils.SCRIPTS_DIR}/release_vcf_prepare_ht.py '
-                f'--mt {out_filtered_combined_mt_path} '
-                f'--out-ht {export_ht_path} '
-                f'--out-vcf-header-txt {export_vcf_header_txt}',
-                job_name=job_name,
-                is_test=is_test,
-                num_workers=scatter_count,
-                depends_on=depends_on,
-            )
-        else:
-            final_ht_j = b.new_job(f'{job_name} [reuse]')
-        final_ht_j.depends_on(final_mt_j)
-        jobs.append(final_mt_j)
-
-        can_reuse_vcfs = False
-        for chrom in list(map(str, range(1, 22 + 1))) + ['X', 'Y']:
-            job_name = f'Making final VCF: HT to VCF for chr{chrom}'
-            logger.info(job_name)
-            vcf_path = out_filtered_vcf_ptrn_path.format(CHROM=chrom)
-            if chrom == '1':
-                can_reuse_vcfs = utils.can_reuse([vcf_path], overwrite)
-            if not can_reuse_vcfs:
-                j = add_job(
-                    b,
-                    f'{utils.SCRIPTS_DIR}/release_vcf_export_chrom.py '
-                    f'--ht {export_ht_path} '
-                    f'--vcf-header-txt {export_vcf_header_txt} '
-                    f'--out-vcf {vcf_path} '
-                    f'--name {project_name} '
-                    f'--chromosome chr{chrom}',
-                    job_name=job_name,
-                    is_test=is_test,
-                    num_workers=scatter_count,
-                    depends_on=depends_on,
-                )
-            else:
-                j = b.new_job(f'{job_name} [reuse]')
-            jobs.append(j)
-            j.depends_on(final_ht_j)
-    return jobs
+    return final_mt_j

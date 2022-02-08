@@ -23,7 +23,7 @@ from joint_calling import utils
 from joint_calling import sm_utils
 from joint_calling.jobs.variant_qc import add_variant_qc_jobs
 from joint_calling.jobs.sample_qc import add_sample_qc_jobs
-from joint_calling.jobs import pre_combiner, pedigree
+from joint_calling.jobs import pre_combiner
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -197,10 +197,9 @@ logger.setLevel(logging.INFO)
     help='Create a subset matrix table including only these projects'
 )
 @click.option(
-    '--release-bucket',
-    'release_bucket',
-    help='Write subset matrix table to this bucket '
-         '(otherwise will put next to the main MT)'
+    '--raw-combined-mt-version',
+    'raw_combined_mt_version',
+    help='Take combined matrix table from a previous run',
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-statements
     output_namespace: str,
@@ -231,7 +230,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     highmem_workers: bool,
     skip_missing_qc: bool,  # pylint: disable=unused-argument
     subset_projects: Optional[Collection[str]],
-    release_bucket: Optional[str],
+    raw_combined_mt_version: Optional[str],
 ):  # pylint: disable=missing-function-docstring
     # Determine bucket paths
     if output_namespace in ['test', 'tmp']:
@@ -256,17 +255,23 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     tmp_bucket = ptrn.format(suffix=tmp_bucket_suffix)
     analysis_bucket = ptrn.format(suffix=output_analysis_suffix)
     web_bucket = ptrn.format(suffix=web_bucket_suffix)
-
     raw_combined_mt_path = f'{analysis_bucket}/combiner/{output_version}-raw.mt'
+    
+    if raw_combined_mt_version:
+        prev_ptrn = f'gs://cpg-{analysis_project}-{{suffix}}/joint-calling/{raw_combined_mt_version}'
+        prev_analysis_bucket = prev_ptrn.format(suffix=output_analysis_suffix)
+        raw_combined_mt_path = f'{prev_analysis_bucket}/combiner/{raw_combined_mt_version}-raw.mt'
+
     output_bucket = f'gs://cpg-{analysis_project}-{output_suffix}'
-    release_bucket = release_bucket or output_bucket
     filtered_combined_mt_path = f'{output_bucket}/mt/{output_version}.mt'
-    filtered_vcf_ptrn_path = f'{output_bucket}/vcf/{output_version}.chr{{CHROM}}.vcf.bgz'
+    filtered_combined_noref_mt_path = f'{output_bucket}/mt/{output_version}-noref.mt'
+    # release_bucket = f'gs://cpg-{analysis_project}-release-requester-pays'
+    release_bucket = output_bucket
+
     _create_mt_readme(
         raw_combined_mt_path,
         filtered_combined_mt_path,
         output_bucket,
-        filtered_vcf_ptrn_path,
     )
 
     # Initialize Hail Batch
@@ -381,7 +386,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         highmem_workers=highmem_workers,
     )
 
-    var_qc_jobs = add_variant_qc_jobs(
+    var_qc_job = add_variant_qc_jobs(
         b=b,
         work_bucket=join(analysis_bucket, 'variant_qc'),
         web_bucket=join(web_bucket, 'variant_qc'),
@@ -389,7 +394,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         hard_filter_ht_path=hard_filter_ht_path,
         meta_ht_path=meta_ht_path,
         out_filtered_combined_mt_path=filtered_combined_mt_path,
-        out_filtered_vcf_ptrn_path=filtered_vcf_ptrn_path,
         sample_count=len(samples_df),
         ped_file=ped_fpath,
         overwrite=overwrite,
@@ -397,9 +401,23 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         scatter_count=scatter_count,
         is_test=output_namespace in ['test', 'tmp'],
         depends_on=[combiner_job, sample_qc_job],
-        project_name=analysis_project,
         highmem_workers=highmem_workers,
     )
+
+    job_name = 'Remove ref blocks'
+    if not utils.can_reuse(filtered_combined_noref_mt_path, overwrite):
+        noref_mt_j = add_job(
+            b,
+            f'{utils.SCRIPTS_DIR}/make_noref_mt.py '
+            f'--overwrite '
+            f'--mt {filtered_combined_mt_path} '
+            f'--out-mt {filtered_combined_noref_mt_path}',
+            job_name=job_name,
+            num_workers=scatter_count,
+            depends_on=[var_qc_job],
+        )
+    else:
+        noref_mt_j = b.new_job(f'{job_name} [reuse]')
     
     if subset_projects:
         diff_projects = set(subset_projects) - set(input_projects)
@@ -410,21 +428,36 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
                 f'{diff_projects} '
             )
         subset_projects = list(set(subset_projects))
-        subset_mt_path = (
-            f'{release_bucket}/mt/{output_version}-{"-".join(subset_projects)}.mt'
-        )
+        subset_mt_path = f'{release_bucket}/mt/{output_version}-{"-".join(subset_projects)}.mt'
         job_name = f'Making subset MT for {", ".join(subset_projects)}'
         if overwrite or not utils.file_exists(subset_mt_path):
             add_job(
                 b,
                 f'{utils.SCRIPTS_DIR}/make_subset_mt.py '
-                f'--mt {filtered_combined_mt_path} ' +
+                f'--mt {filtered_combined_noref_mt_path} ' +
                 (''.join(f'--subset-project {p} ' for p in subset_projects)) +
                 f'--out-mt {subset_mt_path}',
                 job_name=job_name,
                 is_test=output_namespace in ['test', 'tmp'],
                 num_workers=scatter_count,
-                depends_on=var_qc_jobs,
+                depends_on=[noref_mt_j],
+            )
+        else:
+            b.new_job(f'{job_name} [reuse]')
+
+        subset_vcf_path = f'{release_bucket}/vcf/{output_version}-{"-".join(subset_projects)}.vcf.bgz'
+        job_name = f'Convert subset MT to VCF for {", ".join(subset_projects)}'
+        if overwrite or not utils.file_exists(subset_vcf_path):
+            add_job(
+                b,
+                f'{utils.SCRIPTS_DIR}/final_mt_to_vcf.py '
+                f'--mt {subset_mt_path} ' +
+                f'--out-vcf {subset_vcf_path}',
+                job_name=job_name,
+                is_test=output_namespace in ['test', 'tmp'],
+                num_workers=scatter_count,
+                preemptible=False,
+                depends_on=[noref_mt_j],
             )
         else:
             b.new_job(f'{job_name} [reuse]')
@@ -436,7 +469,6 @@ def _create_mt_readme(
     raw_combined_mt_path: str,
     filtered_combined_mt_path: str,
     output_bucket: str,
-    filtered_vcf_ptrn_path: str,
 ):
     local_tmp_dir = tempfile.mkdtemp()
     readme_local_fpath = join(local_tmp_dir, 'README.txt')
@@ -447,8 +479,6 @@ Unfiltered:
 {raw_combined_mt_path}
 Soft-filtered matrix table (use `mt.filter_rows(hl.is_missing(mt.filters)` to hard-filter):
 {filtered_combined_mt_path}
-Hard-filtered per-chromosome VCFs:
-{filtered_vcf_ptrn_path}
 """)
     subprocess.run(['gsutil', 'cp', readme_local_fpath, readme_gcs_fpath], check=False)
 

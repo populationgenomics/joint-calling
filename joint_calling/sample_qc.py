@@ -133,6 +133,7 @@ def infer_sex(
     logger.info('Counting het/hom ratio on chrX as an extra sex check')
     # Number of hom/hem on chrX, as an extra sex check measure
     chrx_mt = hl.filter_intervals(mt, [hl.parse_locus_interval('chrX')])
+    chrx_mt = chrx_mt.annotate(GT=chrx_mt.LGT)
     chrx_ht = hl.sample_qc(chrx_mt).cols()
     ht = ht.annotate(chrX_sample_qc=chrx_ht[ht.key].sample_qc)
     ht = ht.annotate(chrX_r_het_hom_var=ht.chrX_sample_qc.r_het_hom_var)
