@@ -428,7 +428,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
                 f'{diff_projects} '
             )
         subset_projects = list(set(subset_projects))
-        subset_mt_path = f'{release_bucket}/mt/{output_version}-{"-".join(subset_projects)}.mt'
+        subset_mt_path = f'{release_bucket}/mt/{output_version}-{"-".join(sorted(subset_projects))}.mt'
         job_name = f'Making subset MT for {", ".join(subset_projects)}'
         if overwrite or not utils.file_exists(subset_mt_path):
             add_job(
