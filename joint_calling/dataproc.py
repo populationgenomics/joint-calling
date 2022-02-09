@@ -31,6 +31,7 @@ def add_job(
     max_age: Optional[str] = None,
     pyfiles: Optional[List[str]] = None,
     worker_boot_disk_size: Optional[int] = None,
+    secondary_worker_boot_disk_size: Optional[int] = None,
 ):
     """
     Wrapper around submitting a dataproc cluster job
@@ -77,6 +78,7 @@ def add_job(
         else 'n1-standard-8',
         pyfiles=pyfiles,
         worker_boot_disk_size=worker_boot_disk_size,
+        secondary_worker_boot_disk_size=secondary_worker_boot_disk_size,
     )
 
 

@@ -70,15 +70,12 @@ INDEL_RECALIBRATION_TRANCHE_VALUES = [
 
 def add_vqsr_jobs(
     b: hb.Batch,
-    combined_mt_path: str,
-    hard_filter_ht_path: str,
-    meta_ht_path: str,
+    combined_vcf_path: str,
     gvcf_count: int,
     work_bucket: str,
     web_bucket: str,
     depends_on: Optional[List[Job]],
     vqsr_params_d: Dict,
-    scatter_count: int,
     output_vcf_path: str,
     overwrite: bool,
     snp_recalibration_scatter_count: int = 10,
@@ -87,16 +84,13 @@ def add_vqsr_jobs(
     Add jobs that perform the allele-specific VQSR variant QC
 
     :param b: Batch object to add jobs to
-    :param combined_mt_path: path to a Matrix Table combined with the Hail VCF combiner
-    :param hard_filter_ht_path: path to HT with samples that failed QC
-    :param meta_ht_path: path to HT with sample QC metadata
+    :param combined_vcf_path: path to a site-only VCF, annotated with AS INFO fields
     :param gvcf_count: number of input samples. Can't read from combined_mt_path as it
            might not be yet genereated the point of Batch job submission
     :param work_bucket: bucket for intermediate files
     :param web_bucket: bucket for plots and evaluation results (exposed via http)
     :param depends_on: job that the created jobs should only run after
     :param vqsr_params_d: parameters for VQSR
-    :param scatter_count: number of shards to patition data for scattering
     :param output_vcf_path: path to write final recalibrated VCF to
     :param overwrite: whether to not reuse existing intermediate and output files
     :param snp_recalibration_scatter_count: for huge datasets, perform SNP
@@ -190,28 +184,6 @@ def add_vqsr_jobs(
     huge_disk = 200 if is_small_callset else (700 if not is_huge_callset else 2000)
 
     depends_on = depends_on or []
-
-    job_name = 'AS-VQSR: MT to VCF'
-    combined_vcf_path = join(work_bucket, 'input.vcf.bgz')
-    if not can_reuse(combined_vcf_path, overwrite):
-        mt_to_vcf_job = add_job(
-            b,
-            f'{utils.SCRIPTS_DIR}/mt_to_vcf.py --overwrite '
-            f'--mt {combined_mt_path} '
-            f'--meta-ht {meta_ht_path} '
-            f'--hard-filtered-samples-ht {hard_filter_ht_path} '
-            f'-o {combined_vcf_path} ',
-            num_workers=scatter_count,
-            depends_on=depends_on,
-            # hl.export_vcf() uses non-preemptible workers' disk to merge VCF files.
-            # 10 samples take 2.3G, 400 samples take 60G, which roughly matches
-            # `huge_disk` (also used in the AS-VQSR VCF-gather job)
-            worker_boot_disk_size=huge_disk,
-            job_name=job_name,
-        )
-    else:
-        mt_to_vcf_job = b.new_job(f'{job_name} [reuse]')
-    depends_on.append(mt_to_vcf_job)
 
     split_intervals_job = add_split_intervals_step(
         b,

@@ -41,21 +41,57 @@ def add_variant_qc_jobs(
     
     depends_on = depends_on or []
 
+    job_name = 'AS-VQSR: MT to site-only HT annotated with AS INFO fields'
+    siteonly_ht_path = join(work_bucket, 'siteonly_as.ht')
+    if not utils.can_reuse(siteonly_ht_path, overwrite):
+        annotate_as_job = add_job(
+            b,
+            f'{utils.SCRIPTS_DIR}/annotate_as.py --overwrite '
+            f'--mt {raw_combined_mt_path} '
+            f'--meta-ht {meta_ht_path} '
+            f'--hard-filtered-samples-ht {hard_filter_ht_path} '
+            f'-o {siteonly_ht_path} ',
+            num_workers=scatter_count,
+            depends_on=depends_on,
+            job_name=job_name,
+        )
+    else:
+        annotate_as_job = b.new_job(f'{job_name} [reuse]')
+        
+    job_name = 'AS-VQSR: export annotated site-only HT into VCF'
+    combined_vcf_path = join(work_bucket, 'input.vcf.bgz')
+    if not utils.can_reuse(combined_vcf_path, overwrite):
+        siteonly_ht_to_vcf_job = add_job(
+            b,
+            f'{utils.SCRIPTS_DIR}/siteonly_ht_to_vcf.py --overwrite '
+            f'--mt {raw_combined_mt_path} '
+            f'--meta-ht {meta_ht_path} '
+            f'--hard-filtered-samples-ht {hard_filter_ht_path} '
+            f'-o {combined_vcf_path} ',
+            num_workers=scatter_count,
+            depends_on=depends_on + [annotate_as_job],
+            # hl.export_vcf() uses non-preemptible workers' disk to merge VCF files.
+            # 10 samples take 2.3G, 400 samples take 60G, which roughly matches
+            # `huge_disk` (also used in the AS-VQSR VCF-gather job)
+            worker_boot_disk_size=200,
+            secondary_worker_boot_disk_size=200,
+            job_name=job_name,
+        )
+    else:
+        siteonly_ht_to_vcf_job = b.new_job(f'{job_name} [reuse]')
+
     vqsred_vcf_path = join(vqsr_bucket, 'output.vcf.gz')
     if overwrite or not utils.file_exists(vqsred_vcf_path):
         vqsr_vcf_job = add_vqsr_jobs(
             b,
-            combined_mt_path=raw_combined_mt_path,
-            hard_filter_ht_path=hard_filter_ht_path,
-            meta_ht_path=meta_ht_path,
+            combined_vcf_path=combined_vcf_path,
             gvcf_count=sample_count,
             work_bucket=vqsr_bucket,
             web_bucket=join(web_bucket, 'vqsr'),
             vqsr_params_d=vqsr_params_d,
-            scatter_count=scatter_count,
             output_vcf_path=vqsred_vcf_path,
             overwrite=overwrite,
-            depends_on=depends_on,
+            depends_on=depends_on + [siteonly_ht_to_vcf_job],
         )
     else:
         vqsr_vcf_job = b.new_job('AS-VQSR [reuse]')
@@ -74,7 +110,7 @@ def add_variant_qc_jobs(
             is_test=is_test,
             highmem=highmem_workers,
             num_workers=scatter_count,
-            depends_on=depends_on,
+            depends_on=depends_on + [vqsr_vcf_job],
         )
         load_vqsr_job.depends_on(vqsr_vcf_job)
     else:

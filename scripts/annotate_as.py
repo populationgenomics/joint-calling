@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Convert matrix table to a sites-only VCF.
+Convert to site-only table and annotate with AS fields.
 Essentially a verbatim copy of: hail-ukbb-200k-callset:mt_to_vcf.py
 """
 
@@ -46,7 +46,7 @@ logger.setLevel(logging.INFO)
 )
 @click.option(
     '-o',
-    'output_path',
+    'output_ht_path',
     required=True,
 )
 @click.option(
@@ -77,7 +77,7 @@ def main(
     mt_path: str,
     hard_filtered_samples_ht_path: str,
     meta_ht_path: str,
-    output_path: str,
+    output_ht_path: str,
     local_tmp_dir: str,
     overwrite: bool,
     hail_billing: str,  # pylint: disable=unused-argument
@@ -86,6 +86,10 @@ def main(
     init_hail('variant_qc', local_tmp_dir)
 
     logger.info(f'Loading matrix table from "{mt_path}"')
+
+    if utils.can_reuse(output_ht_path, overwrite):
+        return
+
     mt = utils.get_mt(
         mt_path,
         hard_filtered_samples_to_remove_ht=hl.read_table(hard_filtered_samples_ht_path),
@@ -93,32 +97,12 @@ def main(
         add_meta=True,
     )
 
-    if file_exists(output_path):
-        if overwrite:
-            logger.info(f'Output file {output_path} exists and will be overwritten')
-        else:
-            logger.info(
-                f'Output file {output_path} exists, use --overwrite to overwrite'
-            )
-            return
-    export_sites_only_vcf(mt=mt, output_path=output_path, n_partitions=n_partitions)
-
-
-def export_sites_only_vcf(
-    mt: hl.MatrixTable, output_path: str, n_partitions: int = 5000
-):
-    """
-    Take initial matrix table, convert to sites-only matrix table, then export to vcf
-    """
     logger.info('Converting matrix table to sites-only matrix table')
     ht = mt_to_sites_only_ht(mt, n_partitions)
+    ht.write(output_ht_path, overwrite=True)
     logger.info(
-        f"Exporting sites-only VCF to '{output_path}' to run in the VQSR pipeline"
+        f"Exporting sites-only VCF to '{output_ht_path}' to run in the VQSR pipeline"
     )
-    hl.export_vcf(ht, output_path)
-    logger.info('Successfully exported sites-only VCF')
-
-    return output_path
 
 
 def mt_to_sites_only_ht(mt: hl.MatrixTable, n_partitions: int) -> hl.Table:
