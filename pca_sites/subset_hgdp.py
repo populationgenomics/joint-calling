@@ -39,7 +39,7 @@ def main(pop: Optional[str]):  # pylint: disable=missing-function-docstring
             )
             somalier_ht.write(sites_ht_path)
         else:
-            ht = hl.read_table('gs://cpg-reference/hg38/ancestry/v3/pca_sites_90k.ht/')
+            ht = hl.read_table('gs://cpg-reference/hg38/ancestry/v3/pca_sites_90k.ht')
             ht = ht.key_by('locus')
             ht.write(sites_ht_path)
 
@@ -47,7 +47,6 @@ def main(pop: Optional[str]):  # pylint: disable=missing-function-docstring
 
     gnomad_subset_mt_path = join(BUCKET, 'gnomad_subset.mt')
     if not hl.hadoop_exists(gnomad_subset_mt_path):
-        # Filter MT to bi-allelic SNVs that are found in p5k HT
         mt = hl.read_matrix_table(GNOMAD_HGDP_1KG_MT)
         mt = mt.filter_rows(
             (hl.len(mt.alleles) == 2)

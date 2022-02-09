@@ -48,3 +48,5 @@ test/data/sample_maps/
 .env
 libs
 .vscode/
+
+notebooks
