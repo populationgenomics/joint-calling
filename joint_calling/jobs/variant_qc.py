@@ -52,6 +52,7 @@ def add_variant_qc_jobs(
             f'--hard-filtered-samples-ht {hard_filter_ht_path} '
             f'-o {siteonly_ht_path} ',
             num_workers=scatter_count,
+            preemptible=False,
             depends_on=depends_on,
             job_name=job_name,
         )
