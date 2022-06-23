@@ -74,12 +74,7 @@ def init_hail(name: str, local_tmp_dir: str = None):
     """
     if not local_tmp_dir:
         local_tmp_dir = tempfile.mkdtemp()
-
-    timestamp = time.strftime('%Y%m%d-%H%M')
-    hl_log = os.path.join(
-        safe_mkdir(os.path.join(local_tmp_dir, 'log')), f'{name}-{timestamp}.log'
-    )
-    hl.init(default_reference=DEFAULT_REF, log=hl_log)
+    hl.init(default_reference=DEFAULT_REF)
     logger.info(f'Running joint-calling version {_version.__version__}')
     return local_tmp_dir
 
