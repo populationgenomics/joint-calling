@@ -14,6 +14,7 @@ import hailtop.batch as hb
 from hailtop.batch.job import Job
 from joint_calling import sm_utils, resources
 from joint_calling import utils
+from cpg_utils import to_path
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -172,7 +173,8 @@ def add_pre_combiner_jobs(
         jobs.extend(js)
 
     # Saving the resulting DataFrame as a TSV file
-    samples_df.to_csv(gvcfs_tsv_path, index=False, sep='\t', na_rep='NA')
+    with to_path(gvcfs_tsv_path).open('w') as f:
+        samples_df.to_csv(f, index=False, sep='\t', na_rep='NA')
     logger.info(f'Saved combiner-ready GVCF data to {gvcfs_tsv_path}')
     return samples_df, gvcfs_tsv_path, jobs
 

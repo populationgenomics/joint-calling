@@ -25,6 +25,9 @@ from joint_calling.jobs.variant_qc import add_variant_qc_jobs
 from joint_calling.jobs.sample_qc import add_sample_qc_jobs
 from joint_calling.jobs import pre_combiner
 
+from cpg_utils.hail_batch import get_config, remote_tmpdir
+from cpg_utils import Path, to_path
+
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
 logger.setLevel(logging.INFO)
@@ -123,6 +126,11 @@ logger.setLevel(logging.INFO)
     help='Don\'t process specified samples. Can be set multiple times.',
 )
 @click.option(
+    '--only-sample',
+    'only_samples',
+    multiple=True,
+)
+@click.option(
     '--force-sample',
     'force_samples',
     multiple=True,
@@ -217,6 +225,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     reuse_scratch_run_id: str,  # pylint: disable=unused-argument
     overwrite: bool,
     skip_samples: Optional[Collection[str]],
+    only_samples: Optional[Collection[str]],
     force_samples: Optional[Collection[str]],
     scatter_count: int,
     dry_run: bool,
@@ -284,12 +293,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         f'Starting hail Batch with the project {billing_project}, '
         f'bucket {hail_bucket}'
     )
-    backend = hb.ServiceBackend(
-        billing_project=billing_project,
-        bucket=hail_bucket.replace('gs://', ''),
-        token=os.getenv('HAIL_TOKEN'),
-    )
-    b = hb.Batch(
+    b = setup_batch(
         f'Joint calling: {analysis_project}'
         f', version: {output_version}'
         f', data from: {input_tsv_path or ", ".join(input_projects)}'
@@ -299,7 +303,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
             else ''
         )
         + f', namespace: {output_namespace}',
-        backend=backend,
     )
 
     samples_df = find_inputs(
@@ -309,6 +312,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
         source_tag=source_tag,
         input_tsv_path=input_tsv_path,
         skip_samples=skip_samples,
+        only_samples=only_samples,
         check_existence=check_existence,
         age_datas=age_datas,
         reported_sex_datas=reported_sex_datas,
@@ -338,6 +342,12 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     # Combiner takes advantage of autoscaling cluster policies
     # to reduce costs for the work that uses only the driver machine:
     # https://hail.is/docs/0.2/experimental/vcf_combiner.html#pain-points
+    # To add a 50-worker policy for a project "prophecy-339301":
+    # ```
+    # gcloud dataproc autoscaling-policies import vcf-combiner-50 \
+    # --source=combiner-autoscaling-policiy-50.yaml --region=australia-southeast1 \
+    # --project prophecy-339301
+    # ```
     if scatter_count > 100:
         autoscaling_workers = '200'
     elif scatter_count > 50:
@@ -490,6 +500,7 @@ def find_inputs(
     source_tag: Optional[str] = None,
     input_tsv_path: Optional[str] = None,
     skip_samples: Optional[Collection[str]] = None,
+    only_samples: Optional[Collection[str]] = None,
     check_existence: bool = True,
     age_datas: Optional[List[utils.ColumnInFile]] = None,
     reported_sex_datas: Optional[List[utils.ColumnInFile]] = None,
@@ -517,6 +528,7 @@ def find_inputs(
         samples_df = sm_utils.find_inputs_from_db(
             input_projects,
             skip_samples=skip_samples,
+            only_samples=only_samples,
             check_existence=check_existence,
             source_tag=source_tag,
             do_not_query_smdb_for_gvcfs=do_not_query_smdb_for_gvcfs,
@@ -529,7 +541,8 @@ def find_inputs(
             samples_df = _add_reported_sex(samples_df, reported_sex_data)
     if add_validation_samples:
         samples_df = sm_utils.add_validation_samples(samples_df)
-    samples_df.to_csv(output_tsv_path, index=False, sep='\t', na_rep='NA')
+    with to_path(output_tsv_path).open('w') as f:
+        samples_df.to_csv(f, index=False, sep='\t', na_rep='NA')
     samples_df = samples_df[pd.notnull(samples_df.s)]
     return samples_df
 
@@ -566,6 +579,31 @@ def _add_reported_sex(
         samples_df.loc[external_id, ['sex']] = sex
         samples_df = samples_df.set_index('s', drop=False)
     return samples_df
+
+
+def setup_batch(description: str) -> hb.Batch:
+    """
+    Wrapper around the initialisation of a Hail Batch object.
+
+    @param description: descriptive name of the Batch (will be displayed in the GUI)
+    """
+    billing_project = get_config()['hail']['billing_project']
+    dataset = get_config()['workflow']['dataset']
+    bucket = remote_tmpdir(f'cpg-{dataset}-hail')
+
+    logger.info(
+        f'Starting Hail Batch with the project {billing_project}'
+        f', bucket {bucket}'
+    )
+    backend = hb.ServiceBackend(
+        billing_project=billing_project,
+        remote_tmpdir=bucket,
+        token=os.environ.get('HAIL_TOKEN'),
+    )
+    return hb.Batch(
+        name=description, 
+        backend=backend, 
+    )
 
 
 if __name__ == '__main__':

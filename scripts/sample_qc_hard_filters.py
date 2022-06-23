@@ -33,7 +33,7 @@ logger.setLevel(logging.INFO)
     required=True,
     help='path to a CSV with QC metadata for the samples in the input Matrix Table. '
     'The following columns are expected: '
-    's,freemix,pct_chimeras,duplication,median_insert_size. '
+    's,freemix,pct_chimeras,duplication,insert_size. '
     'Must be keyed by "s".',
 )
 @click.option(

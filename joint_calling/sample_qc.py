@@ -585,7 +585,7 @@ def compute_hard_filters(
 
     :param mt: input matrix table
     :param picard_metrics_ht: table QC metrics from Picard tools. Expected
-        fields: r_contamination, r_chimera, r_duplication, median_insert_size
+        fields: r_contamination, r_chimera, r_duplication, insert_size
     :param sex_ht: required fields: "sex_karyotype", "chr20_mean_dp"
     :param hail_sample_qc_ht: required fields:
         "bi_allelic_sample_qc { n_snp, n_singleton, r_het_hom_var }"
@@ -673,10 +673,10 @@ def compute_hard_filters(
     )
     ht = add_filter(
         ht,
-        hl.is_defined(picard_metrics_ht[ht.key].median_insert_size)
+        hl.is_defined(picard_metrics_ht[ht.key].insert_size)
         & (
-            picard_metrics_ht[ht.key].median_insert_size
-            < cutoffs_d['min_median_insert_size']
+            picard_metrics_ht[ht.key].insert_size
+            < cutoffs_d['min_insert_size']
         ),
         'insert_size',
     )

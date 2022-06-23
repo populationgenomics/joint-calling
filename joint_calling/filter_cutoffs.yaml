@@ -7,7 +7,7 @@ hardfiltering:
   max_r_het_hom: 3.3
   max_r_contamination: 0.04
   max_r_chimera: 0.05
-  min_median_insert_size: 250
+  min_insert_size: 250
 pca:
   # maximum kin threshold to be considered unrelated
   max_kin: 0.2

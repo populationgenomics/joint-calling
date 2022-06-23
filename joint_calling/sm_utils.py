@@ -102,7 +102,7 @@ def find_analyses_by_sid(
     project: str,
     analysis_type: str,
     analysis_status: str = 'completed',
-    meta: Optional[Dict] = None,
+    only_staging: bool | None = None,
 ) -> Dict[str, Analysis]:
     """
     Query the DB to find the last completed analysis for the type and samples,
@@ -110,18 +110,22 @@ def find_analyses_by_sid(
     sample (e.g. cram, gvcf)
     """
     analysis_per_sid: Dict[str, Analysis] = dict()
-
+    
     datas = aapi.query_analyses(
         AnalysisQueryModel(
             projects=[project],
             type=AnalysisType(analysis_type),
             status=AnalysisStatus(analysis_status),
             sample_ids=sample_ids,
-            meta=meta or {},
         )
     )
 
     for data in datas:
+        if only_staging is True and data['meta'].get('staging', False) is False:
+            continue
+        if only_staging is False and data['meta'].get('staging', False) is True:
+            continue
+
         a = _parse_analysis(data)
         if not a:
             continue
@@ -239,6 +243,7 @@ def replace_paths_to_test(s: Dict) -> Optional[Dict]:
 def find_inputs_from_db(
     input_projects: List[str],
     skip_samples: Optional[Collection[str]] = None,
+    only_samples: Optional[Collection[str]] = None,
     check_existence: bool = True,
     source_tag: Optional[str] = None,
     do_not_query_smdb_for_gvcfs: bool = False,
@@ -248,14 +253,14 @@ def find_inputs_from_db(
     sample-metadata server database.
 
     To specify a subset of GVCFs to search, set `source_tag`, which should
-    match the meta.source value analysis entries.
+    match the `meta.source` value analysis entries.
     """
     inputs = []
 
     for proj in input_projects:
         logger.info(f'Processing project {proj}')
         samples = sapi.get_samples(
-            body_get_samples_by_criteria_api_v1_sample_post={
+            body_get_samples={
                 'project_ids': [proj],
                 'active': True,
             }
@@ -265,6 +270,8 @@ def find_inputs_from_db(
             logger.info(f'No samples to process, skipping project {proj}')
             continue
 
+        if only_samples:
+            samples = [s for s in samples if s['id'] in only_samples]
         if skip_samples:
             logger.info('Checking which samples need to skip')
             not_skipped_sids = []
@@ -290,7 +297,6 @@ def find_inputs_from_db(
             sample_ids=[s['id'] for s in samples],
             analysis_type='qc',
             project=proj,
-            meta=dict(**meta),
         )
 
         reblocked_gvcf_by_sid: Dict[str, str] = {}
@@ -314,7 +320,7 @@ def find_inputs_from_db(
                 sample_ids=[s['id'] for s in samples],
                 analysis_type='gvcf',
                 project=proj,
-                meta=dict(staging=False, **meta),
+                only_staging=False,
             )
             staging_gvcf_analysis_per_sid = dict()
             if source_tag is not None:
@@ -322,7 +328,7 @@ def find_inputs_from_db(
                     sample_ids=[s['id'] for s in samples],
                     project=proj,
                     analysis_type='gvcf',
-                    meta=dict(staging=True, **meta),
+                    only_staging=True,
                 )
 
             sids_without_gvcf = []
@@ -461,8 +467,8 @@ def find_inputs_from_db(
                     'r_contamination': qc_metrics.get('freemix'),
                     'r_chimera': qc_metrics.get('pct_chimeras'),
                     'r_duplication': qc_metrics.get('percent_duplication'),
-                    'median_insert_size': qc_metrics.get('median_insert_size'),
-                    'median_coverage': qc_metrics.get('median_coverage'),
+                    'insert_size': qc_metrics.get('average_insert_size'),
+                    'coverage': qc_metrics.get('median_coverage'),
                     'r_30x': qc_metrics.get('pct_30x'),
                     'r_aligned_in_pairs': qc_metrics.get('pct_reads_aligned_in_pairs'),
                     'continental_pop': s['meta'].get('continental_pop', '-'),

@@ -128,7 +128,7 @@ input:
    qc_mt.mean_chr20_coverage
    qc_mt.mean_dp
    qc_mt.sex_aneuploidy
-   qc_mt.median_insert_size
+   qc_mt.insert_size
 
    qc_mt.tcga_tumor
    qc_mt.tcga_weird_barcode

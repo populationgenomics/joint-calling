@@ -9,9 +9,11 @@ import logging
 import sys
 import time
 import hashlib
+import traceback
 from dataclasses import dataclass
+from functools import lru_cache
 from os.path import isdir, isfile, exists, join, basename
-from typing import Callable, Dict, Optional, Union, Iterable, List
+from typing import Callable, Dict, Optional, Union, Iterable, List, cast
 import yaml
 import pandas as pd
 import hail as hl
@@ -19,6 +21,7 @@ import click
 from google.cloud import storage
 from joint_calling import _version, get_package_path
 from joint_calling import __name__ as package_name
+from cpg_utils import Path, to_path
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
@@ -193,36 +196,53 @@ class ColumnInFile:
         return data_by_sample
 
 
-def file_exists(path: str, project: Optional[str] = None) -> bool:
+@lru_cache
+def file_exists(path: Path | str, verbose: bool = True) -> bool:
+    """
+    Caching version of the existence check. 
+    The python code runtime happens entirely during the pipeline submittion, 
+    without waiting for it to finish, so there is no expectation that object 
+    existence status would change during the runtime. This, this function uses
+    `@lru_cache` to make sure that object existence is checked only once.
+    """
+    return exists_not_cached(path, verbose)
+
+
+def exists_not_cached(path: Path | str, verbose: bool = True) -> bool:
     """
     Check if the object exists, where the object can be:
         * local file
         * local directory
-        * Google Storage object
-        * Google Storage URL representing a *.mt or *.ht Hail data,
+        * cloud object
+        * cloud URL representing a *.mt or *.ht Hail data,
           in which case it will check for the existence of a
           *.mt/_SUCCESS or *.ht/_SUCCESS file.
-    :param path: path to the file/directory/object/mt/ht
-    :param project: GCP project for requester-pays buckets
-    :return: True if the object exists
+    @param path: path to the file/directory/object/mt/ht
+    @param verbose: print on each check
+    @return: True if the object exists
     """
-    if path.startswith('gs://'):
-        logger.info(f'Checking {path} existence')
-        bucket_name = path.replace('gs://', '').split('/')[0]
-        path = path.replace('gs://', '').split('/', maxsplit=1)[1]
-        path = path.rstrip('/')  # ".mt/" -> ".mt"
-        if any(path.endswith(f'.{suf}') for suf in ['mt', 'ht']):
-            path = os.path.join(path, '_SUCCESS')
+    path = cast(Path, to_path(path))
 
-        bucket = storage.Client().bucket(bucket_name, user_project=project)
-        return bucket.get_blob(path)
-    return os.path.exists(path)
+    # rstrip to ".mt/" -> ".mt"
+    if any(str(path).rstrip('/').endswith(f'.{suf}') for suf in ['mt', 'ht']):
+        path = path / '_SUCCESS'
+
+    if verbose:
+        # noinspection PyBroadException
+        try:
+            res = path.exists()
+        except BaseException:
+            traceback.print_exc()
+            logger.error(f'Failed checking {path}')
+            sys.exit(1)
+        logger.debug(f'Checked {path} [' + ('exists' if res else 'missing') + ']')
+        return res
+    return path.exists()
 
 
 def can_reuse(
-    fpath: Optional[Union[Iterable[str], str]],
+    path: list[Path] | Path | str | None,
     overwrite: bool,
-    silent=False,
 ) -> bool:
     """
     Checks if `fpath` is good to reuse in the analysis: it exists
@@ -232,18 +252,17 @@ def can_reuse(
     """
     if overwrite:
         return False
-        
-    if not fpath:
+
+    if not path:
         return False
 
-    if not isinstance(fpath, str):
-        return all(can_reuse(fp, overwrite) for fp in fpath)
+    if isinstance(path, list):
+        return all(can_reuse(fp, overwrite) for fp in path)
 
-    if not file_exists(fpath):
+    if not exists(path):
         return False
 
-    if not silent:
-        logger.info(f'Reusing existing {fpath}. Use --overwrite to overwrite')
+    logger.debug(f'Reusing existing {path}. Use --overwrite to overwrite')
     return True
 
 
@@ -531,8 +550,8 @@ float_vals = {
     'r_aligned_in_pairs': None,
 }
 int_vals = {
-    'median_insert_size': None,
-    'median_coverage': None,
+    'insert_size': None,
+    'coverage': None,
 }
 default_entry.update(float_vals)
 default_entry.update(int_vals)
