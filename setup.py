@@ -20,6 +20,16 @@ setuptools.setup(
     zip_safe=False,
     scripts=[join('scripts', fp) for fp in os.listdir('scripts') if fp.endswith('.py')],
     keywords='bioinformatics',
+    install_requires=[
+        'cpg-utils',
+        'pandas',
+        'hail>=0.2.91',
+        'click',
+        'google-cloud-storage',
+        'google-cloud-secret-manager',
+        'gnomad',
+        'analysis-runner',
+    ],
     classifiers=[
         'Environment :: Console',
         'Intended Audience :: Science/Research',
