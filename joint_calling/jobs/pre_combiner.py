@@ -43,9 +43,10 @@ def add_pre_combiner_jobs(
     gvcfs_tsv_path = join(analysis_bucket, 'samples-gvcf.tsv')
     if utils.can_reuse(gvcfs_tsv_path, overwrite):
         logger.info(f'Reading already found DB inputs from {gvcfs_tsv_path}')
-        samples_df = pd.read_csv(gvcfs_tsv_path, sep='\t', na_values='NA').set_index(
-            's', drop=False
-        )
+        with to_path(gvcfs_tsv_path).open() as f:
+            samples_df = pd.read_csv(f, sep='\t', na_values='NA').set_index(
+                's', drop=False
+            )
         return samples_df, gvcfs_tsv_path, []
 
     logger.info(f'Samples DF:\n{samples_df}')
