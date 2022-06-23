@@ -437,6 +437,15 @@ def find_inputs_from_db(
                 
             stack = proj.replace('-test', '')
             project = s['meta'].get('project', proj.replace('-test', ''))
+            
+            qc_metrics = dict(
+                r_contamination=qc_metrics['FREEMIX'],
+                r_duplication=qc_metrics['percent_duplicates'] / 100.0,
+                insert_size_average=qc_metrics['insert_size_average'],
+                coverage_median=qc_metrics['MEDIAN_COVERAGE'],
+                r_30x=qc_metrics['PCT_30X'],
+                r_aligned_in_pairs=qc_metrics['percentage_of_properly_paired_reads_(%)'] / 100,
+            )
 
             entry = default_entry.copy()
             entry.update(
@@ -464,13 +473,13 @@ def find_inputs_from_db(
                     ),
                     'primary_study': seq_meta.get('Primary study', '-'),
                     # QC metrics:
-                    'r_contamination': qc_metrics.get('freemix'),
-                    'r_chimera': qc_metrics.get('pct_chimeras'),
-                    'r_duplication': qc_metrics.get('percent_duplication'),
-                    'insert_size': qc_metrics.get('average_insert_size'),
-                    'coverage': qc_metrics.get('median_coverage'),
-                    'r_30x': qc_metrics.get('pct_30x'),
-                    'r_aligned_in_pairs': qc_metrics.get('pct_reads_aligned_in_pairs'),
+                    'r_contamination': qc_metrics.get('r_contamination'),
+                    'r_chimera': qc_metrics.get('r_chimeras'),
+                    'r_duplication': qc_metrics.get('r_duplication'),
+                    'insert_size': qc_metrics.get('insert_size_average'),
+                    'coverage': qc_metrics.get('coverage_median'),
+                    'r_30x': qc_metrics.get('r_30x'),
+                    'r_aligned_in_pairs': qc_metrics.get('r_aligned_in_pairs'),
                     'continental_pop': s['meta'].get('continental_pop', '-'),
                     'subcontinental_pop': s['meta'].get('subcontinental_pop') or s['meta'].get('subpop', '-'),
                 }
