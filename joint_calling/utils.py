@@ -197,7 +197,7 @@ class ColumnInFile:
 
 
 @lru_cache
-def file_exists(path: Path | str, verbose: bool = True) -> bool:
+def file_exists(path: Optional[Path], verbose: bool = True) -> bool:
     """
     Caching version of the existence check. 
     The python code runtime happens entirely during the pipeline submittion, 
@@ -208,7 +208,7 @@ def file_exists(path: Path | str, verbose: bool = True) -> bool:
     return exists_not_cached(path, verbose)
 
 
-def exists_not_cached(path: Path | str, verbose: bool = True) -> bool:
+def exists_not_cached(path: Union[Path, str], verbose: bool = True) -> bool:
     """
     Check if the object exists, where the object can be:
         * local file
@@ -241,7 +241,7 @@ def exists_not_cached(path: Path | str, verbose: bool = True) -> bool:
 
 
 def can_reuse(
-    path: list[Path] | Path | str | None,
+    path: Union[List[Path], Path, str, None],
     overwrite: bool,
 ) -> bool:
     """
