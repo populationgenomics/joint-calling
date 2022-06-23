@@ -517,9 +517,10 @@ def find_inputs(
 
     if utils.can_reuse(output_tsv_path, overwrite):
         logger.info(f'Reading already found DB inputs from {output_tsv_path}')
-        samples_df = pd.read_csv(output_tsv_path, sep='\t', na_values='NA').set_index(
-            's', drop=False
-        )
+        with to_path(output_tsv_path).open() as f:
+            samples_df = pd.read_csv(f, sep='\t', na_values='NA').set_index(
+                's', drop=False
+            )
     else:
         logger.info(
             f'Querying samples from the sample-metadata server '

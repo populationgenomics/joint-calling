@@ -12,7 +12,7 @@ import hashlib
 import traceback
 from dataclasses import dataclass
 from functools import lru_cache
-from os.path import isdir, isfile, exists, join, basename
+from os.path import isdir, isfile, join, basename
 from typing import Callable, Dict, Optional, Union, Iterable, List, cast
 import yaml
 import pandas as pd
@@ -197,7 +197,7 @@ class ColumnInFile:
 
 
 @lru_cache
-def file_exists(path: Optional[Path], verbose: bool = True) -> bool:
+def file_exists(path: Union[Path, str, None], verbose: bool = True) -> bool:
     """
     Caching version of the existence check. 
     The python code runtime happens entirely during the pipeline submittion, 
@@ -208,7 +208,7 @@ def file_exists(path: Optional[Path], verbose: bool = True) -> bool:
     return exists_not_cached(path, verbose)
 
 
-def exists_not_cached(path: Union[Path, str], verbose: bool = True) -> bool:
+def exists_not_cached(path: Union[Path, str, None], verbose: bool = True) -> bool:
     """
     Check if the object exists, where the object can be:
         * local file
@@ -221,6 +221,9 @@ def exists_not_cached(path: Union[Path, str], verbose: bool = True) -> bool:
     @param verbose: print on each check
     @return: True if the object exists
     """
+    if not path:
+        return False
+
     path = cast(Path, to_path(path))
 
     # rstrip to ".mt/" -> ".mt"
@@ -259,37 +262,11 @@ def can_reuse(
     if isinstance(path, list):
         return all(can_reuse(fp, overwrite) for fp in path)
 
-    if not exists(path):
+    if not file_exists(path):
         return False
 
     logger.debug(f'Reusing existing {path}. Use --overwrite to overwrite')
     return True
-
-
-def gs_cache_file(fpath: str, local_tmp_dir: str) -> str:
-    """
-    :param fpath: local or a `gs://` path. If the latter, the file
-        will be downloaded and cached if local_tmp_dir is provided,
-        the local path will be returned
-    :param local_tmp_dir: a local directory to cache files downloaded
-        from Google Storage
-    :return: file path
-    """
-    if fpath.startswith('gs://'):
-        fname = (
-            os.path.basename(fpath) + '_' + hashlib.md5(fpath.encode()).hexdigest()[:6]
-        )
-        local_fpath = os.path.join(local_tmp_dir, fname)
-        if not exists(local_fpath):
-            bucket = fpath.replace('gs://', '').split('/')[0]
-            path = fpath.replace('gs://', '').split('/', maxsplit=1)[1]
-            gs = storage.Client()
-            blob = gs.get_bucket(bucket).get_blob(path)
-            if blob:
-                blob.download_to_filename(local_fpath)
-    else:
-        local_fpath = fpath
-    return local_fpath
 
 
 def safe_mkdir(dirpath: str, descriptive_name: str = '') -> str:
@@ -310,7 +287,7 @@ def safe_mkdir(dirpath: str, descriptive_name: str = '') -> str:
     num_tries = 0
     max_tries = 10
 
-    while not exists(dirpath):
+    while not file_exists(to_path(dirpath)):
         # we could get an error here if multiple processes are creating
         # the directory at the same time. Grr, concurrency.
         try:
@@ -430,7 +407,7 @@ def get_filter_cutoffs(
     :return: a Dict with cutoffs
     """
     if provided_filter_cutoffs_path:
-        assert file_exists(provided_filter_cutoffs_path), provided_filter_cutoffs_path
+        assert file_exists(to_path(provided_filter_cutoffs_path)), provided_filter_cutoffs_path
         path = provided_filter_cutoffs_path
     else:
         path = join(get_package_path(), 'filter_cutoffs.yaml')
