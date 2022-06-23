@@ -76,33 +76,12 @@ def _parse_analysis(data: Dict) -> Optional[Analysis]:
     return a
 
 
-def find_joint_calling_analysis(
-    analysis_project: str,
-    sample_ids: Collection[str],
-) -> Optional[Analysis]:
-    """
-    Query the DB to find the last completed joint-calling analysis for the samples
-    """
-    data = aapi.get_latest_complete_analysis_for_type(
-        project=analysis_project,
-        analysis_type='joint-calling',
-    )
-    a = _parse_analysis(data)
-    if not a:
-        return None
-    assert a.type == 'joint-calling', data
-    assert a.status == 'completed', data
-    if a.sample_ids != set(sample_ids):
-        return None
-    return a
-
-
 def find_analyses_by_sid(
     sample_ids: Collection[str],
     project: str,
     analysis_type: str,
     analysis_status: str = 'completed',
-    only_staging: bool | None = None,
+    only_staging: Optional[bool] = None,
 ) -> Dict[str, Analysis]:
     """
     Query the DB to find the last completed analysis for the type and samples,
