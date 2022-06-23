@@ -45,7 +45,7 @@ GNOMAD_HT = (
     'gs://gcp-public-data--gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht'
 )
 
-ANCESTRY_SITES = 'gs://cpg-reference/hg38/ancestry/v3/pca_sites_90k.ht'
+ANCESTRY_SITES = 'gs://cpg-reference/ancestry/v3-90k/pca_sites.ht'
 
 COHORT = 'az'
 
