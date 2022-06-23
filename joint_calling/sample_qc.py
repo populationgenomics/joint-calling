@@ -190,24 +190,6 @@ def run_pca_ancestry_analysis(
     logger.info(f'scores_ht.s: {list(scores_ht.s.collect())}')
     logger.info(f'eigenvalues: {eigenvalues}')
     eigenvalues_ht = hl.Table.from_pandas(pd.DataFrame(eigenvalues, columns=['f0']))
-
-    # fields = list(eigenvalues_df.columns)
-    # logger.info(f'fields: {fields}')
-    # pd_dtypes = eigenvalues_df.dtypes
-    # logger.info(f'pd_dtypes: {pd_dtypes}')
-    # hl_type_hints = {}
-    # for field in fields:
-    #     logger.info(f'  field: {field}')
-    #     type_hint = dtypes_from_pandas(pd_dtypes[field])
-    #     logger.info(f'  type_hint: {type_hint}')
-    #     if type_hint is not None:
-    #         hl_type_hints[field] = type_hint
-    # logger.info(f'hl_type_hints: {hl_type_hints}')
-    # partial_type_struct = hl.tstruct(**hl_type_hints)
-    # logger.info(f'partial_type_struct: {partial_type_struct}')
-    # partial_type = hl.tarray(str)
-    # logger.info(f'partial_type: {partial_type}')
-
     eigenvalues_ht.write(out_eigenvalues_ht_path, overwrite=True)
     loadings_ht.write(out_loadings_ht_path, overwrite=True)
     scores_ht.write(out_scores_ht_path, overwrite=True)
@@ -249,10 +231,26 @@ def infer_pop_labels(
         'prob_YRI': float64
         ... (prob_*: float64 for each population label)
     """
-    logger.info('Assigning global population labels')
     out_ht_path = out_ht_path or join(tmp_bucket, 'inferred_pop.ht')
     if utils.can_reuse(out_ht_path, overwrite):
         return hl.read_table(out_ht_path)
+
+    if training_pop_ht.count() < 2:
+        logger.warning(
+            'Need at least 2 samples with known `population` label to run PCA'
+            'and assign population labels to remaining samples'
+        )
+        pop_ht = scores_ht.annotate(
+            pop='oth',
+            is_training=False,
+            pca_scores=[],
+        )
+        return pop_ht.checkpoint(out_ht_path, overwrite=True)
+
+    logger.info(
+        'Using calculated PCA scores as well as training samples with known '
+        '`population` label to assign population labels to remaining samples'
+    )
 
     scores_ht = scores_ht.annotate(
         training_pop=training_pop_ht[scores_ht.key].training_pop

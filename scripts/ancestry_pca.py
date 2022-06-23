@@ -143,11 +143,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     training_pop_ht = training_pop_ht.annotate(
         training_pop=training_pop_ht[tag]
     )
-    
-    logger.info(
-        'Using calculated PCA scores as well as training samples with known '
-        '`population` tag to assign population tags to remaining samples'
-    )
     sqc.infer_pop_labels(
         scores_ht=scores_ht,
         training_pop_ht=training_pop_ht,
