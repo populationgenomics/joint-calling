@@ -19,6 +19,7 @@ from gnomad.utils.file_utils import file_exists
 from gnomad.utils.annotations import bi_allelic_expr
 from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.sparse_mt import filter_ref_blocks
+from hail.expr.types import dtypes_from_pandas
 
 from joint_calling import utils, resources
 
@@ -186,9 +187,27 @@ def run_pca_ancestry_analysis(
     eigenvalues, scores_ht, loadings_ht = run_pca_with_relateds(
         mt, sample_to_drop_ht, n_pcs=n_pcs
     )
-    logger.info(f'scores_ht.s: {scores_ht.s.collect()}')
+    logger.info(f'scores_ht.s: {list(scores_ht.s.collect())}')
+    logger.info(f'eigenvalues: {eigenvalues}')
+    eigenvalues_df = pd.DataFrame(eigenvalues)
+    fields = list(eigenvalues_df.columns)
+    logger.info(f'fields: {fields}')
+    pd_dtypes = eigenvalues_df.dtypes
+    logger.info(f'pd_dtypes: {pd_dtypes}')
+    hl_type_hints = {}
+    for field in fields:
+        logger.info(f'  field: {field}')
+        type_hint = dtypes_from_pandas(pd_dtypes[field])
+        logger.info(f'  type_hint: {type_hint}')
+        if type_hint is not None:
+            hl_type_hints[field] = type_hint
+    logger.info(f'hl_type_hints: {hl_type_hints}')
+    partial_type_struct = hl.tstruct(**hl_type_hints)
+    logger.info(f'partial_type_struct: {partial_type_struct}')
+    partial_type = hl.tarray(str)
+    logger.info(f'partial_type: {partial_type}')
 
-    hl.Table.from_pandas(pd.DataFrame(eigenvalues)).export(out_eigenvalues_path)
+    hl.Table.from_pandas(eigenvalues_df).export(out_eigenvalues_path)
     loadings_ht.write(out_loadings_ht_path, overwrite=True)
     scores_ht.write(out_scores_ht_path, overwrite=True)
     scores_ht = hl.read_table(out_scores_ht_path)
