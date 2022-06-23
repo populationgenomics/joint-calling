@@ -146,7 +146,7 @@ def run_pca_ancestry_analysis(
     mt: hl.MatrixTable,
     sample_to_drop_ht: Optional[hl.Table],
     n_pcs: int,
-    out_eigenvalues_path: str,
+    out_eigenvalues_ht_path: str,
     out_scores_ht_path: str,
     out_loadings_ht_path: str,
     overwrite: bool = False,
@@ -158,7 +158,7 @@ def run_pca_ancestry_analysis(
         previous relatedness analysis. With a `rank` row field
     :param n_pcs: maximum number of principal components
     :param overwrite: overwrite checkpoints if they exist
-    :param out_eigenvalues_path: path to a txt file to write PCA eigenvalues
+    :param out_eigenvalues_ht_path: path to a txt file to write PCA eigenvalues
     :param out_scores_ht_path: path to write PCA scores
     :param out_loadings_ht_path: path to write PCA loadings
     :return: a Table with a row field:
@@ -168,7 +168,7 @@ def run_pca_ancestry_analysis(
     if all(
         not fp or utils.can_reuse(fp, overwrite)
         for fp in [
-            out_eigenvalues_path,
+            out_eigenvalues_ht_path,
             out_scores_ht_path,
             out_loadings_ht_path,
         ]
@@ -189,25 +189,26 @@ def run_pca_ancestry_analysis(
     )
     logger.info(f'scores_ht.s: {list(scores_ht.s.collect())}')
     logger.info(f'eigenvalues: {eigenvalues}')
-    eigenvalues_df = pd.DataFrame(eigenvalues)
-    fields = list(eigenvalues_df.columns)
-    logger.info(f'fields: {fields}')
-    pd_dtypes = eigenvalues_df.dtypes
-    logger.info(f'pd_dtypes: {pd_dtypes}')
-    hl_type_hints = {}
-    for field in fields:
-        logger.info(f'  field: {field}')
-        type_hint = dtypes_from_pandas(pd_dtypes[field])
-        logger.info(f'  type_hint: {type_hint}')
-        if type_hint is not None:
-            hl_type_hints[field] = type_hint
-    logger.info(f'hl_type_hints: {hl_type_hints}')
-    partial_type_struct = hl.tstruct(**hl_type_hints)
-    logger.info(f'partial_type_struct: {partial_type_struct}')
-    partial_type = hl.tarray(str)
-    logger.info(f'partial_type: {partial_type}')
+    eigenvalues_ht = hl.Table.from_pandas(pd.DataFrame(eigenvalues, columns=['f0']))
 
-    hl.Table.from_pandas(eigenvalues_df).export(out_eigenvalues_path)
+    # fields = list(eigenvalues_df.columns)
+    # logger.info(f'fields: {fields}')
+    # pd_dtypes = eigenvalues_df.dtypes
+    # logger.info(f'pd_dtypes: {pd_dtypes}')
+    # hl_type_hints = {}
+    # for field in fields:
+    #     logger.info(f'  field: {field}')
+    #     type_hint = dtypes_from_pandas(pd_dtypes[field])
+    #     logger.info(f'  type_hint: {type_hint}')
+    #     if type_hint is not None:
+    #         hl_type_hints[field] = type_hint
+    # logger.info(f'hl_type_hints: {hl_type_hints}')
+    # partial_type_struct = hl.tstruct(**hl_type_hints)
+    # logger.info(f'partial_type_struct: {partial_type_struct}')
+    # partial_type = hl.tarray(str)
+    # logger.info(f'partial_type: {partial_type}')
+
+    eigenvalues_ht.write(out_eigenvalues_ht_path, overwrite=True)
     loadings_ht.write(out_loadings_ht_path, overwrite=True)
     scores_ht.write(out_scores_ht_path, overwrite=True)
     scores_ht = hl.read_table(out_scores_ht_path)

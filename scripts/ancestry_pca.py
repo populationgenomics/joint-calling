@@ -57,9 +57,9 @@ logger.setLevel(logging.INFO)
     help='Infer subcontinental ancestry (default is continental level)',
 )
 @click.option(
-    '--out-eigenvalues',
-    'out_eigenvalues_path',
-    callback=utils.get_validation_callback(ext='txt', must_exist=False),
+    '--out-eigenvalues-ht',
+    'out_eigenvalues_ht_path',
+    callback=utils.get_validation_callback(ext='ht', must_exist=False),
 )
 @click.option(
     '--out-scores-ht',
@@ -102,7 +102,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     related_samples_to_drop_ht_path: Optional[str],
     min_pop_prob: float,
     subcontinental: bool,
-    out_eigenvalues_path: str,
+    out_eigenvalues_ht_path: str,
     out_scores_ht_path: str,
     out_loadings_ht_path: str,
     out_inferred_pop_ht_path: str,
@@ -126,7 +126,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
         mt=mt,
         sample_to_drop_ht=related_samples_to_drop_ht,
         n_pcs=n_pcs,
-        out_eigenvalues_path=out_eigenvalues_path,
+        out_eigenvalues_ht_path=out_eigenvalues_ht_path,
         out_scores_ht_path=out_scores_ht_path,
         out_loadings_ht_path=out_loadings_ht_path,
         overwrite=overwrite,

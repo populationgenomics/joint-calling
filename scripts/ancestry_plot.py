@@ -37,10 +37,10 @@ logger.setLevel(logging.INFO)
     required=True,
 )
 @click.option(
-    '--eigenvalues',
-    'eigenvalues_path',
+    '--eigenvalues-ht',
+    'eigenvalues_ht_path',
     required=True,
-    callback=utils.get_validation_callback(ext='txt', must_exist=True),
+    callback=utils.get_validation_callback(ext='ht', must_exist=True),
 )
 @click.option(
     '--scores-ht',
@@ -69,7 +69,7 @@ logger.setLevel(logging.INFO)
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     meta_tsv_path: str,
-    eigenvalues_path: str,
+    eigenvalues_ht_path: str,
     scores_ht_path: str,
     loadings_ht_path: str,
     inferred_pop_ht_path: str,
@@ -81,7 +81,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     meta_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
 
     produce_plots(
-        eigenvalues_path=eigenvalues_path,
+        eigenvalues_ht_path=eigenvalues_ht_path,
         scores_ht_path=scores_ht_path,
         loadings_ht_path=loadings_ht_path,
         inferred_pop_ht_path=inferred_pop_ht_path,
@@ -117,7 +117,7 @@ FG_LABEL = 'Inferred ancestry'
 
 
 def produce_plots(
-    eigenvalues_path: str,
+    eigenvalues_ht_path: str,
     scores_ht_path: str,
     loadings_ht_path: str,
     inferred_pop_ht_path: str,
@@ -175,13 +175,11 @@ def produce_plots(
     ht = ht.annotate(pop=pop_full_names[ht.pop])
     ht = ht.cache()
 
-    eigenvalues_ht = hl.import_table(
-        eigenvalues_path, no_header=True, types={'f0': hl.tfloat}
-    ).f0.collect()
-    eigenvalues_ht = pd.to_numeric(eigenvalues_ht)
-    variance = np.divide(eigenvalues_ht[1:], float(eigenvalues_ht.sum())) * 100
+    eigenvalues = hl.read_table(eigenvalues_ht_path).f0.collect()
+    eigenvalues_df = pd.to_numeric(eigenvalues)
+    variance = np.divide(eigenvalues_df[1:], float(eigenvalues_df.sum())) * 100
     variance = variance.round(2)
-    number_of_pcs = number_of_pcs or len(eigenvalues_ht) - 1
+    number_of_pcs = number_of_pcs or len(eigenvalues_df) - 1
 
     plots = []
 

@@ -239,7 +239,7 @@ def exists_not_cached(path: Union[Path, str, None], verbose: bool = True) -> boo
 
 
 def can_reuse(
-    path: Union[List[Path], Path, str, None],
+    path: Union[List[Path], Path, str, List[str], None],
     overwrite: bool,
 ) -> bool:
     """

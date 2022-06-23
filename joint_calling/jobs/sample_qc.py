@@ -179,12 +179,12 @@ def add_sample_qc_jobs(
     job_name = 'PCA'
     ancestry_analysis_bucket = join(ancestry_bucket)
     ancestry_web_bucket = join(web_bucket, 'ancestry')
-    eigenvalues_path = join(ancestry_analysis_bucket, f'eigenvalues.txt')
+    eigenvalues_ht_path = join(ancestry_analysis_bucket, f'eigenvalues.ht')
     scores_ht_path = join(ancestry_analysis_bucket, f'scores.ht')
     loadings_ht_path = join(ancestry_analysis_bucket, f'loadings.ht')
     inferred_pop_ht_path = join(ancestry_bucket, 'inferred_pop.ht')
     if not can_reuse([
-        eigenvalues_path, scores_ht_path, loadings_ht_path,
+        eigenvalues_ht_path, scores_ht_path, loadings_ht_path,
         inferred_pop_ht_path
     ], overwrite):
         pca_job = add_job(
@@ -194,7 +194,7 @@ def add_sample_qc_jobs(
             f'--meta-tsv {samples_tsv_path} '
             f'--min-pop-prob {cutoffs_d["pca"]["min_pop_prob"]} '
             f'--n-pcs {num_ancestry_pcs} '
-            f'--out-eigenvalues {eigenvalues_path} '
+            f'--out-eigenvalues-ht {eigenvalues_ht_path} '
             f'--out-scores-ht {scores_ht_path} '
             f'--out-loadings-ht {loadings_ht_path} '
             f'--out-inferred-pop-ht {inferred_pop_ht_path} '
@@ -251,7 +251,7 @@ def add_sample_qc_jobs(
             b,
             f'{join(utils.SCRIPTS_DIR, "ancestry_plot.py")} '
             f'--meta-tsv {samples_tsv_path} '
-            f'--eigenvalues {eigenvalues_path} '
+            f'--eigenvalues-ht {eigenvalues_ht_path} '
             f'--scores-ht {scores_ht_path} '
             f'--loadings-ht {loadings_ht_path} '
             f'--inferred-pop-ht {inferred_pop_ht_path} '
