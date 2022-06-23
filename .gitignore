@@ -49,4 +49,4 @@ test/data/sample_maps/
 libs
 .vscode/
 
-notebooks
+*.ipynb
