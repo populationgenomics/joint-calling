@@ -65,9 +65,7 @@ def add_variant_qc_jobs(
         siteonly_ht_to_vcf_job = add_job(
             b,
             f'{utils.SCRIPTS_DIR}/siteonly_ht_to_vcf.py --overwrite '
-            f'--mt {raw_combined_mt_path} '
-            f'--meta-ht {meta_ht_path} '
-            f'--hard-filtered-samples-ht {hard_filter_ht_path} '
+            f'--ht {siteonly_ht_path} '
             f'-o {combined_vcf_path} ',
             num_workers=scatter_count,
             depends_on=depends_on + [annotate_as_job],

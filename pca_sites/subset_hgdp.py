@@ -8,14 +8,13 @@ import click
 import hail as hl
 
 
-SOMALIER_SITES_HT = 'gs://cpg-reference/hg38/somalier/v0/sites.hg38.vcf.gz'
 GNOMAD_HGDP_1KG_MT = (
     'gs://gcp-public-data--gnomad/release/3.1/mt/genomes/'
     'gnomad.genomes.v3.1.hgdp_1kg_subset_dense.mt'
 )
 
 VERSION = 'v3-90k'
-BUCKET = f'gs://cpg-reference/hg38/ancestry/{VERSION}'
+BUCKET = f'gs://cpg-reference/ancestry/{VERSION}'
 
 
 NUM_TEST_SAMPLES = 100
@@ -31,7 +30,7 @@ def main(pop: Optional[str]):  # pylint: disable=missing-function-docstring
     sites_ht_path = join(BUCKET, 'pca_sites.ht')
     if not hl.hadoop_exists(sites_ht_path):
         if USE_SOMALIER:
-            somalier_vcf_path = 'gs://cpg-reference/hg38/somalier/v0/sites.hg38.vcf.gz'
+            somalier_vcf_path = 'gs://cpg-reference/somalier/v0/sites.hg38.vcf.gz'
             somalier_ht = (
                 hl.import_vcf(somalier_vcf_path, reference_genome='GRCh38', force=True)
                 .rows()
@@ -39,7 +38,7 @@ def main(pop: Optional[str]):  # pylint: disable=missing-function-docstring
             )
             somalier_ht.write(sites_ht_path)
         else:
-            ht = hl.read_table('gs://cpg-reference/hg38/ancestry/v3/pca_sites_90k.ht')
+            ht = hl.read_table('gs://cpg-reference/ancestry/v3/pca_sites_90k.ht')
             ht = ht.key_by('locus')
             ht.write(sites_ht_path)
 

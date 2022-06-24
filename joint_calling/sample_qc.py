@@ -243,7 +243,7 @@ def infer_pop_labels(
         pop_ht = scores_ht.annotate(
             pop='oth',
             is_training=False,
-            pca_scores=hl.empty_array(hl.tfloat),
+            pca_scores=scores_ht.scores,
         )
         return pop_ht.checkpoint(out_ht_path, overwrite=True)
 
@@ -251,7 +251,6 @@ def infer_pop_labels(
         'Using calculated PCA scores as well as training samples with known '
         '`population` label to assign population labels to remaining samples'
     )
-
     scores_ht = scores_ht.annotate(
         training_pop=training_pop_ht[scores_ht.key].training_pop
     )
