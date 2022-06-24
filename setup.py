@@ -27,7 +27,7 @@ setuptools.setup(
         'click',
         'google-cloud-storage',
         'google-cloud-secret-manager',
-        'gnomad',
+        'cpg-gnomad',
         'analysis-runner',
     ],
     classifiers=[
