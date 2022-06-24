@@ -243,7 +243,7 @@ def infer_pop_labels(
         pop_ht = scores_ht.annotate(
             pop='oth',
             is_training=False,
-            pca_scores=[],
+            pca_scores=hl.empty_array(hl.tfloat),
         )
         return pop_ht.checkpoint(out_ht_path, overwrite=True)
 
