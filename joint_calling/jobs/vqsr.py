@@ -878,11 +878,11 @@ def add_snps_variant_recalibrator_step(
     # however, for smaller datasets we take a standard instance, and for larger
     # ones we take a highmem instance
     if is_small_callset:
-        mem_gb = 52  # 
+        mem_gb = 60  # hail would allocate 60G
         j.memory('standard')
     else:
         mem_gb = 104  # hail would allocate 104G
-        j.memory('standard')
+        j.memory('highmem')
     java_mem = mem_gb - 2
 
     j.storage(f'{disk_size}G')
