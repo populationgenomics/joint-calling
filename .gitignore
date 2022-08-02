@@ -50,3 +50,4 @@ libs
 .vscode/
 
 *.ipynb
+nagim_qc.Rmd
