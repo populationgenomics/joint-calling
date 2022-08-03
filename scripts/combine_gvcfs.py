@@ -8,21 +8,24 @@ import os
 from typing import List, Optional
 import logging
 import shutil
-import collections
 
 import click
+import pandas as pd
+
 import hail as hl
+
+from cpg_utils import to_path
+
 from hail.experimental.vcf_combiner import vcf_combiner
 from hail.experimental.vcf_combiner.vcf_combiner import CombinerConfig
 
-from joint_calling.utils import get_validation_callback
-from joint_calling import utils
-from joint_calling import _version
+from larcoh.utils import exists, check_duplicates
+
 
 logger = logging.getLogger('combine_gvcfs')
 logger.setLevel('INFO')
 
-DEFAULT_REF = 'GRCh38'
+
 # The target number of rows per partition during each round of merging
 TARGET_RECORDS = 25_000
 
@@ -31,19 +34,16 @@ MAX_PARTITIONS = 2586
 
 
 @click.command()
-@click.version_option(_version.__version__)
 @click.option(
-    '--meta-tsv',
-    'meta_tsv_path',
+    '--sample-gvcf-tsv',
+    'sample_gvcf_tsv_path',
     required=True,
-    callback=get_validation_callback(ext='tsv'),
     help='Sample data TSV path, to get samples names from the "s" column',
 )
 @click.option(
     '--out-mt',
     'out_mt_path',
     required=True,
-    callback=get_validation_callback(ext='mt'),
     help='path to write the combined MatrixTable',
 )
 @click.option(
@@ -66,7 +66,6 @@ MAX_PARTITIONS = 2586
 @click.option(
     '--existing-mt',
     'existing_mt_path',
-    callback=get_validation_callback(ext='mt', must_exist=True),
     help='optional path to an existing MatrixTable. '
     'If provided, will be read and used as a base to get extended with the '
     'samples in the input sample map. Can be read-only, as it will not '
@@ -86,34 +85,27 @@ MAX_PARTITIONS = 2586
     help='local directory for temporary files and Hail logs (must be local).',
 )
 @click.option(
-    '--overwrite/--reuse',
-    'overwrite',
-    is_flag=True,
-    help='if an intermediate or a final file exists, skip running the code '
-    'that generates it.',
-)
-@click.option(
-    '--hail-billing',
-    'hail_billing',
-    help='Hail billing account ID.',
-)
-@click.option(
     '--n-partitions',
     'n_partitions',
     type=click.INT,
     help='Number of partitions for the output matrix table',
 )
+@click.option(
+    '--is-exome',
+    'is_exome',
+    is_flag=True,
+    default=False,
+)
 def main(
-    meta_tsv_path: str,
+    sample_gvcf_tsv_path: str,
     out_mt_path: str,
     branch_factor: int,
     batch_size: int,
     existing_mt_path: Optional[str],
     tmp_bucket: str,
     local_tmp_dir: str,
-    overwrite: bool,  # pylint: disable=unused-argument
-    hail_billing: str,  # pylint: disable=unused-argument
     n_partitions: Optional[int],
+    is_exome: bool,
 ):  # pylint: disable=missing-function-docstring
     if n_partitions:
         if n_partitions >= 2586:
@@ -122,15 +114,14 @@ def main(
                 f'number of partitions), got {n_partitions}'
             )
 
-    local_tmp_dir = utils.init_hail('combine_gvcfs', local_tmp_dir)
-    logger.info(f'Combining GVCFs')
-
-    new_ht = utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
-
-    sample_names = new_ht.s.collect()
-    gvcfs = new_ht.gvcf.collect()
-    _check_duplicates(sample_names)
-    _check_duplicates(gvcfs)
+    hl.init(default_reference='GRCh38')
+    logger.info(f'Combining GVCFs. Reading input paths from {sample_gvcf_tsv_path}')
+    with to_path(sample_gvcf_tsv_path).open() as f:
+        df = pd.read_table(f)
+    sample_names = df.s
+    gvcf_paths = df.gvcf
+    check_duplicates(sample_names)
+    check_duplicates(gvcf_paths)
     print(f'Combining {len(sample_names)} samples: {", ".join(sample_names)}')
 
     if n_partitions is not None or existing_mt_path is not None:
@@ -139,16 +130,16 @@ def main(
         new_mt_path = os.path.join(tmp_bucket, 'new.mt')
     else:
         new_mt_path = out_mt_path
-    
-    if not utils.file_exists(new_mt_path):
+
+    if not exists(new_mt_path):
         combine_gvcfs(
-            gvcf_paths=gvcfs,
+            gvcf_paths=gvcf_paths,
             sample_names=sample_names,
             out_mt_path=new_mt_path,
             tmp_bucket=tmp_bucket,
             branch_factor=branch_factor,
             batch_size=batch_size,
-            overwrite=True,
+            is_exome=is_exome,
         )
     new_mt = hl.read_matrix_table(new_mt_path)
     _log_mt_write(new_mt, new_mt_path)
@@ -181,17 +172,6 @@ def _log_mt_write(mt, path):
     )
 
 
-def _check_duplicates(items):
-    duplicates = [
-        item for item, count 
-        in collections.Counter(items).items() 
-        if count > 1
-    ]
-    if duplicates:
-        raise ValueError(f'Found {len(duplicates)} duplicats: {duplicates}')
-    return duplicates
-
-
 def _combine_with_the_existing_mt(
     existing_mt_path: str,
     # passing as a path because we are going
@@ -203,7 +183,7 @@ def _combine_with_the_existing_mt(
     intervals = vcf_combiner.calculate_new_intervals(
         existing_mt.rows(),
         n=TARGET_RECORDS,
-        reference_genome=DEFAULT_REF,
+        reference_genome='GRCh38',
     )
     new_mt = hl.read_matrix_table(new_mt_path, _intervals=intervals).key_rows_by(
         'locus'
@@ -225,7 +205,7 @@ def combine_gvcfs(
     tmp_bucket: str,
     branch_factor: int,
     batch_size: int,
-    overwrite: bool = True,
+    is_exome: bool = False,
 ):
     """
     Combine a set of GVCFs in one go
@@ -238,10 +218,11 @@ def combine_gvcfs(
         # the last line starting with # 
         header=gvcf_paths[0],
         out_file=out_mt_path,
-        reference_genome=utils.DEFAULT_REF,
-        use_genome_default_intervals=True,
+        reference_genome='GRCh38',
+        use_genome_default_intervals=not is_exome,
+        use_exome_default_intervals=is_exome,
         tmp_path=tmp_bucket,
-        overwrite=overwrite,
+        overwrite=True,
         key_by_locus_and_alleles=True,
         branch_factor=branch_factor,
         batch_size=batch_size,

@@ -6,16 +6,15 @@ import setuptools
 
 
 setuptools.setup(
-    name='joint-calling',
+    name='larcoh',
     version='0.4.39',
     description='Pipeline for joint calling, sample and variant QC for WGS germline '
-    'variant calling data',
+    'variant calling data in large cohorts',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
     url='https://github.com/populationgenomics/joint-calling',
     license='MIT',
-    packages=['joint_calling'],
-    package_data={'joint_calling': ['filter_cutoffs.yaml']},
+    packages=['larcoh'],
     include_package_data=True,
     zip_safe=False,
     scripts=[join('scripts', fp) for fp in os.listdir('scripts') if fp.endswith('.py')],
@@ -23,7 +22,7 @@ setuptools.setup(
     install_requires=[
         'cpg-utils',
         'pandas',
-        'hail>=0.2.91',
+        'hail>=0.2.97',
         'click',
         'google-cloud-storage',
         'google-cloud-secret-manager',

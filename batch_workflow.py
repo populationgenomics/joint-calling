@@ -265,7 +265,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     analysis_bucket = ptrn.format(suffix=output_analysis_suffix)
     web_bucket = ptrn.format(suffix=web_bucket_suffix)
     raw_combined_mt_path = f'{analysis_bucket}/combiner/{output_version}-raw.mt'
-    
+
     if raw_combined_mt_version:
         prev_ptrn = f'gs://cpg-{analysis_project}-{{suffix}}/joint-calling/{raw_combined_mt_version}'
         prev_analysis_bucket = prev_ptrn.format(suffix=output_analysis_suffix)
@@ -345,7 +345,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-stateme
     # To add a 50-worker policy for a project "prophecy-339301":
     # ```
     # gcloud dataproc autoscaling-policies import vcf-combiner-50 \
-    # --source=combiner-autoscaling-policiy-50.yaml --region=australia-southeast1 \
+    # --source=combiner-autoscaling-policy-50.yaml --region=australia-southeast1 \
     # --project prophecy-339301
     # ```
     if scatter_count > 100:

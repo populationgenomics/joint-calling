@@ -1,0 +1,18 @@
+[workflow]
+access_level = 'test'
+dataset = 'prophecy'
+datasets = ['prophecy']
+output_version = '0.1'
+check_inputs = true
+check_expected_outputs = true
+keep_scratch = true
+sequencing_type = 'genome'
+dataset_gcp_project = 'prophecy-339301'
+skip_samples = [
+  'CPG216275',  # https://batch.hail.populationgenomics.org.au/batches/74382
+  'CPG216010',  # https://batch.hail.populationgenomics.org.au/batches/74382
+]
+
+[hail]
+pool_label = 'large-cohort'
+billing_project = 'prophecy'
