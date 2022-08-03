@@ -83,7 +83,7 @@ class Task:
         self,
         name: str,
         work_fn: Callable[['Task'], list[Job]],
-        pipeline: Pipeline,
+        pipeline: 'Pipeline',
         inputs: list[Path] | None = None,
         outputs: list[Path] | None = None,
     ):

@@ -147,7 +147,7 @@ class RegisteringBatch(hb.Batch):
         copy_common_env(j)
         return j
 
-    def run(self, **kwargs):
+    def run(self):
         """
         Execute a batch. Overridden to print pre-submission statistics.
         """
@@ -182,7 +182,6 @@ class RegisteringBatch(hb.Batch):
             delete_scratch_on_exit=get_config()['hail'].get(
                 'delete_scratch_on_exit', False
             ),
-            **kwargs,
         )
 
 

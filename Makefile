@@ -1,8 +1,3 @@
-TOB_WGS_VERSION := v7-2
-TOB_WGS_TEST_VERSION := v7
-
-REUSE_ARG := --reuse
-
 default: patch package
 
 .PHONY: patch
@@ -25,80 +20,6 @@ package:
 sleep:
 	sleep 60
 
-.PHONY: 1kg_main
-1kg_main:
-	python batch_workflow.py \
-	--scatter-count 50 \
-	--namespace main \
-	--analysis-project thousand-genomes \
-	--input-project thousand-genomes \
-	--output-version v1-0 \
-	--keep-scratch
-
-.PHONY: 1kg_concordance_test
-1kg_concordance_test:
-	python batch_workflow.py \
-	--scatter-count 20 \
-	--namespace test \
-	--analysis-project thousand-genomes \
-	--input-project thousand-genomes \
-	--output-version 1kg_concordance_test \
-	--keep-scratch
-
-.PHONY: tob_wgs_tmp
-tob_wgs_tmp:
-	analysis-runner \
-	--dataset tob-wgs \
-	--output-dir "joint-calling/test-to-tmp" \
-	--description "Joint calling test-to-tmp" \
-	--access-level test \
-	batch_workflow.py \
-	--scatter-count $(SCATTER_COUNT_TEST) \
-	--namespace tmp \
-	--input-project tob-wgs \
-	--analysis-project tob-wgs \
-	--output-version $(TOB_WGS_TEST_VERSION) \
-	--keep-scratch \
-	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/reported_sex.tsv::1::2 \
-	--age-file gs://cpg-tob-wgs-main-analysis/metadata/age.csv::0::1 \
-	--age-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::3 \
-	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::4 \
-	$(REUSE_ARG)
-
-.PHONY: tob_wgs_test
-tob_wgs_test:
-	python batch_workflow.py \
-	--namespace test \
-	--input-project tob-wgs \
-	--analysis-project tob-wgs \
-	--output-version $(TOB_WGS_VERSION) \
-	--keep-scratch \
-	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/reported_sex.tsv::1::2 \
-	--age-file gs://cpg-tob-wgs-main-analysis/metadata/age.csv::0::1 \
-	--age-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::3 \
-	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::4 \
-	--scatter-count 20 \
-	--assume-gvcfs-are-ready \
-	$(REUSE_ARG)
-
-.PHONY: tob_wgs_main
-tob_wgs_main:
-	python batch_workflow.py \
-	--namespace main \
-	--input-project tob-wgs \
-	--analysis-project tob-wgs \
-	--output-version $(TOB_WGS_VERSION) \
-	--keep-scratch \
-	--skip-somalier \
-	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/reported_sex.tsv::1::2 \
-	--age-file gs://cpg-tob-wgs-main-analysis/metadata/age.csv::0::1 \
-	--age-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::3 \
-	--reported-sex-file gs://cpg-tob-wgs-main-analysis/metadata/topup_age_sex.tsv::1::4 \
-	--scatter-count 50 \
-	--source-tag bwamem \
-	--assume-gvcfs-are-ready \
-	$(REUSE_ARG)
-
 .PHONY: nagim_test
 nagim_test:
 	python batch_workflow.py \
@@ -119,7 +40,6 @@ nagim_test:
 	--output-version v1-4 \
 	--assume-gvcfs-are-ready \
 	--scatter-count 50
-
 
 # 13893 / 70 ~ 200 batches
 #	--combiner-branch-factor 70 \
