@@ -29,6 +29,7 @@ setuptools.setup(
         'click',
         'google-cloud-storage',
         'google-cloud-secret-manager',
+        'coloredlogs',
     ],
     classifiers=[
         'Environment :: Console',

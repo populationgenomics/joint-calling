@@ -13,7 +13,13 @@ from cpg_utils.hail_batch import dataset_path, web_url
 from cpg_utils.config import get_config
 from cpg_utils import Path, to_path
 
-from .types import AlignmentInput, CramPath, GvcfPath, SequencingType, FastqPairs
+from larcoh.filetypes import (
+    AlignmentInput,
+    CramPath,
+    GvcfPath,
+    SequencingType,
+    FastqPairs,
+)
 
 logger = logging.getLogger(__file__)
 
@@ -190,7 +196,7 @@ class Cohort(Target):
 
         self._datasets_by_name[ds.name] = ds
         return ds
-    
+
     def get_job_attrs(self) -> dict:
         """
         Attributes for Hail Batch job.
@@ -199,7 +205,7 @@ class Cohort(Target):
             'samples': self.get_sample_ids(),
             'datasets': [d.name for d in self.get_datasets()],
         }
-    
+
     def get_job_prefix(self) -> str:
         """
         Prefix job names.
@@ -536,11 +542,15 @@ class Sample(Target):
         """
         return CramPath(self.dataset.prefix() / 'cram' / f'{self.id}.cram')
 
-    def get_gvcf_path(self) -> GvcfPath:
+    def get_gvcf_path(self, access_level: str | None = None) -> GvcfPath:
         """
         Path to a GVCF file. Not checking its existence here.
         """
-        return GvcfPath(self.dataset.prefix() / 'gvcf' / f'{self.id}.g.vcf.gz')
+        return GvcfPath(
+            self.dataset.prefix(access_level=access_level)
+            / 'gvcf'
+            / f'{self.id}.g.vcf.gz'
+        )
 
     @property
     def target_id(self) -> str:

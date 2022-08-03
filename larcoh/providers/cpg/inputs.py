@@ -14,8 +14,8 @@ from sample_metadata import ApiException
 
 from .metamist import Metamist, MmSequence
 from ..inputs import InputProvider, InputProviderError
-from ...targets import Cohort, Sex, PedigreeInfo, Dataset
-from ...types import SequencingType, FastqPairs, FastqPair, CramPath
+from larcoh.targets import Cohort, Sex, PedigreeInfo, Dataset
+from larcoh.filetypes import SequencingType, FastqPairs, FastqPair, CramPath
 
 logger = logging.getLogger(__file__)
 
@@ -57,34 +57,6 @@ class CpgInputProvider(InputProvider):
             skip_datasets=skip_datasets,
             ped_files=ped_files,
         )
-        if (
-            cohort.sequencing_type
-            and cohort.sequencing_type == SequencingType.GENOME
-            and get_config()['workflow'].get('add_validation_dataset')
-        ):
-            validation_dataset = cohort.create_dataset('validation')
-            validation_dataset.add_sample(
-                'NA12878_KCCG',
-                alignment_input_by_seq_type={
-                    SequencingType.GENOME: FastqPairs(
-                        [
-                            FastqPair(
-                                'gs://cpg-validation-main-upload/HCMVGDSX3_1_220405_FD07777372_Homo-sapiens_TCCGCCAATT-CAGCACGGAG_R_220405_CNTROL_DNA_M001_R1.fastq.gz',
-                                'gs://cpg-validation-main-upload/HCMVGDSX3_1_220405_FD07777372_Homo-sapiens_TCCGCCAATT-CAGCACGGAG_R_220405_CNTROL_DNA_M001_R2.fastq.gz',
-                            )
-                        ]
-                    )
-                },
-            )
-            validation_dataset.add_sample(
-                'SYNDIP',
-                alignment_input_by_seq_type={
-                    SequencingType.GENOME: CramPath(
-                        'gs://cpg-reference/validation/syndip/raw/CHM1_CHM13_2.bam',
-                        'gs://cpg-reference/validation/syndip/raw/CHM1_CHM13_2.bam.bai',
-                    )
-                },
-            )
 
     def get_entries(
         self,
@@ -198,9 +170,7 @@ class CpgInputProvider(InputProvider):
         for sample in cohort.get_samples():
             for d in found_seqs_by_sid.get(sample.id, []):
                 seq = MmSequence.parse(d, self.check_files)
-                sample.sequencing_meta_by_type[
-                    seq.sequencing_type
-                ] = seq.meta or {}
+                sample.sequencing_meta_by_type[seq.sequencing_type] = seq.meta or {}
 
                 if seq.alignment_input:
                     if seq.sequencing_type in sample.alignment_input_by_seq_type:
@@ -255,11 +225,10 @@ class CpgInputProvider(InputProvider):
                 part_id = str(ped_entry['individual_id'])
                 ped_entry_by_participant_id[part_id] = ped_entry
 
+            missing_pedigree = []
             for sample in dataset.get_samples():
                 if sample.participant_id not in ped_entry_by_participant_id:
-                    logger.warning(
-                        f'No pedigree data for participant {sample.participant_id}'
-                    )
+                    missing_pedigree.append(sample.participant_id)
                     continue
 
                 ped_entry = ped_entry_by_participant_id[sample.participant_id]
@@ -276,6 +245,10 @@ class CpgInputProvider(InputProvider):
                     dad=paternal_sample,
                     sex=Sex.parse(str(ped_entry['sex'])),
                     phenotype=ped_entry['affected'] or '0',
+                )
+            if missing_pedigree:
+                logger.warning(
+                    f'No pedigree data found for {len(missing_pedigree)} samples'
                 )
 
         for dataset in cohort.get_datasets():

@@ -66,27 +66,29 @@ class Combiner(Task):
         else:
             autoscaling_workers = '50'
 
-        for sample in self.pipeline.cohort.get_samples():
-            if get_config()['workflow'].get('check_inputs', True) and not exists(
-                sample.get_gvcf_path()
-            ):
-                if get_config()['workflow'].get(
-                    'skip_samples_with_missing_input', False
-                ):
-                    logger.warning(f'Sample {sample} is missing GVCF, skipping it')
-                    sample.active = False
-                else:
-                    raise ValueError(
-                        f'Sample {sample} is missing GVCF. '
-                        f'Use workflow/skip_samples = [] or '
-                        f'workflow/skip_samples_with_missing_input '
-                        f'to control behaviour'
-                    )
+        for i, sample in enumerate(self.pipeline.cohort.get_samples()):
+            gvcf_path = sample.get_gvcf_path(access_level='standard')
+            if get_config()['workflow'].get('check_inputs', True):
+                if not exists(gvcf_path, description=i):
+                    if get_config()['workflow'].get(
+                        'skip_samples_with_missing_input', False
+                    ):
+                        logger.warning(
+                            f'Skipping {sample} that is missing GVCF {gvcf_path}'
+                        )
+                        sample.active = False
+                    else:
+                        raise ValueError(
+                            f'Sample {sample} is missing GVCF. '
+                            f'Use workflow/skip_samples = [] or '
+                            f'workflow/skip_samples_with_missing_input '
+                            f'to control behaviour'
+                        )
 
         combiner_tmp_prefix = self.pipeline.tmp_prefix / 'combiner'
         sample_gvcf_tsv_path = combiner_tmp_prefix / 'sample_gvcf.tsv'
         df = pd.DataFrame(
-            {'s': sample.id, 'gvcf': sample.get_gvcf_path()}
+            {'s': sample.id, 'gvcf': sample.get_gvcf_path(access_level='standard')}
             for sample in self.pipeline.cohort.get_samples()
         ).set_index('s', drop=False)
         _check_duplicates(df.s)
@@ -99,9 +101,9 @@ class Combiner(Task):
             f'{", ".join(self.pipeline.cohort.get_sample_ids())}'
         )
 
-        branch_factor = get_config()['combiner'].get('branch_factor')
-        batch_size = get_config()['combiner'].get('batch_size')
-        highmem_workers = get_config()['workflow'].get('highmem_workers')
+        branch_factor = get_config().get('combiner', {}).get('branch_factor')
+        batch_size = get_config().get('combiner', {}).get('batch_size')
+        highmem_workers = get_config().get('dataproc', {}).get('highmem_workers')
         return add_job(
             self.pipeline.b,
             script=(

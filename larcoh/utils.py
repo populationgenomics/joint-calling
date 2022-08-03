@@ -36,7 +36,9 @@ DATAPROC_PACKAGES = [
 
 
 @lru_cache
-def exists(path: Path | str, verbose: bool = True) -> bool:
+def exists(
+    path: Path | str, verbose: bool = True, description: str | None = None
+) -> bool:
     """
     Caching version of the existence check.
     The python code runtime happens entirely during the pipeline submittion,
@@ -47,7 +49,9 @@ def exists(path: Path | str, verbose: bool = True) -> bool:
     return exists_not_cached(path, verbose)
 
 
-def exists_not_cached(path: Path | str, verbose: bool = True) -> bool:
+def exists_not_cached(
+    path: Path | str, verbose: bool = True, description: str | None = None
+) -> bool:
     """
     Check if the object exists, where the object can be:
         * local file
@@ -58,8 +62,11 @@ def exists_not_cached(path: Path | str, verbose: bool = True) -> bool:
           *.mt/_SUCCESS or *.ht/_SUCCESS file.
     @param path: path to the file/directory/object/mt/ht
     @param verbose: print on each check
+    @param description: optional string to print in verbose mode
     @return: True if the object exists
     """
+    extra_msg = '' if not description else f' ({description})'
+
     path = cast(Path, to_path(path))
 
     # rstrip to ".mt/" -> ".mt"
@@ -72,9 +79,11 @@ def exists_not_cached(path: Path | str, verbose: bool = True) -> bool:
             res = path.exists()
         except BaseException:
             traceback.print_exc()
-            logger.error(f'Failed checking {path}')
+            logger.error(f'Failed checking {path}' + extra_msg)
             sys.exit(1)
-        logger.debug(f'Checked {path} [' + ('exists' if res else 'missing') + ']')
+        logger.debug(
+            f'Checked {path} [' + ('exists' if res else 'missing') + ']' + extra_msg
+        )
         return res
     return path.exists()
 

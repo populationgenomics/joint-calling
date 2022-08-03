@@ -4,30 +4,9 @@ import logging
 from larcoh.pipeline import Pipeline
 from larcoh.targets import Cohort
 from larcoh.tasks.combiner import Combiner
-from larcoh.types import SequencingType
+from larcoh.filetypes import SequencingType
 
 logger = logging.getLogger(__file__)
-
-
-def subset_to_test(
-    cohort: Cohort,
-    dataset: str | None = None,
-):
-    """
-    Function that subsets the cohort for test runs. By default, takes 30 samples.
-    Also take optional dataset name for custom subset code.
-    """
-    if dataset == 'prophecy':
-        # Test dataset: collecting all batch1 samples, plus 4 samples from each of other batches
-        samples_by_batch: dict[str, list] = collections.defaultdict(list)
-        for sample in cohort.get_samples():
-            batch = sample.sequencing_meta_by_type[SequencingType.GENOME]['batch']
-            print(
-                sample, sample.sequencing_meta_by_type[SequencingType.GENOME]['batch']
-            )
-            if batch != '1' and len(samples_by_batch[batch]) > 4:
-                sample.active = False
-            samples_by_batch[batch].append(sample)
 
 
 def main():

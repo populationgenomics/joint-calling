@@ -10,8 +10,14 @@ from enum import Enum
 from cpg_utils import Path
 
 from larcoh.utils import exists
-from larcoh.types import FastqPair, CramPath, AlignmentInput, FastqPairs
-from larcoh.targets import Cohort, Dataset, Sex, SequencingType, PedigreeInfo
+from larcoh.filetypes import (
+    SequencingType,
+    FastqPair,
+    CramPath,
+    AlignmentInput,
+    FastqPairs,
+)
+from larcoh.targets import Cohort, Dataset, Sex, PedigreeInfo
 
 logger = logging.getLogger(__file__)
 

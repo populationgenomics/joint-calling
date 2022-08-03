@@ -2,18 +2,16 @@
 Wrappers for bioinformatics file types (CRAM, GVCF, FASTQ, etc).
 """
 
-import logging
+from enum import Enum
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum
 from typing import Union, Optional
 
 from hailtop.batch import ResourceGroup, ResourceFile, Batch
 
 from cpg_utils import Path, to_path
-from larcoh import utils
 
-logger = logging.getLogger(__file__)
+from larcoh import utils
 
 
 class SequencingType(Enum):

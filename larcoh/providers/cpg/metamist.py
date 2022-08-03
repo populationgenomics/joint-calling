@@ -17,7 +17,13 @@ from sample_metadata.apis import (
 )
 
 from larcoh import utils
-from larcoh.types import FastqPair, CramPath, AlignmentInput, SequencingType, FastqPairs
+from larcoh.filetypes import (
+    FastqPair,
+    CramPath,
+    AlignmentInput,
+    SequencingType,
+    FastqPairs,
+)
 
 logger = logging.getLogger(__file__)
 
