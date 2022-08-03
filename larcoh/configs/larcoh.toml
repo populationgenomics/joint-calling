@@ -21,3 +21,7 @@ min_pop_prob = 0.5
 # based on the model's estimated sensitivity to a set of true variants.
 snp_filter_level = 99.7
 indel_filter_level = 99.0
+
+[hail]
+pool_label = 'large-cohort'
+delete_scratch_on_exit = false

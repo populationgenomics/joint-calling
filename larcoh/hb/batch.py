@@ -179,7 +179,9 @@ class RegisteringBatch(hb.Batch):
 
         return super().run(
             dry_run=get_config()['hail'].get('dry_run', False),
-            delete_scratch_on_exit=not get_config()['hail'].get('keep_scratch', True),
+            delete_scratch_on_exit=get_config()['hail'].get(
+                'delete_scratch_on_exit', False
+            ),
             **kwargs,
         )
 

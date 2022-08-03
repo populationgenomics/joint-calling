@@ -21,13 +21,14 @@ setuptools.setup(
     keywords='bioinformatics',
     install_requires=[
         'cpg-utils',
-        'pandas',
+        'analysis-runner',
+        'sample_metadata',
         'hail>=0.2.97',
+        'cpg-gnomad',
+        'pandas',
         'click',
         'google-cloud-storage',
         'google-cloud-secret-manager',
-        'cpg-gnomad',
-        'analysis-runner',
     ],
     classifiers=[
         'Environment :: Console',

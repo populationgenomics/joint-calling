@@ -75,9 +75,7 @@ class Pipeline:
         )
 
     def run(self):
-        dry_run = get_config()['workflow'].get('dry_run', False)
-        keep_scratch = get_config()['workflow'].get('keep_scratch', True)
-        self.b.run(dry_run=dry_run, delete_scratch_on_exit=not keep_scratch, wait=False)
+        self.b.run()
 
 
 class Task:
