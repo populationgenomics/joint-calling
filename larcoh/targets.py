@@ -212,6 +212,25 @@ class Cohort(Target):
         """
         return ''
 
+    def to_tsv(self) -> str:
+        """
+        Export to a parsable TSV file
+        """
+        tsv_path = self.analysis_dataset.tmp_prefix() / 'samples.tsv'
+        df = pd.DataFrame(
+            {
+                's': s.id,
+                'gvcf': s.gvcf or '-',
+                'sex': s.meta.get('sex') or '-',
+                'continental_pop': s.meta.get('continental_pop') or '-',
+                'subcontinental_pop': s.meta.get('subcontinental_pop') or '-',
+            }
+            for s in self.get_samples()
+        ).set_index('s', drop=False)
+        with to_path(tsv_path).open('w') as f:
+            df.to_csv(f, index=False, sep='\t', na_rep='NA')
+        return tsv_path
+
 
 class Dataset(Target):
     """
@@ -454,6 +473,9 @@ class Sample(Target):
         self.sequencing_meta_by_type: dict[SequencingType, dict] = {}
         self.forced = forced
         self.active = True
+        # Only set if the file exists / found in Metamist:
+        self.gvcf: GvcfPath | None = None
+        self.cram: CramPath | None = None
 
     def __repr__(self):
         values = {
@@ -536,13 +558,13 @@ class Sample(Target):
             'Phenotype': '0',
         }
 
-    def get_cram_path(self) -> CramPath:
+    def make_cram_path(self) -> CramPath:
         """
         Path to a CRAM file. Not checking its existence here.
         """
         return CramPath(self.dataset.prefix() / 'cram' / f'{self.id}.cram')
 
-    def get_gvcf_path(self, access_level: str | None = None) -> GvcfPath:
+    def make_gvcf_path(self, access_level: str | None = None) -> GvcfPath:
         """
         Path to a GVCF file. Not checking its existence here.
         """

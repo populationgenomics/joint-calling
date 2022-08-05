@@ -147,7 +147,7 @@ class RegisteringBatch(hb.Batch):
         copy_common_env(j)
         return j
 
-    def run(self):
+    def run(self, **kwargs):
         """
         Execute a batch. Overridden to print pre-submission statistics.
         """
@@ -177,12 +177,15 @@ class RegisteringBatch(hb.Batch):
         if get_config().get('dry_run', False):
             return
 
-        return super().run(
+        config_kwargs = dict(
             dry_run=get_config()['hail'].get('dry_run', False),
             delete_scratch_on_exit=get_config()['hail'].get(
                 'delete_scratch_on_exit', False
             ),
+            wait=False,
         )
+        kwargs = config_kwargs | kwargs
+        return super().run(**kwargs)
 
 
 def setup_batch(description: str) -> RegisteringBatch:

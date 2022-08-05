@@ -35,10 +35,10 @@ MAX_PARTITIONS = 2586
 
 @click.command()
 @click.option(
-    '--sample-gvcf-tsv',
-    'sample_gvcf_tsv_path',
+    '--cohort-tsv',
+    'cohort_tsv_path',
     required=True,
-    help='Sample data TSV path, to get samples names from the "s" column',
+    help='Path to a TSV files with sample metadata. Expected fields: s, gvcf',
 )
 @click.option(
     '--out-mt',
@@ -61,7 +61,7 @@ MAX_PARTITIONS = 2586
     type=click.INT,
     default=CombinerConfig.default_phase1_batch_size,
     help='Combiner batch size for phase1 (size of each batch of gvcfs to process '
-         'in 1 job)',
+    'in 1 job)',
 )
 @click.option(
     '--existing-mt',
@@ -73,16 +73,11 @@ MAX_PARTITIONS = 2586
     'provided with --out-mt',
 )
 @click.option(
-    '--tmp-bucket',
-    'tmp_bucket',
+    '--tmp-prefix',
+    'tmp_prefix',
     required=True,
     help='path to folder for intermediate output. '
     'Can be a Google Storage URL (i.e. start with `gs://`).',
-)
-@click.option(
-    '--local-tmp-dir',
-    'local_tmp_dir',
-    help='local directory for temporary files and Hail logs (must be local).',
 )
 @click.option(
     '--n-partitions',
@@ -97,12 +92,12 @@ MAX_PARTITIONS = 2586
     default=False,
 )
 def main(
-    sample_gvcf_tsv_path: str,
+    cohort_tsv_path: str,
     out_mt_path: str,
     branch_factor: int,
     batch_size: int,
     existing_mt_path: Optional[str],
-    tmp_bucket: str,
+    tmp_prefix: str,
     local_tmp_dir: str,
     n_partitions: Optional[int],
     is_exome: bool,
@@ -115,8 +110,8 @@ def main(
             )
 
     hl.init(default_reference='GRCh38')
-    logger.info(f'Combining GVCFs. Reading input paths from {sample_gvcf_tsv_path}')
-    with to_path(sample_gvcf_tsv_path).open() as f:
+    logger.info(f'Combining GVCFs. Reading input paths from {cohort_tsv_path}')
+    with to_path(cohort_tsv_path).open() as f:
         df = pd.read_table(f)
     sample_names = df.s
     gvcf_paths = df.gvcf
@@ -127,7 +122,7 @@ def main(
     if n_partitions is not None or existing_mt_path is not None:
         # We are going to re-partition later, so writing the
         # matrix table into tmp:
-        new_mt_path = os.path.join(tmp_bucket, 'new.mt')
+        new_mt_path = os.path.join(tmp_prefix, 'new.mt')
     else:
         new_mt_path = out_mt_path
 
@@ -136,7 +131,7 @@ def main(
             gvcf_paths=gvcf_paths,
             sample_names=sample_names,
             out_mt_path=new_mt_path,
-            tmp_bucket=tmp_bucket,
+            tmp_bucket=tmp_prefix,
             branch_factor=branch_factor,
             batch_size=batch_size,
             is_exome=is_exome,
@@ -151,7 +146,7 @@ def main(
             existing_mt_path=existing_mt_path,
             new_mt_path=new_mt_path,
         )
-        
+
     mt = new_plus_existing_mt or new_mt
     if n_partitions is not None:
         mt = mt.repartition(n_partitions)
@@ -163,8 +158,8 @@ def main(
         _log_mt_write(mt, out_mt_path)
 
     shutil.rmtree(local_tmp_dir)
-    
-    
+
+
 def _log_mt_write(mt, path):
     logger.info(
         f'Written {mt.cols().count()} new samples to {path}, '
@@ -214,8 +209,8 @@ def combine_gvcfs(
         gvcf_paths,
         sample_names=sample_names,
         # header must be used with sample_names, otherwise sample_names will be ignored
-        # first gvcf path is fine as a header because it will be read until 
-        # the last line starting with # 
+        # first gvcf path is fine as a header because it will be read until
+        # the last line starting with #
         header=gvcf_paths[0],
         out_file=out_mt_path,
         reference_genome='GRCh38',

@@ -12,10 +12,10 @@ from cpg_utils import Path
 
 from sample_metadata import ApiException
 
-from .metamist import Metamist, MmSequence
+from .metamist import Metamist, MmSequence, AnalysisType
 from ..inputs import InputProvider, InputProviderError
 from larcoh.targets import Cohort, Sex, PedigreeInfo, Dataset
-from larcoh.filetypes import SequencingType, FastqPairs, FastqPair, CramPath
+from larcoh.filetypes import SequencingType, FastqPairs, FastqPair, CramPath, GvcfPath
 
 logger = logging.getLogger(__file__)
 
@@ -188,7 +188,16 @@ class CpgInputProvider(InputProvider):
         """
         Populate Analysis entries.
         """
-        pass
+        for dataset in cohort.get_datasets():
+            gvcf_analysis_by_sid = self.db.find_analyses_by_sid(
+                sample_ids=dataset.get_sample_ids(),
+                analysis_type=AnalysisType.GVCF,
+                project_name=dataset.name,
+            )
+            for s in dataset.get_samples():
+                analysis = gvcf_analysis_by_sid.get(s.id)
+                if analysis:
+                    s.gvcf = GvcfPath(analysis.output)
 
     def populate_participants(self, cohort: Cohort) -> None:
         """

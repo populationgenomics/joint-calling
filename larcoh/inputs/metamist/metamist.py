@@ -7,7 +7,8 @@ import pprint
 from dataclasses import dataclass
 from enum import Enum
 
-from cpg_utils import to_path
+from cpg_utils import to_path, Path
+from sample_metadata import models
 from sample_metadata.apis import (
     SampleApi,
     SequenceApi,
@@ -15,7 +16,6 @@ from sample_metadata.apis import (
     ParticipantApi,
     FamilyApi,
 )
-
 from larcoh import utils
 from larcoh.filetypes import (
     FastqPair,
@@ -32,6 +32,26 @@ class SmdbError(Exception):
     """
     Raised for problems interacting with sample-metadata database.
     """
+
+
+class AnalysisStatus(Enum):
+    """
+    Corresponds to SMDB Analysis statuses:
+    https://github.com/populationgenomics/sample-metadata/blob/dev/models/enums/analysis.py#L14-L21
+    """
+
+    QUEUED = 'queued'
+    IN_PROGRESS = 'in-progress'
+    FAILED = 'failed'
+    COMPLETED = 'completed'
+    UNKNOWN = 'unknown'
+
+    @staticmethod
+    def parse(name: str) -> 'AnalysisStatus':
+        """
+        Parse str and create a AnalysisStatus object
+        """
+        return {v.value: v for v in AnalysisStatus}[name.lower()]
 
 
 class AnalysisType(Enum):
@@ -63,6 +83,49 @@ class AnalysisType(Enum):
                 f'Unrecognised analysis type {val}. Available: {list(d.keys())}'
             )
         return d[val.lower()]
+
+
+@dataclass
+class Analysis:
+    """
+    Sample metadata DB Analysis entry.
+
+    See the sample-metadata package for more details:
+    https://github.com/populationgenomics/sample-metadata
+    """
+
+    id: int
+    type: AnalysisType
+    status: AnalysisStatus
+    sample_ids: set[str]
+    output: Path | None
+    meta: dict
+
+    @staticmethod
+    def parse(data: dict) -> 'Analysis':
+        """
+        Parse data to create an Analysis object.
+        """
+        req_keys = ['id', 'type', 'status']
+        if any(k not in data for k in req_keys):
+            for key in req_keys:
+                if key not in data:
+                    logger.error(f'"Analysis" data does not have {key}: {data}')
+            raise ValueError(f'Cannot parse SMDB Sequence {data}')
+
+        output = data.get('output')
+        if output:
+            output = to_path(output)
+
+        a = Analysis(
+            id=int(data['id']),
+            type=AnalysisType.parse(data['type']),
+            status=AnalysisStatus.parse(data['status']),
+            sample_ids=set(data.get('sample_ids', [])),
+            output=output,
+            meta=data.get('meta') or {},
+        )
+        return a
 
 
 class Metamist:
@@ -120,6 +183,50 @@ class Metamist:
         )
 
         return ped_entries
+
+    def find_analyses_by_sid(
+        self,
+        sample_ids: list[str],
+        analysis_type: AnalysisType,
+        analysis_status: AnalysisStatus = AnalysisStatus.COMPLETED,
+        meta: dict | None = None,
+        project_name: str | None = None,
+    ) -> dict[str, Analysis]:
+        """
+        Query the DB to find the last completed analysis for the type and samples,
+        one Analysis object per sample. Assumes the analysis is defined for a single
+        sample (e.g. cram, gvcf).
+        """
+        project_name = project_name or self.project_name
+
+        analysis_per_sid: dict[str, Analysis] = dict()
+
+        logger.info(
+            f'Querying {analysis_type} analysis entries for dataset {project_name}...'
+        )
+        datas = self.aapi.query_analyses(
+            models.AnalysisQueryModel(
+                projects=[project_name],
+                sample_ids=sample_ids,
+                type=models.AnalysisType(analysis_type.value),
+                status=models.AnalysisStatus(analysis_status.value),
+                meta=meta or {},
+            )
+        )
+
+        for data in datas:
+            a = Analysis.parse(data)
+            if not a:
+                continue
+            assert a.status == AnalysisStatus.COMPLETED, data
+            assert a.type == analysis_type, data
+            assert len(a.sample_ids) == 1, data
+            analysis_per_sid[list(a.sample_ids)[0]] = a
+        logger.info(
+            f'Querying {analysis_type} analysis entries for dataset {project_name}: '
+            f'found {len(analysis_per_sid)}'
+        )
+        return analysis_per_sid
 
 
 @dataclass

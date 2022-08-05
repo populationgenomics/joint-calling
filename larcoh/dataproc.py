@@ -35,7 +35,7 @@ def add_job(
     pyfiles: Optional[List[str]] = None,
     worker_boot_disk_size: Optional[int] = None,
     secondary_worker_boot_disk_size: Optional[int] = None,
-):
+) -> Job:
     """
     Wrapper around submitting a dataproc cluster job
     """
@@ -46,7 +46,7 @@ def add_job(
 
     depends_on = depends_on or []
     depends_on = [j for j in depends_on if j is not None]
-    
+
     if preemptible:
         num_secondary_workers = num_workers
         # number of primary workers has to be 5-10% of the number of secondary workers:
@@ -62,7 +62,7 @@ def add_job(
 
     # limiting the number of primary workers to avoid hitting GCP quota:
     num_primary_workers = min(num_primary_workers, MAX_PRIMARY_WORKERS)
-    
+
     return dataproc.hail_dataproc_job(
         b,
         script=script,
@@ -76,9 +76,7 @@ def add_job(
         init=['gs://cpg-reference/hail_dataproc/install_phantomjs.sh']
         if phantomjs
         else [],
-        worker_machine_type='n1-highmem-8' 
-        if highmem 
-        else 'n1-standard-8',
+        worker_machine_type='n1-highmem-8' if highmem else 'n1-standard-8',
         pyfiles=pyfiles,
         worker_boot_disk_size=worker_boot_disk_size,
         secondary_worker_boot_disk_size=secondary_worker_boot_disk_size,
@@ -121,7 +119,5 @@ def get_cluster(
         if phantomjs
         else [],
         autoscaling_policy=autoscaling_policy,
-        worker_machine_type='n1-highmem-8' 
-        if highmem 
-        else 'n1-standard-8',
+        worker_machine_type='n1-highmem-8' if highmem else 'n1-standard-8',
     )

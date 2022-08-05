@@ -1,17 +1,15 @@
 import collections
 import logging
-import hail as hl
 import pandas as pd
 
-from cpg_utils import to_path
+from cpg_utils import to_path, Path
 from cpg_utils.config import get_config
-from cpg_utils.hail_batch import dataset_path
 
 from hailtop.batch.job import Job
 
+from larcoh import cohort, batch, dataproc_job, tmp_prefix
 from larcoh.dataproc import add_job
-from larcoh.pipeline import Task, Pipeline
-from larcoh.utils import exists
+from larcoh.utils import exists, can_reuse
 
 logger = logging.getLogger(__file__)
 
@@ -23,109 +21,82 @@ TARGET_RECORDS = 25_000
 MAX_PARTITIONS = 2586
 
 
-class Combiner(Task):
-    def __init__(self, pipeline: Pipeline):
-        raw_combined_mt_path = (
-            pipeline.analysis_prefix / f'combiner/{pipeline.output_version}-raw.mt'
-        )
-        if prev_version := get_config()['workflow'].get('raw_combined_mt_version'):
-            prev_analysis_base = to_path(
-                dataset_path(f'joint-calling/{prev_version}', category='analysis')
-            )
-            raw_combined_mt_path = (
-                prev_analysis_base / f'combiner/{prev_version}-raw.mt'
-            )
+def queue_jobs(out_mt_path: Path) -> list[Job]:
+    """
+    Add VCF combiner jobs.
+    """
+    name = 'VCF Combiner'
+    if out_mt_path and not can_reuse(out_mt_path):
+        return [batch().new_job(f'{name} [reuse]')]
 
-        super().__init__(
-            pipeline=pipeline,
-            name='combiner',
-            work_fn=self.work_fn,
-            outputs=[raw_combined_mt_path],
-        )
+    # Combiner takes advantage of autoscaling cluster policies
+    # to reduce costs for the work that uses only the driver machine:
+    # https://hail.is/docs/0.2/experimental/vcf_combiner.html#pain-points
+    # To add a 50-worker policy for a project "prophecy-339301":
+    # ```
+    # gcloud dataproc autoscaling-policies import vcf-combiner-50 \
+    # --source=combiner-autoscaling-policy-50.yaml --region=australia-southeast1 \
+    # --project prophecy-339301
+    # ```
+    scatter_count = get_config()['workflow'].get('scatter_count', 50)
+    if scatter_count > 100:
+        autoscaling_workers = '200'
+    elif scatter_count > 50:
+        autoscaling_workers = '100'
+    else:
+        autoscaling_workers = '50'
 
-    @staticmethod
-    def work_fn(self: Task) -> list[Job]:
-        logger.info(f'Combining GVCFs')
-        assert self.outputs
-        out_mt_path = self.outputs[0]
+    for i, sample in enumerate(cohort().get_samples()):
+        if not sample.gvcf:
+            if get_config()['workflow'].get('skip_samples_with_missing_input', False):
+                logger.warning(f'Skipping {sample} which is missing GVCF')
+                sample.active = False
+                continue
+            else:
+                raise ValueError(
+                    f'Sample {sample} is missing GVCF. '
+                    f'Use workflow/skip_samples = [] or '
+                    f'workflow/skip_samples_with_missing_input '
+                    f'to control behaviour'
+                )
 
-        # Combiner takes advantage of autoscaling cluster policies
-        # to reduce costs for the work that uses only the driver machine:
-        # https://hail.is/docs/0.2/experimental/vcf_combiner.html#pain-points
-        # To add a 50-worker policy for a project "prophecy-339301":
-        # ```
-        # gcloud dataproc autoscaling-policies import vcf-combiner-50 \
-        # --source=combiner-autoscaling-policy-50.yaml --region=australia-southeast1 \
-        # --project prophecy-339301
-        # ```
-        scatter_count = get_config()['workflow'].get('scatter_count', 50)
-        if scatter_count > 100:
-            autoscaling_workers = '200'
-        elif scatter_count > 50:
-            autoscaling_workers = '100'
-        else:
-            autoscaling_workers = '50'
+        gvcf_path = sample.gvcf.path
+        if get_config()['workflow'].get('check_inputs', True):
+            if not exists(gvcf_path, description=str(i)):
+                if get_config()['workflow'].get(
+                    'skip_samples_with_missing_input', False
+                ):
+                    logger.warning(
+                        f'Skipping {sample} that is missing GVCF {gvcf_path}'
+                    )
+                    sample.active = False
+                else:
+                    raise ValueError(
+                        f'Sample {sample} is missing GVCF. '
+                        f'Use workflow/skip_samples = [] or '
+                        f'workflow/skip_samples_with_missing_input '
+                        f'to control behaviour'
+                    )
 
-        for i, sample in enumerate(self.pipeline.cohort.get_samples()):
-            gvcf_path = sample.get_gvcf_path(access_level='standard')
-            if get_config()['workflow'].get('check_inputs', True):
-                if not exists(gvcf_path, description=i):
-                    if get_config()['workflow'].get(
-                        'skip_samples_with_missing_input', False
-                    ):
-                        logger.warning(
-                            f'Skipping {sample} that is missing GVCF {gvcf_path}'
-                        )
-                        sample.active = False
-                    else:
-                        raise ValueError(
-                            f'Sample {sample} is missing GVCF. '
-                            f'Use workflow/skip_samples = [] or '
-                            f'workflow/skip_samples_with_missing_input '
-                            f'to control behaviour'
-                        )
+    logger.info(
+        f'Combining {len(cohort().get_samples())} samples: '
+        f'{", ".join(cohort().get_sample_ids())}'
+    )
 
-        combiner_tmp_prefix = self.pipeline.tmp_prefix / 'combiner'
-        sample_gvcf_tsv_path = combiner_tmp_prefix / 'sample_gvcf.tsv'
-        df = pd.DataFrame(
-            {'s': sample.id, 'gvcf': sample.get_gvcf_path(access_level='standard')}
-            for sample in self.pipeline.cohort.get_samples()
-        ).set_index('s', drop=False)
-        _check_duplicates(df.s)
-        _check_duplicates(df.gvcf)
-        with to_path(sample_gvcf_tsv_path).open('w') as f:
-            df.to_csv(f, index=False, sep='\t', na_rep='NA')
+    branch_factor = get_config().get('combiner', {}).get('branch_factor')
+    batch_size = get_config().get('combiner', {}).get('batch_size')
 
-        logger.info(
-            f'Combining {len(self.pipeline.cohort.get_samples())} samples: '
-            f'{", ".join(self.pipeline.cohort.get_sample_ids())}'
-        )
-
-        branch_factor = get_config().get('combiner', {}).get('branch_factor')
-        batch_size = get_config().get('combiner', {}).get('batch_size')
-        highmem_workers = get_config().get('dataproc', {}).get('highmem_workers')
-        return add_job(
-            self.pipeline.b,
-            script=(
-                f'scripts/combine_gvcfs.py '
-                f'--sample-gvcf-tsv {sample_gvcf_tsv_path} '
-                f'--out-mt {out_mt_path} '
-                f'--tmp-bucket {combiner_tmp_prefix} '
-                + (f'--branch-factor {branch_factor} ' if branch_factor else '')
-                + (f'--batch-size {batch_size} ' if batch_size else '')
-            ),
-            job_name=self.name,
-            num_workers=0,
-            highmem=highmem_workers,
-            autoscaling_policy=f'vcf-combiner-{autoscaling_workers}',
-            long=True,
-        )
-
-
-def _check_duplicates(items):
-    duplicates = [
-        item for item, count in collections.Counter(items).items() if count > 1
-    ]
-    if duplicates:
-        raise ValueError(f'Found {len(duplicates)} duplicates: {duplicates}')
-    return duplicates
+    job = dataproc_job(
+        'combine_gvcfs.py',
+        params=dict(
+            cohort_tsv=cohort().to_tsv(),
+            out_mt=out_mt_path,
+            tmp_prefix=tmp_prefix / 'combiner',
+            branch_factor=branch_factor,
+            batch_size=batch_size,
+        ),
+        num_workers=0,
+        autoscaling_policy=f'vcf-combiner-{autoscaling_workers}',
+        long=True,
+    )
+    return [job]

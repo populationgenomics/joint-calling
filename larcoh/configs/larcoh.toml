@@ -25,3 +25,6 @@ indel_filter_level = 99.0
 [hail]
 pool_label = 'large-cohort'
 delete_scratch_on_exit = false
+
+[references]
+ancestry_ht = 'ancestry/v3-90k/pca_sites.ht'
