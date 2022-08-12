@@ -10,7 +10,6 @@ from cpg_utils.config import get_config
 from cpg_utils import Path, to_path
 from cpg_utils.hail_batch import dataset_path
 
-from hailtop.batch import Batch
 from hailtop.batch.job import Job
 
 from larcoh.dataproc import add_job
@@ -22,12 +21,12 @@ from larcoh.inputs.metamist.metamist import Metamist
 from larcoh.targets import Cohort
 
 
-logger = logging.getLogger(__file__)
-
-
 coloredlogs.install(
     level='DEBUG', fmt='%(asctime)s %(levelname)s (%(name)s %(lineno)s): %(message)s'
 )
+
+
+logger = logging.getLogger(__file__)
 
 
 def get_package_name() -> str:
@@ -153,18 +152,3 @@ def dataproc_job(
         autoscaling_policy=autoscaling_policy,
         long=long,
     )
-
-
-# def queue_stage(
-#     func: Callable[[...], list[Job]],
-#     name: str,
-#     output_paths: list[Path] | None = None,
-#     **kwargs,
-# ) -> list[Job]:
-#     """
-#     Queue jobs for one stage, checking inputs and outputs.
-#     """
-#     if output_paths and not can_reuse(output_paths):
-#         return [batch().new_job(f'{name} [reuse]')]
-#
-#     return func(*output_paths, **kwargs)

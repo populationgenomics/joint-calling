@@ -21,6 +21,7 @@ setuptools.setup(
     keywords='bioinformatics',
     install_requires=[
         'cpg-utils',
+        'cpg-pipes',
         'analysis-runner',
         'sample_metadata',
         'hail>=0.2.97',

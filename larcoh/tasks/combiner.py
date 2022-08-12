@@ -26,7 +26,7 @@ def queue_jobs(out_mt_path: Path) -> list[Job]:
     Add VCF combiner jobs.
     """
     name = 'VCF Combiner'
-    if out_mt_path and not can_reuse(out_mt_path):
+    if out_mt_path and can_reuse(out_mt_path):
         return [batch().new_job(f'{name} [reuse]')]
 
     # Combiner takes advantage of autoscaling cluster policies

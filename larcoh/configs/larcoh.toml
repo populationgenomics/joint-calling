@@ -1,3 +1,6 @@
+[workflow]
+scatter_count = 10
+
 [larhoc.hardfiltering]
 min_coverage = 18
 max_n_snps = 8000000

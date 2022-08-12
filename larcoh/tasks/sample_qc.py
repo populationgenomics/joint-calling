@@ -1,7 +1,7 @@
 from cpg_utils import Path
 from hailtop.batch.job import Job
 
-from larcoh import batch, utils, can_reuse, dataproc_job, cohort, tmp_prefix
+from larcoh import batch, can_reuse, dataproc_job, cohort, tmp_prefix
 
 
 def sample_qc(
