@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Combine with HGDP-1KG subset of gnomAD v3, and select high-quality QC sites for PCA.
+Combine with HGDP and select high-quality QC sites for PCA.
 
 This script will produce two matrix tables:
 1. `--out-hgdp-union-mt` - a union of all input dataset and HGDP-1KG samples,
@@ -18,18 +18,12 @@ from typing import Optional
 
 import click
 import hail as hl
-from joint_calling import utils
-from joint_calling import _version
-from joint_calling.resources import ANCESTRY_SITES
-
+from larcoh import utils
 
 logger = logging.getLogger(__file__)
-logging.basicConfig(format='%(levelname)s (%(name)s %(lineno)s): %(message)s')
-logger.setLevel(logging.INFO)
 
 
 @click.command()
-@click.version_option(_version.__version__)
 @click.option(
     '--mt',
     'mt_path',
@@ -38,40 +32,30 @@ logger.setLevel(logging.INFO)
     help='path to the Matrix Table',
 )
 @click.option(
-    '--meta-tsv',
-    'meta_tsv_path',
+    '--cohort-tsv',
+    'cohort_tsv_path',
     required=True,
-    help='path to a CSV with QC and population metadata for the samples',
+    help='path to a CSV with QC metadata for the samples in the input Matrix Table. '
+    'The following columns are expected: '
+    's,freemix,pct_chimeras,duplication,insert_size. '
+    'Must be keyed by "s".',
 )
 @click.option(
     '--out-mt',
     'out_mt_path',
     callback=utils.get_validation_callback(ext='mt'),
-    help='path to write the Matrix Table after subsetting to selected rows. '
-    'The difference with --out-hgdp-union-mt is that it contains only the dataset '
-    'samples',
 )
 @click.option(
-    '--is-test',
-    'is_test',
-    is_flag=True,
-    help='subset the gnomAD table to 20 samples',
-)
-@click.option(
-    '--hail-billing',
-    'hail_billing',
-    required=True,
-    help='Hail billing account ID.',
+    '--out-combined-with-hgdp-mt',
+    'out_combined_with_hgdp_mt_path',
+    callback=utils.get_validation_callback(ext='mt'),
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
     mt_path: str,
-    meta_tsv_path: str,
-    out_mt_path: Optional[str],
-    is_test: bool,  # pylint: disable=unused-argument
-    hail_billing: str,  # pylint: disable=unused-argument
+    cohort_tsv_path: str,
+    out_mt_path: str,
+    out_combined_with_hgdp_mt_path: str,
 ):
-    local_tmp_dir = utils.init_hail(__file__)
-
     utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
 
     sites_ht = hl.read_table(ANCESTRY_SITES).key_by('locus')

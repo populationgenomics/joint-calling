@@ -5,732 +5,118 @@ Run sample QC on a MatrixTable, hard filter samples, add soft filter labels.
 """
 
 import logging
-import pickle
-from os.path import join
-from typing import Optional, List, Dict
 
 import click
 import hail as hl
-import pandas as pd
 from cpg_utils.config import get_config
 from cpg_utils.hail_batch import reference_path
-from gnomad.sample_qc.ancestry import run_pca_with_relateds, assign_population_pcs
-from gnomad.sample_qc.filtering import (
-    compute_qc_metrics_residuals,
-    compute_stratified_metrics_filter,
-)
-from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.sample_qc.pipeline import annotate_sex
-from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
-from gnomad.utils.annotations import bi_allelic_expr
-from gnomad.utils.file_utils import file_exists
-from gnomad.utils.filtering import filter_to_autosomes
-from gnomad.utils.sparse_mt import filter_ref_blocks
+from hail.vds import read_vds, filter_chromosomes, sample_qc, filter_intervals
 
-from larcoh import utils, can_reuse
+from larcoh import utils
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger('sample_qc')
+logger.setLevel('INFO')
 
 
 @click.command()
 @click.option(
-    '--mt',
-    'mt_path',
+    '--vds',
+    'vds_path',
     required=True,
-    callback=utils.get_validation_callback(ext='mt', must_exist=True),
-    help='path to the input Matrix Table. '
-    'To generate it, run the `combine_gvcfs` script',
+    callback=utils.get_validation_callback(ext='vds', must_exist=True),
+    help='path to the input dataset',
 )
 @click.option(
     '--cohort-tsv',
     'cohort_tsv_path',
-    required=True,
-    help='path to a CSV with QC metadata for the samples in the input Matrix Table. '
-    'The following columns are expected: '
-    's,freemix,pct_chimeras,duplication,insert_size. '
-    'Must be keyed by "s".',
-)
-@click.option(
-    '--out-hard-filtered-samples-ht',
-    'out_hard_filtered_samples_ht_path',
-    callback=utils.get_validation_callback(ext='ht', must_exist=False),
+    callback=utils.get_validation_callback(ext='tsv', must_exist=True),
     required=True,
 )
 @click.option(
-    '--out-sex-ht',
-    'out_sex_ht_path',
-    callback=utils.get_validation_callback(ext='ht', must_exist=False),
+    '--out-ht',
+    'out_ht_path',
+    callback=utils.get_validation_callback(ext='ht'),
     required=True,
-)
-@click.option(
-    '--out-hail-sample-qc-ht',
-    'out_hail_sample_qc_ht_path',
-    callback=utils.get_validation_callback(ext='ht', must_exist=False),
-    required=True,
-)
-@click.option(
-    '--tmp-bucket',
-    'tmp_bucket',
-    required=True,
-    help='path to write temporary intermediate files and checkpoints '
-    '(usually a temporary bucket)',
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
-    mt_path: str,
+    vds_path: str,
     cohort_tsv_path: str,
-    out_hard_filtered_samples_ht_path: str,
-    out_sex_ht_path: str,
-    out_hail_sample_qc_ht_path: str,
-    tmp_bucket: str,
+    out_ht_path: str,
 ):
-    mt = utils.get_mt(mt_path, passing_sites_only=True)
-    mt_split = utils.get_mt(mt_path, passing_sites_only=True, split=True)
+    vds = read_vds(vds_path)
+    vds = filter_chromosomes(vds, keep=[f'chr{chrom}' for chrom in range(1, 23)])
 
-    input_metadata_ht = hl.import_table(cohort_tsv_path)
+    # Remove centromeres and telomeres in case they were included and any reference blocks
+    tel_cent_ht = hl.read_table(str(reference_path('gnomad/tel_and_cent_ht')))
+    vds = filter_intervals(vds, tel_cent_ht, keep=False)
 
-    # `hail_sample_qc_ht` row fields: sample_qc, bi_allelic_sample_qc
-    hail_sample_qc_ht = compute_hail_sample_qc(
-        mt=mt_split,
-        tmp_bucket=tmp_bucket,
-        out_ht_path=out_hail_sample_qc_ht_path,
-    )
+    ht = vds.variant_data.cols()
+    ht = ht.annotate(**hl.import_table(cohort_tsv_path))
+    ht = ht.annotate(**sample_qc(vds))
 
+    logger.info('Inferring sex')
     # `sex_ht` row fields: is_female, chr20_mean_dp, sex_karyotype
-    sex_ht = infer_sex(
-        mt=mt,
-        tmp_bucket=tmp_bucket,
-        out_ht_path=out_sex_ht_path,
-    )
+    ht = ht.annotate(**annotate_sex(vds, gt_expr='LGT'))
 
     # `out_hard_filtered_samples_ht_path` row fields: hard_filters;
     # also includes only failed samples
-    compute_hard_filters(
-        mt=mt,
-        picard_metrics_ht=input_metadata_ht,
-        sex_ht=sex_ht,
-        hail_sample_qc_ht=hail_sample_qc_ht,
-        out_ht_path=out_hard_filtered_samples_ht_path,
-        cutoffs_d=get_config()['larhoc']['hardfiltering'],
-    )
+    ht = compute_hard_filters(ht)
+
+    ht = ht.repartition(100)
+    ht.checkpoint(out_ht_path, overwrite=True)
 
 
-def compute_hail_sample_qc(
-    mt: hl.MatrixTable,
-    tmp_bucket: str,
-    out_ht_path: Optional[str] = None,
-) -> hl.Table:
+def compute_hard_filters(ht: hl.Table) -> hl.Table:
     """
-    Runs Hail hl.sample_qc() to generate a Hail Table with
-    per-sample QC metrics.
-    :param mt: input MatrixTable, multiallelics split, genotype in GT fields
-    :param tmp_bucket: bucket path to write checkpoints
-    :param out_ht_path: location to write the result to
-    :return: a Hail Table with the following row fields:
-        'sample_qc': {
-            <output of hl.sample_qc() (n_filtered, n_hom_ref, etc)>
-        }
-        'bi_allelic_sample_qc': {
-            <output of hl.sample_qc() for bi-allelic variants only>
-        }
-        'multi_allelic_sample_qc': {
-            <output of hl.sample_qc() for multi-allelic variants only>
-        }
-    """
-    logger.info('Sample QC')
-    out_ht_path = out_ht_path or join(tmp_bucket, 'hail_sample_qc.ht')
-    if utils.can_reuse(out_ht_path):
-        return hl.read_table(out_ht_path)
-
-    mt = filter_to_autosomes(mt)
-
-    mt = mt.select_entries('GT')
-
-    mt = filter_ref_blocks(mt)
-
-    # Remove centromeres and telomeres incase they were included and any reference blocks
-    tel_cent_ht = hl.read_table(str(reference_path('gnomad/tel_and_cent_ht')))
-    mt = mt.filter_rows(hl.is_missing(tel_cent_ht[mt.locus]))
-
-    sample_qc_ht = compute_stratified_sample_qc(
-        mt,
-        strata={
-            'bi_allelic': bi_allelic_expr(mt),
-            'multi_allelic': ~bi_allelic_expr(mt),
-        },
-        tmp_ht_prefix=None,
-    )
-
-    # Remove annotations that cannot be computed from the sparse format
-    sample_qc_ht = sample_qc_ht.annotate(
-        **{
-            x: sample_qc_ht[x].drop('n_called', 'n_not_called', 'call_rate')
-            for x in sample_qc_ht.row_value
-        }
-    )
-
-    sample_qc_ht = sample_qc_ht.repartition(100)
-    return sample_qc_ht.checkpoint(out_ht_path, overwrite=True)
-
-
-def infer_sex(
-    mt: hl.MatrixTable,
-    tmp_bucket: str,
-    out_ht_path: Optional[str] = None,
-    target_regions: Optional[hl.Table] = None,
-) -> hl.Table:
-    """
-    Runs gnomad.sample_qc.annotate_sex() to infer sex
-    :param mt: input MatrixTable
-    :param tmp_bucket: bucket to write checkpoints
-    :param out_ht_path: location to write the result to
-    :param target_regions: if exomes, it should correspond to the regions in the panel
-    :return: a Table with the following row fields:
-        'is_female': bool
-        'f_stat': float64
-        'n_called': int64
-        'expected_homs': float64
-        'observed_homs': int64
-        'chr20_mean_dp': float32
-        'chrX_mean_dp': float32
-        'chrY_mean_dp': float32
-        'chrX_ploidy': float32
-        'chrY_ploidy': float32
-        'X_karyotype': str
-        'Y_karyotype': str
-        'sex_karyotype': str
-    """
-    logger.info('Inferring sex')
-    out_ht_path = out_ht_path or join(tmp_bucket, 'sex.ht')
-    if utils.can_reuse(out_ht_path):
-        return hl.read_table(out_ht_path)
-
-    tel_cent_ht = hl.read_table(str(reference_path('gnomad/tel_and_cent_ht')))
-    ht = annotate_sex(
-        mt,
-        excluded_intervals=tel_cent_ht,
-        included_intervals=target_regions,
-        gt_expr='LGT',
-        normal_ploidy_cutoff=5,  # default value
-        aneuploidy_cutoff=7,  # just a bit higher value
-    )
-
-    logger.info('Counting het/hom ratio on chrX as an extra sex check')
-    # Number of hom/hem on chrX, as an extra sex check measure
-    chrx_mt = hl.filter_intervals(mt, [hl.parse_locus_interval('chrX')])
-    chrx_mt = chrx_mt.annotate_entries(GT=chrx_mt.LGT)
-    chrx_ht = hl.sample_qc(chrx_mt).cols()
-    ht = ht.annotate(chrX_sample_qc=chrx_ht[ht.key].sample_qc)
-    ht = ht.annotate(chrX_r_het_hom_var=ht.chrX_sample_qc.r_het_hom_var)
-
-    return ht.checkpoint(out_ht_path, overwrite=True)
-
-
-def run_pca_ancestry_analysis(
-    mt: hl.MatrixTable,
-    sample_to_drop_ht: Optional[hl.Table],
-    n_pcs: int,
-    out_eigenvalues_ht_path: str,
-    out_scores_ht_path: str,
-    out_loadings_ht_path: str,
-) -> hl.Table:
-    """
-    :param mt: variants usable for PCA analysis, combined with samples
-        with known populations (HGDP, 1KG, etc)
-    :param sample_to_drop_ht: table with samples to drop based on
-        previous relatedness analysis. With a `rank` row field
-    :param n_pcs: maximum number of principal components
-    :param out_eigenvalues_ht_path: path to a txt file to write PCA eigenvalues
-    :param out_scores_ht_path: path to write PCA scores
-    :param out_loadings_ht_path: path to write PCA loadings
-    :return: a Table with a row field:
-        'scores': array<float64>
-    """
-    logger.info('Running PCA ancestry analysis')
-    if all(
-        not fp or utils.can_reuse(fp)
-        for fp in [
-            out_eigenvalues_ht_path,
-            out_scores_ht_path,
-            out_loadings_ht_path,
-        ]
-    ):
-        return hl.read_table(out_scores_ht_path)
-
-    # Adjusting the number of principal components not to exceed the
-    # number of samples
-    samples_to_drop_num = 0 if sample_to_drop_ht is None else sample_to_drop_ht.count()
-    n_pcs = min(n_pcs, mt.cols().count() - samples_to_drop_num)
-
-    logger.info(f'mt.s: {mt.s.collect()}')
-    if sample_to_drop_ht:
-        logger.info(f'sample_to_drop_ht.s: {sample_to_drop_ht.s.collect()}')
-
-    eigenvalues, scores_ht, loadings_ht = run_pca_with_relateds(
-        mt, sample_to_drop_ht, n_pcs=n_pcs
-    )
-    logger.info(f'scores_ht.s: {list(scores_ht.s.collect())}')
-    logger.info(f'eigenvalues: {eigenvalues}')
-    eigenvalues_ht = hl.Table.from_pandas(pd.DataFrame(eigenvalues, columns=['f0']))
-    eigenvalues_ht.write(out_eigenvalues_ht_path, overwrite=True)
-    loadings_ht.write(out_loadings_ht_path, overwrite=True)
-    scores_ht.write(out_scores_ht_path, overwrite=True)
-    scores_ht = hl.read_table(out_scores_ht_path)
-    return scores_ht
-
-
-def infer_pop_labels(
-    scores_ht: hl.Table,
-    training_pop_ht: hl.Table,
-    tmp_bucket: str,
-    min_prob: float,
-    max_mislabeled_training_samples: int = 50,
-    n_pcs: int = 16,
-    out_ht_path: Optional[str] = None,
-) -> hl.Table:
-    """
-    Take population PCA results and training data, and run random forest
-    to assign global population labels.
-
-    :param scores_ht: output table of `_run_pca_ancestry_analysis()`
-        with a row field 'scores': array<float64>
-    :param training_pop_ht: table with samples with defined `training_pop`: str
-    :param tmp_bucket: bucket to write checkpoints and intermediate files
-    :param min_prob: min probability of belonging to a given population
-        for the population to be set (otherwise set to `None`)
-    :param max_mislabeled_training_samples: keep rerunning until the number
-        of mislabeled samples is below this number
-    :param n_pcs: Number of PCs to use in the RF
-    :param out_ht_path: Path to write the resulting HT table
-    :return: a Table with the following row fields, including `prob_<POP>`
-        probabily fields for each population label:
-        'training_pop': str
-        'pca_scores': array<float64>
-        'pop': str
-        'prob_CEU': float64
-        'prob_YRI': float64
-        ... (prob_*: float64 for each population label)
-    """
-    out_ht_path = out_ht_path or join(tmp_bucket, 'inferred_pop.ht')
-    if utils.can_reuse(out_ht_path):
-        return hl.read_table(out_ht_path)
-
-    if training_pop_ht.count() < 2:
-        logger.warning(
-            'Need at least 2 samples with known `population` label to run PCA'
-            'and assign population labels to remaining samples'
-        )
-        pop_ht = scores_ht.annotate(
-            pop='oth',
-            is_training=False,
-            pca_scores=scores_ht.scores,
-        )
-        return pop_ht.checkpoint(out_ht_path, overwrite=True)
-
-    logger.info(
-        'Using calculated PCA scores as well as training samples with known '
-        '`population` label to assign population labels to remaining samples'
-    )
-    scores_ht = scores_ht.annotate(
-        training_pop=training_pop_ht[scores_ht.key].training_pop
-    )
-
-    def _run_assign_population_pcs(pop_pca_scores_ht, min_prob):
-        examples_num = pop_pca_scores_ht.aggregate(
-            hl.agg.count_where(hl.is_defined(pop_pca_scores_ht.training_pop))
-        )
-        logger.info(f'Running RF using {examples_num} training examples')
-        pop_ht, pops_rf_model = assign_population_pcs(
-            pop_pca_scores_ht,
-            pc_cols=pop_pca_scores_ht.scores[:n_pcs],
-            known_col='training_pop',
-            min_prob=min_prob,
-        )
-        n_mislabeled_samples = pop_ht.aggregate(
-            hl.agg.count_where(pop_ht.training_pop != pop_ht.pop)
-        )
-        return pop_ht, pops_rf_model, n_mislabeled_samples
-
-    pop_ht, pops_rf_model, n_mislabeled_samples = _run_assign_population_pcs(
-        scores_ht, min_prob
-    )
-    while n_mislabeled_samples > max_mislabeled_training_samples:
-        logger.info(
-            f'Found {n_mislabeled_samples} samples '
-            f'labeled differently from their known pop. '
-            f'Re-running without them.'
-        )
-
-        pop_ht = pop_ht[scores_ht.key]
-        pop_pca_scores_ht = scores_ht.annotate(
-            training_pop=hl.or_missing(
-                (pop_ht.training_pop == pop_ht.pop), scores_ht.training_pop
-            )
-        ).persist()
-
-        pop_ht, pops_rf_model, n_mislabeled_samples = _run_assign_population_pcs(
-            pop_pca_scores_ht, min_prob
-        )
-
-    # Writing a tab delimited file indicating inferred sample populations
-    pop_tsv_file = join(tmp_bucket, 'RF_pop_assignments.txt.gz')
-    if not can_reuse(pop_tsv_file):
-        pc_cnt = min(hl.min(10, hl.len(pop_ht.pca_scores)).collect())
-        pop_ht.transmute(
-            **{f'PC{i + 1}': pop_ht.pca_scores[i] for i in range(pc_cnt)}
-        ).export(pop_tsv_file)
-
-    # Writing the RF model used for inferring sample populations
-    pop_rf_file = join(tmp_bucket, 'pop.RF_fit.pickle')
-    if not can_reuse(pop_rf_file):
-        with hl.hadoop_open(pop_rf_file, 'wb') as out:
-            pickle.dump(pops_rf_model, out)
-
-    pop_ht = pop_ht.annotate(is_training=hl.is_defined(training_pop_ht[pop_ht.key]))
-    return pop_ht.checkpoint(out_ht_path, overwrite=True)
-
-
-def compute_stratified_qc(
-    sample_qc_ht: hl.Table,
-    pop_ht: hl.Table,
-    work_bucket: str,
-    filtering_qc_metrics: List[str],
-) -> hl.Table:
-    """
-    Computes median, MAD, and upper and lower thresholds for each metric
-    in `filtering_qc_metrics`, groupped by `pop` field in `pop_ht`
-
-    :param sample_qc_ht: table with a row field
-        `sample_qc` = struct { n_snp: int64, n_singleton: int64, ... }
-    :param pop_ht: table with a `pop` row field
-    :param work_bucket: bucket to write checkpoints
-    :param filtering_qc_metrics: metrics to annotate with
-    :return: table with the following structure:
-        Global fields:
-            'qc_metrics_stats': dict<tuple (
-                str
-                ), struct {
-                    n_snp: struct {
-                        median: int64,
-                        mad: float64,
-                        lower: float64,
-                        upper: float64
-                    },
-                    n_singleton: struct {
-                        ...
-                    },
-                    ...
-            }
-        Row fields:
-            'fail_n_snp': bool
-            'fail_n_singleton': bool
-            ...
-            'qc_metrics_filters': set<str>
-    """
-    out_ht_path = join(work_bucket, 'stratified_metrics.ht')
-    if can_reuse(out_ht_path):
-        return hl.read_table(out_ht_path)
-
-    logger.info(
-        f'Computing stratified QC metrics filters using '
-        f'metrics: {", ".join(filtering_qc_metrics)}'
-    )
-
-    sample_qc_ht = sample_qc_ht.annotate(qc_pop=pop_ht[sample_qc_ht.key].pop)
-    stratified_metrics_ht = compute_stratified_metrics_filter(
-        sample_qc_ht,
-        qc_metrics={
-            metric: sample_qc_ht.sample_qc[metric] for metric in filtering_qc_metrics
-        },
-        strata={'qc_pop': sample_qc_ht.qc_pop},
-        metric_threshold={'n_singleton': (4.0, 8.0)},
-    )
-
-    stratified_metrics_ht.write(out_ht_path, overwrite=True)
-    return hl.read_table(out_ht_path)
-
-
-def flag_related_samples(
-    hard_filtered_samples_ht: hl.Table,
-    sex_ht: hl.Table,
-    relatedness_ht: hl.Table,
-    regressed_metrics_ht: Optional[hl.Table],
-    tmp_bucket: str,
-    kin_threshold: float,
-    out_ht_path: Optional[str] = None,
-) -> hl.Table:
-    """
-    Flag samples to drop based on relatedness, so the final set
-    has only unrelated samples, best quality one per family
-
-    :param hard_filtered_samples_ht: table with failed samples
-        and a `hard_filters` row field
-    :param sex_ht: table with a `chr20_mean_dp` row field
-    :param relatedness_ht: table keyed by exactly two fields (i and j)
-        of the same type, identifying the pair of samples for each row
-    :param regressed_metrics_ht: optional table with a `qc_metrics_filters`
-        field calculated with _apply_regressed_filters() from PCA scores
-    :param tmp_bucket: bucket to write checkpoints
-    :param kin_threshold: kinship threshold to call two samples as related
-    :param out_ht_path: path to write the resulting Table to
-    :return: a table of the samples to drop along with their rank
-        row field: 'rank': int64
-    """
-    label = 'final' if regressed_metrics_ht is not None else 'intermediate'
-    logger.info(f'Flagging related samples to drop, {label}')
-    out_ht_path = out_ht_path or join(tmp_bucket, f'{label}_related_samples_to_drop.ht')
-    if utils.can_reuse(out_ht_path):
-        return hl.read_table(out_ht_path)
-
-    rankings_ht_path = join(tmp_bucket, f'{label}_samples_rankings.ht')
-    if can_reuse(rankings_ht_path):
-        rank_ht = hl.read_table(rankings_ht_path)
-    else:
-        rank_ht = _compute_sample_rankings(
-            hard_filtered_samples_ht,
-            sex_ht,
-            use_qc_metrics_filters=regressed_metrics_ht is not None,
-            regressed_metrics_ht=regressed_metrics_ht,
-        ).checkpoint(rankings_ht_path, overwrite=True)
-
-    try:
-        filtered_samples = hl.literal(
-            rank_ht.aggregate(
-                hl.agg.filter(rank_ht.filtered, hl.agg.collect(rank_ht.s))
-            )
-        )
-    except hl.ExpressionException:
-        # Hail doesn't handle it with `aggregate` when none of
-        # the samples is 'filtered'
-        filtered_samples = hl.empty_array('tstr')
-
-    samples_to_drop_ht = compute_related_samples_to_drop(
-        relatedness_ht,
-        rank_ht,
-        kin_threshold=kin_threshold,
-        filtered_samples=filtered_samples,
-    )
-    return samples_to_drop_ht.checkpoint(out_ht_path, overwrite=True)
-
-
-def _compute_sample_rankings(
-    hard_filtered_samples_ht: hl.Table,
-    sex_ht: hl.Table,
-    use_qc_metrics_filters: bool = False,
-    regressed_metrics_ht: Optional[hl.Table] = None,
-) -> hl.Table:
-    """
-    Orders samples by hard filters and coverage and adds rank,
-    which is the lower the better.
-
-    :param hard_filtered_samples_ht: table with failed samples
-        and a `hard_filters` row field
-    :param sex_ht: table with a `chr20_mean_dp` row field
-    :param use_qc_metrics_filters: apply population-stratified QC filters
-    :param regressed_metrics_ht: table with a `qc_metrics_filters` field.
-        Used only if `use_qc_metrics_filters` is True.
-    :return: table ordered by rank, with the following row fields:
-        `rank`, `filtered`
-    """
-    ht = sex_ht.drop(*list(sex_ht.globals.dtype.keys()))
-    ht = ht.select(
-        'chr20_mean_dp',
-        filtered=hl.or_else(
-            hl.len(hard_filtered_samples_ht[ht.key].hard_filters) > 0, False
-        ),
-    )
-    if use_qc_metrics_filters and regressed_metrics_ht is not None:
-        ht = ht.annotate(
-            filtered=hl.cond(
-                ht.filtered,
-                True,
-                hl.or_else(
-                    hl.len(regressed_metrics_ht[ht.key].qc_metrics_filters) > 0, False
-                ),
-            )
-        )
-
-    ht = ht.order_by(ht.filtered, hl.desc(ht.chr20_mean_dp)).add_index(name='rank')
-    return ht.key_by('s').select('filtered', 'rank')
-
-
-def apply_regressed_filters(
-    sample_qc_ht: hl.Table,
-    pop_pca_scores_ht: hl.Table,
-    tmp_bucket: str,
-    out_ht_path: Optional[str] = None,
-) -> hl.Table:
-    """
-    Re-compute QC metrics (with hl.sample_qc() - like n_snp, r_het_hom)
-    per population, and adding "fail_*" row fields when a metric is below
-    the the lower MAD threshold or higher the upper MAD threshold
-    (see `compute_stratified_metrics_filter` for defaults)
-
-    :param sample_qc_ht: table with a row field
-       `bi_allelic_sample_qc` =
-          struct { n_snp: int64, n_singleton: int64, ... }
-    :param pop_pca_scores_ht: table with a `scores` row field
-    :param tmp_bucket: bucket to write checkpoints
-    :param out_ht_path: path to write the resulting table to
-    :return: a table with the folliwing structure:
-        Global fields:
-            'lms': struct {
-                n_snp: struct {
-                    beta: array<float64>,
-                    standard_error: array<float64>,
-                    t_stat: array<float64>,
-                    p_value: array<float64>,
-                    multiple_standard_error: float64,
-                    multiple_r_squared: float64,
-                    adjusted_r_squared: float64,
-                    f_stat: float64,
-                    multiple_p_value: float64,
-                    n: int32
-                },
-                n_singleton: struct {
-                    ...
-                },
-                ...
-            }
-            'qc_metrics_stats': struct {
-                n_snp_residual: struct {
-                    median: float64,
-                    mad: float64,
-                    lower: float64,
-                    upper: float64
-                },
-                n_singleton_residual: struct {
-                    ...
-                },
-                ...
-            }
-        Row fields:
-            's': str
-            'n_snp_residual': float64
-            'n_singleton_residual': float64
-            ...
-            'fail_n_snp_residual': bool
-            'fail_n_singleton_residual': bool
-            ...
-            'qc_metrics_filters': set<str>
-    """
-    logger.info('Compute QC metrics adjusted for popopulation')
-    out_ht_path = out_ht_path or join(tmp_bucket, 'regressed_metrics.ht')
-    if utils.can_reuse(out_ht_path):
-        return hl.read_table(out_ht_path)
-
-    sample_qc_ht = sample_qc_ht.select(
-        **sample_qc_ht.bi_allelic_sample_qc,
-        **pop_pca_scores_ht[sample_qc_ht.key],
-        releasable=hl.bool(True),
-    )
-
-    filtering_qc_metrics = [
-        'n_snp',
-        'n_singleton',
-        'r_ti_tv',
-        'r_insertion_deletion',
-        'n_insertion',
-        'n_deletion',
-        'r_het_hom_var',
-        'n_het',
-        'n_hom_var',
-        'n_transition',
-        'n_transversion',
-    ]
-    residuals_ht = compute_qc_metrics_residuals(
-        ht=sample_qc_ht,
-        pc_scores=sample_qc_ht.scores,
-        qc_metrics={metric: sample_qc_ht[metric] for metric in filtering_qc_metrics},
-        regression_sample_inclusion_expr=sample_qc_ht.releasable,
-    )
-
-    stratified_metrics_ht = compute_stratified_metrics_filter(
-        ht=residuals_ht,
-        qc_metrics=dict(residuals_ht.row_value),
-        metric_threshold={'n_singleton_residual': (4.0, 8.0)},
-    )
-
-    residuals_ht = residuals_ht.annotate(**stratified_metrics_ht[residuals_ht.key])
-    residuals_ht = residuals_ht.annotate_globals(
-        **stratified_metrics_ht.index_globals()
-    )
-
-    return residuals_ht.checkpoint(out_ht_path, overwrite=True)
-
-
-def compute_hard_filters(
-    mt: hl.MatrixTable,
-    picard_metrics_ht: hl.Table,
-    sex_ht: hl.Table,
-    hail_sample_qc_ht: hl.Table,
-    cutoffs_d: Dict,
-    out_ht_path: str,
-) -> hl.Table:
-    """
-    Uses the sex imputation results, results of the sample_qc() run on
-    bi-allelic variants, and stats by Picard tools specificed in `sample_df`,
-    to apply filters to samples in `mt`, and create a table with
+    Uses the sex imputation results, variant sample qc, and input QC metrics
+    to apply filters to the samples in vds, and create a table with
     only samples that fail at least one sample.
-
-    :param mt: input matrix table
-    :param picard_metrics_ht: table QC metrics from Picard tools. Expected
-        fields: r_contamination, r_chimera, r_duplication, insert_size
-    :param sex_ht: required fields: "sex_karyotype", "chr20_mean_dp"
-    :param hail_sample_qc_ht: required fields:
-        "bi_allelic_sample_qc { n_snp, n_singleton, r_het_hom_var }"
-    :param out_ht_path: location to write the hard filtered samples Table
-    :param cutoffs_d: a dictionary with hard-filtering thresholds
-    :return: a table with samples failed the filters, and the following structure:
-        's': str
-        'hard_filters': set<str>  # a non-empty subset of { ambiguous_sex,
-            sex_aneuploidy,  low_coverage, bad_biallelic_metrics, contamination,
-            chimera, coverage, insert_size }
     """
     logger.info('Generating hard filters')
-    ht = mt.cols()
+
     ht = ht.annotate(hard_filters=hl.empty_set(hl.tstr))
 
     # Helper function to add filters into the `hard_filters` set
-    def add_filter(ht, expr, name):
-        return ht.annotate(
+    def add_filter(ht_, expr, name):
+        return ht_.annotate(
             hard_filters=hl.if_else(
-                expr & hl.is_defined(expr), ht.hard_filters.add(name), ht.hard_filters
+                expr & hl.is_defined(expr), ht_.hard_filters.add(name), ht_.hard_filters
             )
         )
 
     # Remove samples with ambiguous sex assignments
-    ht = add_filter(ht, sex_ht[ht.key].sex_karyotype == 'ambiguous', 'ambiguous_sex')
+    ht = add_filter(ht, ht.sex_karyotype == 'ambiguous', 'ambiguous_sex')
     ht = add_filter(
         ht,
-        ~hl.set({'ambiguous', 'XX', 'XY'}).contains(sex_ht[ht.key].sex_karyotype),
+        ~hl.set({'ambiguous', 'XX', 'XY'}).contains(ht.sex_karyotype),
         'sex_aneuploidy',
     )
 
     # Remove low-coverage samples
     # chrom 20 coverage is computed to infer sex and used here
     ht = add_filter(
-        ht, sex_ht[ht.key].chr20_mean_dp < cutoffs_d['min_coverage'], 'low_coverage'
+        ht,
+        ht.chr20_mean_dp < get_config()['larhoc']['hardfiltering']['min_coverage'],
+        'low_coverage',
     )
 
     # Remove extreme raw bi-allelic sample QC outliers
     ht = add_filter(
         ht,
         (
-            (
-                hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp
-                > cutoffs_d['max_n_snps']
+            (ht.sample_qc.n_snp > get_config()['larhoc']['hardfiltering']['max_n_snps'])
+            | (
+                ht.sample_qc.n_snp
+                < get_config()['larhoc']['hardfiltering']['min_n_snps']
             )
             | (
-                hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_snp
-                < cutoffs_d['min_n_snps']
+                ht.sample_qc.n_singleton
+                > get_config()['larhoc']['hardfiltering']['max_n_singletons']
             )
             | (
-                hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.n_singleton
-                > cutoffs_d['max_n_singletons']
-            )
-            | (
-                hail_sample_qc_ht[ht.key].bi_allelic_sample_qc.r_het_hom_var
-                > cutoffs_d['max_r_het_hom']
+                ht.sample_qc.r_het_hom_var
+                > get_config()['larhoc']['hardfiltering']['max_r_het_hom']
             )
         ),
         'bad_biallelic_metrics',
@@ -738,33 +124,33 @@ def compute_hard_filters(
 
     ht = add_filter(
         ht,
-        hl.is_defined(picard_metrics_ht[ht.key].r_contamination)
+        hl.is_defined(ht.r_contamination)
         & (
-            picard_metrics_ht[ht.key].r_contamination > cutoffs_d['max_r_contamination']
+            ht.r_contamination
+            > get_config()['larhoc']['hardfiltering']['max_r_contamination']
         ),
         'contamination',
     )
     ht = add_filter(
         ht,
-        hl.is_defined(picard_metrics_ht[ht.key].r_chimera)
-        & (picard_metrics_ht[ht.key].r_chimera > cutoffs_d['max_r_chimera']),
-        'chimera',
-    )
-    ht = add_filter(
-        ht,
-        hl.is_defined(picard_metrics_ht[ht.key].r_duplication)
-        & (picard_metrics_ht[ht.key].r_duplication > cutoffs_d['max_r_duplication']),
+        hl.is_defined(ht.r_duplication)
+        & (
+            ht.r_duplication
+            > get_config()['larhoc']['hardfiltering']['max_r_duplication']
+        ),
         'dup_rate',
     )
     ht = add_filter(
         ht,
-        hl.is_defined(picard_metrics_ht[ht.key].insert_size)
-        & (picard_metrics_ht[ht.key].insert_size < cutoffs_d['min_insert_size']),
+        hl.is_defined(ht.insert_size)
+        & (ht.insert_size < get_config()['larhoc']['hardfiltering']['min_insert_size']),
         'insert_size',
     )
-    ht = ht.annotate_globals(hard_filter_cutoffs=hl.struct(**cutoffs_d))
+    ht = ht.annotate_globals(
+        hard_filter_cutoffs=hl.struct(**get_config()['larhoc']['hardfiltering'])
+    )
     ht = ht.filter(hl.len(ht.hard_filters) > 0)
-    return ht.checkpoint(out_ht_path, overwrite=True)
+    return ht
 
 
 if __name__ == '__main__':

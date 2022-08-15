@@ -1,5 +1,6 @@
 [workflow]
 scatter_count = 10
+#vds_version = 0.1
 
 [larhoc.hardfiltering]
 min_coverage = 18
@@ -9,7 +10,6 @@ max_n_singletons = 800000
 max_r_duplication = 0.3
 max_r_het_hom = 3.3
 max_r_contamination = 0.04
-max_r_chimera = 0.05
 min_insert_size = 250
 
 [larhoc.pca]

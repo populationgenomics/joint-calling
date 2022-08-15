@@ -1,13 +1,16 @@
+import collections
 import logging
 
+from cpg_pipes.inputs import get_cohort
+from cpg_pipes.targets import Cohort
 from cpg_utils import to_path
 from cpg_utils.config import get_config
 from cpg_utils.hail_batch import dataset_path
 
 from larcoh import (
     analysis_prefix,
-    output_version,
-    batch,
+    get_batch,
+    vds_version,
 )
 from larcoh.tasks import combiner
 from larcoh.tasks.sample_qc import sample_qc
@@ -15,37 +18,54 @@ from larcoh.tasks.sample_qc import sample_qc
 logger = logging.getLogger(__file__)
 
 
+def _test_subset(c: Cohort) -> Cohort:
+    """
+    Subset cohort the cohort for test runs
+    """
+    original_sample_cnt = len(c.get_samples())
+    original_dataset_cnt = len(c.get_datasets())
+    # Test dataset: collecting all batch1 samples, plus 4 samples from each of other batches
+    samples_by_batch: dict[str, list] = collections.defaultdict(list)
+    for sample in c.get_samples():
+        batch_id = sample.seq_by_type['genome'].meta['batch']
+        if get_batch != '1' and len(samples_by_batch[batch_id]) > 4:
+            sample.active = False
+            continue
+        samples_by_batch[batch_id].append(sample)
+    logger.info(
+        f'After subset: {len(c.get_samples())}/{original_sample_cnt} samples, '
+        f'{len(samples_by_batch)} batches, '
+        f'{len(c.get_datasets())}/{original_dataset_cnt} datasets'
+    )
+    logger.info(
+        f'Using {len(c.get_samples())} samples '
+        f'from {len(c.get_datasets())} datasets'
+    )
+    return c
+
+
 def main():
-    ####################
-    # VCF COMBINER
+    cohort = get_cohort()
+    if get_config()['workflow'].get('access_level') == 'test':
+        cohort = _test_subset(cohort)
 
-    raw_combined_mt_path = analysis_prefix / 'combiner' / f'{output_version}-raw.mt'
-    if prev_version := get_config()['workflow'].get('raw_combined_mt_version'):
-        prev_analysis_base = to_path(
-            dataset_path(f'joint-calling/{prev_version}', category='analysis')
-        )
-        raw_combined_mt_path = (
-            prev_analysis_base / 'combiner' / f'{prev_version}-raw.mt'
-        )
-    combiner_jobs = combiner.queue_jobs(out_mt_path=raw_combined_mt_path)
+    batch = get_batch(cohort)
 
-    ####################
+    # COMBINER
+    vds_path = to_path(dataset_path(f'{vds_version}.vds'))
+    combiner_job = combiner.queue_combiner(batch, cohort, vds_path)
+
     # SAMPLE QC
-
-    sample_qc_prefix = analysis_prefix / 'qc'
-    sex_ht_path = sample_qc_prefix / 'sex.ht'
-    hard_filtered_samples_ht_path = sample_qc_prefix / 'hard_filtered_samples.ht'
-    hail_sample_qc_ht_path = sample_qc_prefix / 'hail_sample_qc.ht'
-
-    sample_qc(
-        raw_combined_mt_path,
-        hard_filtered_samples_ht_path,
-        sex_ht_path,
-        hail_sample_qc_ht_path,
-        depends_on=combiner_jobs,
+    sample_qc_ht_path = analysis_prefix / 'qc.ht'
+    sample_qc_j = sample_qc(
+        batch,
+        cohort,
+        vds_path,
+        sample_qc_ht_path,
+        depends_on=[combiner_job] if combiner_job else [],
     )
 
-    batch().run()
+    batch.run()
 
     # sample_qc_job, hard_filter_ht_path, meta_ht_path = add_sample_qc_jobs(
     #     b=b,
