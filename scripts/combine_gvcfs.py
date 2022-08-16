@@ -4,23 +4,16 @@
 Combine a set of GVCFs into a MatrixTable
 """
 
-import os
-from typing import List, Optional
 import logging
-import shutil
 
 import click
-import pandas as pd
-
 import hail as hl
-
+import pandas as pd
 from cpg_utils import to_path
-
-from hail.vds.combiner import new_combiner
 from hail.experimental.vcf_combiner.vcf_combiner import CombinerConfig
+from hail.vds.combiner import new_combiner
 
 from larcoh.utils import check_duplicates
-
 
 logger = logging.getLogger('combine_gvcfs')
 logger.setLevel('INFO')

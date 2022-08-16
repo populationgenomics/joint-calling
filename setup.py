@@ -20,7 +20,7 @@ setuptools.setup(
     scripts=[join('scripts', fp) for fp in os.listdir('scripts') if fp.endswith('.py')],
     keywords='bioinformatics',
     install_requires=[
-        'cpg-utils',
+        'cpg-utils>=4.4.5',
         'cpg-pipes',
         'analysis-runner',
         'sample_metadata',

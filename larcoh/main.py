@@ -9,11 +9,11 @@ from cpg_utils.hail_batch import dataset_path
 
 from larcoh import (
     analysis_prefix,
-    get_batch,
     vds_version,
 )
 from larcoh.tasks import combiner
 from larcoh.tasks.sample_qc import sample_qc
+from larcoh.pipeline_utils import get_batch
 
 logger = logging.getLogger(__file__)
 
@@ -28,7 +28,7 @@ def _test_subset(c: Cohort) -> Cohort:
     samples_by_batch: dict[str, list] = collections.defaultdict(list)
     for sample in c.get_samples():
         batch_id = sample.seq_by_type['genome'].meta['batch']
-        if get_batch != '1' and len(samples_by_batch[batch_id]) > 4:
+        if batch_id != '1' and len(samples_by_batch[batch_id]) > 4:
             sample.active = False
             continue
         samples_by_batch[batch_id].append(sample)
@@ -65,7 +65,7 @@ def main():
         depends_on=[combiner_job] if combiner_job else [],
     )
 
-    batch.run()
+    batch.run(wait=False)
 
     # sample_qc_job, hard_filter_ht_path, meta_ht_path = add_sample_qc_jobs(
     #     b=b,

@@ -7,8 +7,8 @@ from cpg_pipes.targets import Cohort
 from cpg_utils import Path
 from hailtop.batch.job import Job
 
-from larcoh import dataproc_job
-from larcoh.utils import can_reuse
+from larcoh.pipeline_utils import dataproc_job
+from larcoh.query_utils import can_reuse
 
 
 def sample_qc(

@@ -4,11 +4,11 @@ from cpg_utils import Path
 from cpg_utils.config import get_config
 from hailtop.batch.job import Job
 
-from larcoh import (
+from larcoh.pipeline_utils import (
     dataproc_job,
     tmp_prefix,
 )
-from larcoh.utils import exists, can_reuse
+from larcoh.query_utils import exists, can_reuse
 
 logger = logging.getLogger(__file__)
 
@@ -37,7 +37,7 @@ def queue_combiner(batch, cohort, out_vds_path: Path) -> Job | None:
     else:
         autoscaling_workers = '50'
 
-    for i, sample in enumerate(cohort.get_samples()):
+    for sample in cohort.get_samples():
         if not sample.gvcf:
             if get_config()['workflow'].get('skip_samples_with_missing_input', False):
                 logger.warning(f'Skipping {sample} which is missing GVCF')
