@@ -7,7 +7,7 @@ import setuptools
 
 setuptools.setup(
     name='larcoh',
-    version='0.1.4',
+    version='0.1.5',
     description='Pipeline for joint calling, sample and variant QC for WGS germline '
     'variant calling data in large cohorts',
     long_description=open('README.md').read(),
