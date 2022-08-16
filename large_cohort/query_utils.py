@@ -22,9 +22,9 @@ logger = logging.getLogger(__file__)
 
 output_version = get_config()['workflow']['output_version']
 vds_version = get_config()['workflow'].get('vds_version', output_version)
-output_version = f'v{output_version}'.replace('.', '_')
-vds_version = f'v{vds_version}'.replace('.', '_')
-_suffix = f'larcoh/{output_version}'
+output_version = f'v{output_version}'.replace('.', '-')
+vds_version = f'v{vds_version}'.replace('.', '-')
+_suffix = f'large_cohort/{output_version}'
 out_prefix = to_path(dataset_path(_suffix))
 tmp_prefix = to_path(dataset_path(_suffix, category='tmp'))
 
@@ -56,9 +56,11 @@ def exists_not_cached(path: Optional[Path], verbose: bool = True) -> bool:
     """
     path = cast(Path, to_path(path))
 
-    # rstrip to ".mt/" -> ".mt"
     if any(str(path).rstrip('/').endswith(f'.{suf}') for suf in ['mt', 'ht']):
         path = path / '_SUCCESS'
+
+    if str(path).rstrip('/').endswith('.vds'):
+        path = path / 'variant_data' / '_SUCCESS'
 
     if verbose:
         # noinspection PyBroadException

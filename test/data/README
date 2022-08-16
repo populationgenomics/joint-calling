@@ -1,1 +1,0 @@
-snakemake -j1 -p

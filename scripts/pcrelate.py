@@ -9,7 +9,7 @@ import logging
 import click
 import hail as hl
 
-from larcoh.query_utils import get_validation_callback, can_reuse, tmp_prefix
+from large_cohort.query_utils import get_validation_callback, can_reuse, tmp_prefix
 
 logger = logging.getLogger()
 logger.setLevel('INFO')

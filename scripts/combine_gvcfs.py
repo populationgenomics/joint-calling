@@ -14,7 +14,7 @@ from cpg_utils.config import get_config
 from hail.experimental.vcf_combiner.vcf_combiner import CombinerConfig
 from hail.vds.combiner import new_combiner
 
-from larcoh.query_utils import check_duplicates, tmp_prefix
+from large_cohort.query_utils import check_duplicates, tmp_prefix
 
 logger = logging.getLogger('combine_gvcfs')
 logger.setLevel('INFO')

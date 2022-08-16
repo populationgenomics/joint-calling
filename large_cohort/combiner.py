@@ -4,8 +4,8 @@ from cpg_utils import Path
 from cpg_utils.config import get_config
 from hailtop.batch.job import Job
 
-from larcoh.pipeline_utils import dataproc_job
-from larcoh.query_utils import exists, can_reuse
+from large_cohort.pipeline_utils import dataproc_job
+from large_cohort.query_utils import exists, can_reuse
 
 logger = logging.getLogger(__file__)
 

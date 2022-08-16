@@ -13,7 +13,7 @@ from cpg_utils.hail_batch import reference_path
 from gnomad.sample_qc.pipeline import annotate_sex
 from hail.vds import read_vds, filter_chromosomes, sample_qc, filter_intervals
 
-from larcoh.query_utils import get_validation_callback
+from large_cohort.query_utils import get_validation_callback
 
 logger = logging.getLogger()
 logger.setLevel('INFO')

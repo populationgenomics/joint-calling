@@ -6,7 +6,7 @@ import setuptools
 
 
 setuptools.setup(
-    name='larcoh',
+    name='large_cohort',
     version='0.1.5',
     description='Pipeline for joint calling, sample and variant QC for WGS germline '
     'variant calling data in large cohorts',
@@ -14,7 +14,7 @@ setuptools.setup(
     long_description_content_type='text/markdown',
     url='https://github.com/populationgenomics/joint-calling',
     license='MIT',
-    packages=['larcoh'],
+    packages=['large_cohort'],
     include_package_data=True,
     zip_safe=False,
     scripts=[join('scripts', fp) for fp in os.listdir('scripts') if fp.endswith('.py')],

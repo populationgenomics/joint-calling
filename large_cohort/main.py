@@ -8,9 +8,9 @@ from cpg_utils.config import get_config
 from cpg_utils.hail_batch import dataset_path
 from hailtop.batch.job import Job
 
-from larcoh.query_utils import can_reuse, vds_version, out_prefix
-from larcoh import combiner
-from larcoh.pipeline_utils import get_batch, dataproc_job
+from large_cohort.query_utils import can_reuse, vds_version, out_prefix
+from large_cohort import combiner
+from large_cohort.pipeline_utils import get_batch, dataproc_job
 
 logger = logging.getLogger(__file__)
 

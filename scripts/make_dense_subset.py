@@ -11,7 +11,7 @@ import hail as hl
 from cpg_utils.hail_batch import reference_path
 from hail import vds
 
-from larcoh.query_utils import get_validation_callback
+from large_cohort.query_utils import get_validation_callback
 
 logger = logging.getLogger()
 logger.setLevel('INFO')

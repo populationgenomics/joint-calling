@@ -1,9 +1,0 @@
-name: cpg-qc-test-data
-
-dependencies:
-  - snakemake-minimal
-  - bcftools
-  - tabix
-  - gatk4
-  - google-cloud-sdk
-  - google-cloud-storage
