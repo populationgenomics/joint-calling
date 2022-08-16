@@ -7,13 +7,9 @@ from cpg_utils import to_path
 from cpg_utils.config import get_config
 from cpg_utils.hail_batch import dataset_path
 
-from larcoh import (
-    analysis_prefix,
-    vds_version,
-)
 from larcoh.tasks import combiner
 from larcoh.tasks.sample_qc import sample_qc
-from larcoh.pipeline_utils import get_batch
+from larcoh.pipeline_utils import get_batch, vds_version, analysis_prefix
 
 logger = logging.getLogger(__file__)
 
