@@ -10,9 +10,7 @@ import math
 from analysis_runner import dataproc
 from cpg_pipes.hb.batch import RegisteringBatch, setup_batch
 from cpg_pipes.utils import timestamp, slugify
-from cpg_utils import to_path
 from cpg_utils.config import get_config
-from cpg_utils.hail_batch import dataset_path
 from hailtop.batch import Batch
 from hailtop.batch.job import Job
 
@@ -20,9 +18,10 @@ logger = logging.getLogger(__file__)
 
 
 DATAPROC_PACKAGES = [
-    'larcoh',
+    'cpg-utils',
+    'coloredlogs',
     'click',
-    'cpg-gnomad',
+    'cpg-gnomad==0.6.3',
     'google',
     'slackclient',
     'fsspec',
@@ -30,14 +29,6 @@ DATAPROC_PACKAGES = [
     'gcloud',
     'selenium',
 ]
-
-
-output_version = get_config()['workflow']['output_version']
-vds_version = get_config()['workflow'].get('vds_version', output_version)
-
-_suffix = f'joint-calling/{output_version}'
-analysis_prefix = to_path(dataset_path(_suffix, category='analysis'))
-tmp_prefix = to_path(dataset_path(_suffix, category='tmp'))
 
 
 @lru_cache
@@ -124,4 +115,5 @@ def dataproc_job(
         worker_machine_type='n1-highmem-8' if use_highmem_workers else 'n1-standard-8',
         worker_boot_disk_size=worker_boot_disk_size,
         secondary_worker_boot_disk_size=secondary_worker_boot_disk_size,
+        pyfiles=['larcoh'],
     )

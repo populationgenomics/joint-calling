@@ -10,10 +10,11 @@ import click
 import hail as hl
 import pandas as pd
 from cpg_utils import to_path
+from cpg_utils.config import get_config
 from hail.experimental.vcf_combiner.vcf_combiner import CombinerConfig
 from hail.vds.combiner import new_combiner
 
-from larcoh.query_utils import check_duplicates
+from larcoh.query_utils import check_duplicates, tmp_prefix
 
 logger = logging.getLogger('combine_gvcfs')
 logger.setLevel('INFO')
@@ -32,55 +33,34 @@ logger.setLevel('INFO')
     required=True,
     help='path to write VDS',
 )
-@click.option(
-    '--branch-factor',
-    'branch_factor',
-    required=False,
-    type=click.INT,
-    default=CombinerConfig.default_branch_factor,
-    help='Combiner branch factor (gvcfs will be split into ~branch_factor batches)',
-)
-@click.option(
-    '--batch-size',
-    'batch_size',
-    required=False,
-    type=click.INT,
-    default=CombinerConfig.default_phase1_batch_size,
-    help='Combiner batch size for phase1 (size of each batch of gvcfs to process '
-    'in 1 job)',
-)
-@click.option(
-    '--tmp-prefix',
-    'tmp_prefix',
-    required=True,
-    help='path to folder for intermediate output. '
-    'Can be a Google Storage URL (i.e. start with `gs://`).',
-)
-@click.option(
-    '--is-exome',
-    'is_exome',
-    is_flag=True,
-    default=False,
-)
 def main(
     cohort_tsv_path: str,
     out_vds_path: str,
-    branch_factor: int,
-    batch_size: int,
-    tmp_prefix: str,
-    is_exome: bool,
 ):  # pylint: disable=missing-function-docstring
     hl.init(default_reference='GRCh38')
+
+    branch_factor = (
+        get_config()
+        .get('combiner', {})
+        .get('branch_factor', CombinerConfig.default_branch_factor)
+    )
+    batch_size = (
+        get_config()
+        .get('combiner', {})
+        .get('batch_size', CombinerConfig.default_phase1_batch_size)
+    )
+    is_exome = get_config()['workflow']['sequencing_type'] == 'exome'
+
     logger.info(f'Combining GVCFs. Reading input paths from {cohort_tsv_path}')
     with to_path(cohort_tsv_path).open() as f:
         df = pd.read_table(f)
-    sample_names = df.s
-    gvcf_paths = df.gvcf
+    sample_names = list(df.s)
+    gvcf_paths = list(df.gvcf)
     check_duplicates(sample_names)
     check_duplicates(gvcf_paths)
     print(f'Combining {len(sample_names)} samples: {", ".join(sample_names)}')
 
-    new_combiner(
+    combiner = new_combiner(
         gvcf_paths=gvcf_paths,
         gvcf_sample_names=sample_names,
         # Header must be used with gvcf_sample_names, otherwise gvcf_sample_names
@@ -96,6 +76,7 @@ def main(
         branch_factor=branch_factor,
         batch_size=batch_size,
     )
+    combiner.run()
 
 
 if __name__ == '__main__':

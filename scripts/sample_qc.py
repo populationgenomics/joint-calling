@@ -15,7 +15,7 @@ from hail.vds import read_vds, filter_chromosomes, sample_qc, filter_intervals
 
 from larcoh.query_utils import get_validation_callback
 
-logger = logging.getLogger('sample_qc')
+logger = logging.getLogger()
 logger.setLevel('INFO')
 
 
@@ -44,26 +44,50 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function
     cohort_tsv_path: str,
     out_ht_path: str,
 ):
+    hl.init(default_reference='GRCh38')
+
     vds = read_vds(vds_path)
+
+    # Filter to autosomes:
     vds = filter_chromosomes(vds, keep=[f'chr{chrom}' for chrom in range(1, 23)])
 
-    # Remove centromeres and telomeres in case they were included and any reference blocks
+    # Remove centromeres and telomeres:
     tel_cent_ht = hl.read_table(str(reference_path('gnomad/tel_and_cent_ht')))
     vds = filter_intervals(vds, tel_cent_ht, keep=False)
 
-    ht = vds.variant_data.cols()
-    ht = ht.annotate(**hl.import_table(cohort_tsv_path))
-    ht = ht.annotate(**sample_qc(vds))
+    # Initialise sample table:
+    ht = hl.import_table(cohort_tsv_path)
+    ht.describe()
 
-    logger.info('Inferring sex')
-    # `sex_ht` row fields: is_female, chr20_mean_dp, sex_karyotype
-    ht = ht.annotate(**annotate_sex(vds, gt_expr='LGT'))
+    # Run hail sample QC stats:
+    ht = ht.annotate(sample_qc=sample_qc(vds)[ht.s])
+    ht.describe()
 
-    # `out_hard_filtered_samples_ht_path` row fields: hard_filters;
-    # also includes only failed samples
+    # Load calling intervals
+    calling_intervals_path = reference_path('broad/genome_calling_interval_lists')
+    calling_intervals_ht = hl.import_locus_intervals(
+        str(calling_intervals_path), reference_genome='GRCh38'
+    )
+    logger.info('Calling intervals table:')
+    calling_intervals_ht.describe()
+
+    # Infer sex (adds row fields: is_female, chr20_mean_dp, sex_karyotype)
+    sex_ht = annotate_sex(
+        vds,
+        included_intervals=calling_intervals_ht,
+        gt_expr='LGT',
+    )
+    logger.info('Sex table:')
+    sex_ht.describe()
+    ht = ht.annotate(**sex_ht[ht.s])
+    ht.describe()
+
+    # Populate ht.filters:
     ht = compute_hard_filters(ht)
 
     ht = ht.repartition(100)
+    logger.info('Sample QC table:')
+    ht.describe()
     ht.checkpoint(out_ht_path, overwrite=True)
 
 
@@ -74,14 +98,13 @@ def compute_hard_filters(ht: hl.Table) -> hl.Table:
     only samples that fail at least one sample.
     """
     logger.info('Generating hard filters')
-
-    ht = ht.annotate(hard_filters=hl.empty_set(hl.tstr))
+    ht = ht.annotate(filters=hl.empty_set(hl.tstr))
 
     # Helper function to add filters into the `hard_filters` set
     def add_filter(ht_, expr, name):
         return ht_.annotate(
-            hard_filters=hl.if_else(
-                expr & hl.is_defined(expr), ht_.hard_filters.add(name), ht_.hard_filters
+            filters=hl.if_else(
+                expr & hl.is_defined(expr), ht_.filters.add(name), ht_.filters
             )
         )
 
@@ -93,11 +116,13 @@ def compute_hard_filters(ht: hl.Table) -> hl.Table:
         'sex_aneuploidy',
     )
 
+    cutoffs = get_config()['larhoc']['hardfiltering']
+
     # Remove low-coverage samples
     # chrom 20 coverage is computed to infer sex and used here
     ht = add_filter(
         ht,
-        ht.chr20_mean_dp < get_config()['larhoc']['hardfiltering']['min_coverage'],
+        ht.chr20_mean_dp < cutoffs['min_coverage'],
         'low_coverage',
     )
 
@@ -105,19 +130,10 @@ def compute_hard_filters(ht: hl.Table) -> hl.Table:
     ht = add_filter(
         ht,
         (
-            (ht.sample_qc.n_snp > get_config()['larhoc']['hardfiltering']['max_n_snps'])
-            | (
-                ht.sample_qc.n_snp
-                < get_config()['larhoc']['hardfiltering']['min_n_snps']
-            )
-            | (
-                ht.sample_qc.n_singleton
-                > get_config()['larhoc']['hardfiltering']['max_n_singletons']
-            )
-            | (
-                ht.sample_qc.r_het_hom_var
-                > get_config()['larhoc']['hardfiltering']['max_r_het_hom']
-            )
+            (ht.sample_qc.n_snp > cutoffs['max_n_snps'])
+            | (ht.sample_qc.n_snp < cutoffs['min_n_snps'])
+            | (ht.sample_qc.n_singleton > cutoffs['max_n_singletons'])
+            | (ht.sample_qc.r_het_hom_var > cutoffs['max_r_het_hom'])
         ),
         'bad_biallelic_metrics',
     )
@@ -125,31 +141,21 @@ def compute_hard_filters(ht: hl.Table) -> hl.Table:
     ht = add_filter(
         ht,
         hl.is_defined(ht.r_contamination)
-        & (
-            ht.r_contamination
-            > get_config()['larhoc']['hardfiltering']['max_r_contamination']
-        ),
+        & (ht.r_contamination > cutoffs['max_r_contamination']),
         'contamination',
     )
     ht = add_filter(
         ht,
         hl.is_defined(ht.r_duplication)
-        & (
-            ht.r_duplication
-            > get_config()['larhoc']['hardfiltering']['max_r_duplication']
-        ),
+        & (ht.r_duplication > cutoffs['max_r_duplication']),
         'dup_rate',
     )
     ht = add_filter(
         ht,
-        hl.is_defined(ht.insert_size)
-        & (ht.insert_size < get_config()['larhoc']['hardfiltering']['min_insert_size']),
+        hl.is_defined(ht.insert_size) & (ht.insert_size < cutoffs['min_insert_size']),
         'insert_size',
     )
-    ht = ht.annotate_globals(
-        hard_filter_cutoffs=hl.struct(**get_config()['larhoc']['hardfiltering'])
-    )
-    ht = ht.filter(hl.len(ht.hard_filters) > 0)
+    ht = ht.annotate_globals(hard_filter_cutoffs=hl.struct(**cutoffs))
     return ht
 
 

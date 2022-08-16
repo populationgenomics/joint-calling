@@ -4,10 +4,7 @@ from cpg_utils import Path
 from cpg_utils.config import get_config
 from hailtop.batch.job import Job
 
-from larcoh.pipeline_utils import (
-    dataproc_job,
-    tmp_prefix,
-)
+from larcoh.pipeline_utils import dataproc_job
 from larcoh.query_utils import exists, can_reuse
 
 logger = logging.getLogger(__file__)
@@ -74,18 +71,12 @@ def queue_combiner(batch, cohort, out_vds_path: Path) -> Job | None:
         f'{", ".join(cohort.get_sample_ids())}'
     )
 
-    branch_factor = get_config().get('combiner', {}).get('branch_factor')
-    batch_size = get_config().get('combiner', {}).get('batch_size')
-
     job = dataproc_job(
         batch,
         'combine_gvcfs.py',
         params=dict(
             cohort_tsv=cohort.to_tsv(),
             out_vds=out_vds_path,
-            tmp_prefix=tmp_prefix / 'combiner',
-            branch_factor=branch_factor,
-            batch_size=batch_size,
         ),
         num_workers=0,
         autoscaling_policy=f'vcf-combiner-{autoscaling_workers}',

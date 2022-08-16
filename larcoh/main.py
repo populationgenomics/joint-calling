@@ -8,9 +8,9 @@ from cpg_utils.config import get_config
 from cpg_utils.hail_batch import dataset_path
 from hailtop.batch.job import Job
 
-from larcoh.query_utils import can_reuse
-from larcoh.tasks import combiner
-from larcoh.pipeline_utils import get_batch, vds_version, analysis_prefix, dataproc_job
+from larcoh.query_utils import can_reuse, vds_version, out_prefix
+from larcoh import combiner
+from larcoh.pipeline_utils import get_batch, dataproc_job
 
 logger = logging.getLogger(__file__)
 
@@ -50,12 +50,12 @@ def main():
     jobs: list[Job | None] = []
 
     # COMBINER
-    vds_path = to_path(dataset_path(f'{vds_version}.vds'))
+    vds_path = to_path(dataset_path(f'vds/{vds_version}.vds'))
     combiner_job = combiner.queue_combiner(batch, cohort, vds_path)
     jobs.append(combiner_job)
 
     # SAMPLE QC
-    sample_qc_ht_path = analysis_prefix / 'qc.ht'
+    sample_qc_ht_path = out_prefix / 'sample_qc.ht'
     if not can_reuse(sample_qc_ht_path):
         sample_qc_hard_filters_job = dataproc_job(
             batch,
@@ -69,16 +69,29 @@ def main():
         )
         jobs.append(sample_qc_hard_filters_job)
 
-    dense_subset_mt_path = analysis_prefix / 'dense-subset.mt'
+    dense_subset_mt_path = out_prefix / 'dense-subset.mt'
     if not can_reuse(dense_subset_mt_path):
         sample_qc_subset_mt_for_pca_job = dataproc_job(
             batch,
             f'make_dense_subset.py',
             params=dict(
                 vds=vds_path,
-                cohort_tsv=cohort.to_tsv(),
                 out_mt_path=dense_subset_mt_path,
             ),
+            depends_on=jobs,
+        )
+        jobs.append(sample_qc_subset_mt_for_pca_job)
+
+    relatedness_ht_path = out_prefix / 'relatedness.mt'
+    if not can_reuse(relatedness_ht_path):
+        sample_qc_subset_mt_for_pca_job = dataproc_job(
+            batch,
+            f'pcrelate.py',
+            params=dict(
+                mt=dense_subset_mt_path,
+                out_ht_path=relatedness_ht_path,
+            ),
+            preemptible=False,
             depends_on=jobs,
         )
         jobs.append(sample_qc_subset_mt_for_pca_job)
@@ -86,26 +99,6 @@ def main():
     batch.run(wait=False)
 
     # relatedness_ht_path = join(relatedness_bucket, 'relatedness.ht')
-    # if somalier_pairs_path:
-    #     job_name = 'Somalier pairs to Hail table'
-    #     if not can_reuse(relatedness_ht_path, overwrite):
-    #         relatedness_j = add_job(
-    #             b,
-    #             f'{utils.SCRIPTS_DIR}/sample_qc_somalier_to_ht.py '
-    #             + (f'--overwrite ' if overwrite else '')
-    #             + f'--somalier-pairs-tsv {somalier_pairs_path} '
-    #             f'--out-relatedness-ht {relatedness_ht_path} '
-    #             + (f'--hail-billing {billing_project} ' if billing_project else ''),
-    #             job_name=job_name,
-    #             num_workers=scatter_count,
-    #             is_test=is_test,
-    #             phantomjs=True,
-    #             highmem=highmem_workers,
-    #             depends_on=[somalier_job],
-    #         )
-    #     else:
-    #         relatedness_j = b.new_job(f'{job_name} [reuse]')
-    # else:
     #     job_name = 'Run pc_relate'
     #     if not can_reuse(relatedness_ht_path, overwrite):
     #         relatedness_ht_path = join(relatedness_bucket, 'relatedness.ht')
