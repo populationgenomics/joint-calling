@@ -14,55 +14,46 @@ This script will produce two matrix tables:
 """
 
 import logging
-from typing import Optional
 
 import click
 import hail as hl
-from larcoh import utils
+from cpg_utils.hail_batch import reference_path
+from hail import vds
+
+from larcoh.query_utils import get_validation_callback
 
 logger = logging.getLogger(__file__)
 
 
 @click.command()
 @click.option(
-    '--mt',
-    'mt_path',
+    '--vds',
+    'vds_path',
     required=True,
-    callback=utils.get_validation_callback(ext='mt', must_exist=True),
-    help='path to the Matrix Table',
+    callback=get_validation_callback(ext='vds', must_exist=True),
+    help='path to the input dataset',
 )
 @click.option(
     '--cohort-tsv',
     'cohort_tsv_path',
+    callback=get_validation_callback(ext='tsv', must_exist=True),
     required=True,
-    help='path to a CSV with QC metadata for the samples in the input Matrix Table. '
-    'The following columns are expected: '
-    's,freemix,pct_chimeras,duplication,insert_size. '
-    'Must be keyed by "s".',
 )
 @click.option(
     '--out-mt',
     'out_mt_path',
-    callback=utils.get_validation_callback(ext='mt'),
-)
-@click.option(
-    '--out-combined-with-hgdp-mt',
-    'out_combined_with_hgdp_mt_path',
-    callback=utils.get_validation_callback(ext='mt'),
+    callback=get_validation_callback(ext='mt'),
+    help='Path to resulting dense subset matrix table',
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring
-    mt_path: str,
-    cohort_tsv_path: str,
+    vds_path: str,
     out_mt_path: str,
-    out_combined_with_hgdp_mt_path: str,
 ):
-    utils.parse_input_metadata(meta_tsv_path, local_tmp_dir)
+    ds = vds.read_vds(vds_path)
+    mt = vds.to_dense_mt(ds)
+    sites_path = reference_path('ancestry/v3-90k/pca_sites.ht')
+    sites_ht = hl.read_table(str(sites_path)).key_by('locus')
 
-    sites_ht = hl.read_table(ANCESTRY_SITES).key_by('locus')
-
-    mt = utils.get_mt(mt_path, passing_sites_only=True)
-    mt = hl.experimental.densify(mt)
-    mt = mt.select_entries(GT=mt.LGT).select_cols()
     mt = mt.filter_rows(
         (hl.len(mt.alleles) == 2)
         & hl.is_snp(mt.alleles[0], mt.alleles[1])

@@ -13,7 +13,7 @@ from cpg_utils.hail_batch import reference_path
 from gnomad.sample_qc.pipeline import annotate_sex
 from hail.vds import read_vds, filter_chromosomes, sample_qc, filter_intervals
 
-from larcoh import utils
+from larcoh.query_utils import get_validation_callback
 
 logger = logging.getLogger('sample_qc')
 logger.setLevel('INFO')
@@ -24,19 +24,19 @@ logger.setLevel('INFO')
     '--vds',
     'vds_path',
     required=True,
-    callback=utils.get_validation_callback(ext='vds', must_exist=True),
+    callback=get_validation_callback(ext='vds', must_exist=True),
     help='path to the input dataset',
 )
 @click.option(
     '--cohort-tsv',
     'cohort_tsv_path',
-    callback=utils.get_validation_callback(ext='tsv', must_exist=True),
+    callback=get_validation_callback(ext='tsv', must_exist=True),
     required=True,
 )
 @click.option(
     '--out-ht',
     'out_ht_path',
-    callback=utils.get_validation_callback(ext='ht'),
+    callback=get_validation_callback(ext='ht'),
     required=True,
 )
 def main(  # pylint: disable=too-many-arguments,too-many-locals,missing-function-docstring

@@ -70,7 +70,7 @@ def dataproc_job(
     preemptible: bool = True,
     phantomjs: bool = True,
     num_workers: int | None = None,
-    depends_on: list[Job] = None,
+    depends_on: list[Job | None] = None,
     autoscaling_policy: str | None = None,
     long: bool = False,
     worker_boot_disk_size: int | None = None,
