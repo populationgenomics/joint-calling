@@ -6,6 +6,7 @@ into the MAIN and ARCHIVE buckets using the batch_move_files function.
 Assumes that each relevant sample and sample_sequencing has been previously 
 uploaded. 
 """
+from collections import defaultdict
 import os
 from os.path import join
 from typing import List, Optional, Tuple
@@ -18,7 +19,7 @@ from joint_calling.upload_processor import batch_move_files, SampleGroup, FileGr
 
 
 def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
-    """ Determine which samples should be processed """
+    """Determine which samples should be processed"""
     aapi = AnalysisApi()
     sapi = SampleApi()
     seqapi = SequenceApi()
@@ -29,13 +30,25 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
 
     # Take the first 300 samples without analysis
     sample_ids_without_analysis = samples_without_analysis['sample_ids'][:300]
-    sequences = seqapi.get_sequences_by_sample_ids(
+    sequences = seqapi.get_sequences_from_sample_ids(
         request_body=sample_ids_without_analysis
     )
 
     external_sample_mapping = sapi.get_sample_id_map_by_internal(
         request_body=sample_ids_without_analysis
     )
+    sequences_by_sid = defaultdict(int)
+    for sequence in sequences:
+        sequences_by_sid[sequence.get('sample_id')] += 1
+
+    invalid_samples = [(sid, cnt) for sid, cnt in sequences_by_sid.values() if cnt > 1]
+    if invalid_samples:
+        invalid_samples_str = ', '.join(
+            f'{sample_id}: {count}' for sample_id, count in invalid_samples
+        )
+        raise ValueError(
+            f'Some samples had multiple sequences, this script does not handle this case: {invalid_samples_str}'
+        )
 
     main_files = []
     archive_files = []
@@ -109,7 +122,7 @@ def determine_samples(proj) -> Tuple[List[SampleGroup], List[SampleGroup]]:
 def setup_job(
     batch: hb.batch, name: str, docker_image: Optional[str], python_job: bool = False
 ) -> hb.batch.job:
-    """ Returns a new Hail Batch job that activates the Google service account. """
+    """Returns a new Hail Batch job that activates the Google service account."""
 
     job = batch.new_python_job(name=name) if python_job else batch.new_job(name=name)
 
@@ -127,7 +140,7 @@ def setup_job(
 def create_analysis_in_sm_db(
     sample_group: SampleGroup, proj, output_path, analysis_type
 ):
-    """ Creates a new analysis object"""
+    """Creates a new analysis object"""
     aapi = AnalysisApi()
 
     internal_id = sample_group.sample_id_internal

@@ -2,6 +2,7 @@
 Functions to find the pipeline inputs and communicate with the SM server
 """
 
+from collections import defaultdict
 import logging
 import sys
 from dataclasses import dataclass
@@ -378,25 +379,29 @@ def find_inputs_from_db(
 
         logger.info('Checking sequencing info for samples')
         try:
-            seq_infos: List[Dict] = seqapi.get_sequences_by_sample_ids(
+            seq_infos: List[Dict] = seqapi.get_sequences_from_sample_ids(
                 request_body=[s['id'] for s in samples]
             )
         except exceptions.ApiException:
             logger.critical(f'Not for all samples sequencing data was found')
             raise
-        seq_meta_by_sid: Dict = dict()
+        seq_meta_by_sid: Dict = defaultdict(list)
         sids_without_meta = []
         for si in seq_infos:
             if 'meta' not in si:
                 sids_without_meta.append(si['sample_id'])
             else:
-                seq_meta_by_sid[si['sample_id']] = si['meta']
+                # this is not supported correctly
+                seq_meta_by_sid[si['sample_id']].append(si['meta'])
         if sids_without_meta:
             logger.warning(
                 f'Found {len(sids_without_meta)} samples without "meta" in '
                 f'sequencing info: {", ".join(sids_without_meta)}'
             )
-        logger.info(f'Found {len(seq_meta_by_sid)} sequences')
+        n_sequences = sum(len(values) for values in seq_meta_by_sid.values())
+        logger.info(
+            f'Found {len(seq_meta_by_sid)} samples, corresponding to {n_sequences} sequences'
+        )
 
         samples = [s for s in samples if s['id'] in seq_meta_by_sid]
         if not samples:
@@ -412,7 +417,7 @@ def find_inputs_from_db(
             resequencing_label = '-'
             if '-' in external_id:
                 external_id, resequencing_label = external_id.split('-', maxsplit=1)
-            seq_meta = seq_meta_by_sid[sample_id]
+            seq_metas = seq_meta_by_sid[sample_id]
             reblocked_gvcf_path = reblocked_gvcf_by_sid.get(s['id'])
             staging_gvcf_path = staging_gvcf_by_sid.get(s['id'])
 
@@ -450,20 +455,28 @@ def find_inputs_from_db(
                     'source': source_tag or '-',
                     'gvcf': reblocked_gvcf_path,
                     'topostproc_gvcf': staging_gvcf_path,
-                    'batch': seq_meta.get('batch', '-'),
+                    'flowcell_lane': '-',
+                    'library_id': '-',
+                    'platform': '-',
+                    'centre': '-',
+                    'primary_study': 'TOB',
+                }
+            )
+            # update left -> right (latter taking )
+            for seq_meta in seq_metas:
+                potential_values = {
+                    'batch': seq_meta.get('batch'),
                     'flowcell_lane': seq_meta.get(
-                        'sample.flowcell_lane', seq_meta.get('flowcell_lane', '-')
+                        'sample.flowcell_lane', seq_meta.get('flowcell_lane')
                     ),
                     'library_id': seq_meta.get(
-                        'sample.library_id', seq_meta.get('library_id', '-')
+                        'sample.library_id', seq_meta.get('library_id')
                     ),
                     'platform': seq_meta.get(
-                        'sample.platform', seq_meta.get('platform', '-')
+                        'sample.platform', seq_meta.get('platform')
                     ),
-                    'centre': seq_meta.get(
-                        'sample.centre', seq_meta.get('centre', '-')
-                    ),
-                    'primary_study': seq_meta.get('Primary study', 'TOB'),
+                    'centre': seq_meta.get('sample.centre', seq_meta.get('centre')),
+                    'primary_study': seq_meta.get('Primary study'),
                     'resequencing_label': resequencing_label,
                     'r_contamination': seq_meta.get(
                         'raw_data.FREEMIX', seq_meta.get('freemix')
@@ -480,7 +493,8 @@ def find_inputs_from_db(
                         seq_meta.get('median_insert_size'),
                     ),
                 }
-            )
+
+                entry.update({k: v for k, v in potential_values if v})
             inputs.append(entry)
 
     if not inputs:
